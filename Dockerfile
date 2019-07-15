@@ -1,0 +1,74 @@
+# Common Stage
+FROM node:24-alpine AS base
+WORKDIR /home/node/app
+
+LABEL maintainer="fmartinou"
+EXPOSE 3000
+
+ARG WUD_VERSION=unknown
+
+ENV WORKDIR=/home/node/app
+ENV WUD_LOG_FORMAT=text
+ENV WUD_VERSION=$WUD_VERSION
+
+HEALTHCHECK --interval=30s --timeout=5s CMD ["sh", "-c", "if [ -z \"$WUD_SERVER_ENABLED\" ] || [ \"$WUD_SERVER_ENABLED\" = 'true' ]; then curl --fail http://localhost:${WUD_SERVER_PORT:-3000}/health || exit 1; else exit 0; fi"]
+
+RUN apk add --no-cache \
+    bash \
+    curl \
+    git \
+    jq \
+    openssl \
+    tzdata \
+ && mkdir /store && chown node:node /store
+
+# Build stage for backend app
+FROM base AS app-build
+
+# Copy app package.json
+COPY app/package* ./
+
+# Install dependencies (including dev)
+RUN npm ci --include=dev --omit=optional --no-audit --no-fund --no-update-notifier
+
+# Copy app source
+COPY app/ ./
+
+# Build and remove dev dependencies
+RUN npm run build \
+ && npm prune --omit=dev
+
+# Build stage for frontend UI
+FROM base AS ui-build
+WORKDIR /home/node/ui
+
+# Copy ui package.json
+COPY ui/package* ./
+
+# Install ui dependencies
+RUN npm ci --no-audit --no-fund --no-update-notifier
+
+# Copy ui sources and build static assets
+COPY ui/ ./
+RUN npm run build
+
+# Release stage
+FROM base AS release
+
+# Default entrypoint
+COPY --chmod=755 Docker.entrypoint.sh /usr/bin/entrypoint.sh
+ENTRYPOINT ["/usr/bin/entrypoint.sh"]
+CMD ["node", "dist/index.js"]
+
+## Copy node_modules
+COPY --from=app-build /home/node/app/node_modules ./node_modules
+
+# Copy app (dist)
+COPY --from=app-build /home/node/app/dist ./dist
+COPY --from=app-build /home/node/app/package.json ./package.json
+
+# Copy ui
+COPY --from=ui-build /home/node/ui/dist/ ./ui
+
+# Run as non-root
+USER node

@@ -1,0 +1,3590 @@
+// @ts-nocheck
+import type { Mocked } from 'vitest';
+import { mockConstructor } from '../../../test/mock-constructor.js';
+import Docker from './Docker.js';
+import * as event from '../../../event/index.js';
+import * as storeContainer from '../../../store/container.js';
+import * as registry from '../../../registry/index.js';
+import { fullName } from '../../../model/container.js';
+
+// Mock all dependencies
+vi.mock('dockerode');
+vi.mock('node-cron');
+vi.mock('just-debounce');
+vi.mock('../../../event');
+vi.mock('../../../store/container');
+vi.mock('../../../registry');
+vi.mock('../../../model/container');
+vi.mock('../../../tag');
+vi.mock('../../../prometheus/watcher');
+vi.mock('parse-docker-image-name');
+vi.mock('fs');
+vi.mock('axios');
+
+import mockDockerode from 'dockerode';
+import mockCron from 'node-cron';
+import mockDebounce from 'just-debounce';
+import mockFs from 'fs';
+import axios from 'axios';
+import mockParse from 'parse-docker-image-name';
+import * as mockTag from '../../../tag/index.js';
+import * as mockPrometheus from '../../../prometheus/watcher.js';
+
+const mockAxios = axios as Mocked<typeof axios>;
+
+describe('Docker Watcher', () => {
+    let docker;
+    let mockDockerApi;
+    let mockSchedule;
+    let mockContainer;
+    let mockImage;
+
+    beforeEach(async () => {
+        vi.clearAllMocks();
+
+        // Setup dockerode mock
+        mockDockerApi = {
+            listContainers: vi.fn(),
+            getContainer: vi.fn(),
+            getEvents: vi.fn(),
+            getImage: vi.fn(),
+            getService: vi.fn(),
+            modem: {
+                headers: {},
+            },
+        };
+        mockDockerode.mockImplementation(mockConstructor(mockDockerApi));
+
+        // Setup cron mock
+        mockSchedule = {
+            stop: vi.fn(),
+        };
+        mockCron.schedule.mockReturnValue(mockSchedule);
+
+        // Setup debounce mock
+        mockDebounce.mockImplementation((fn) => fn);
+
+        // Setup container mock
+        mockContainer = {
+            inspect: vi.fn(),
+        };
+        mockDockerApi.getContainer.mockReturnValue(mockContainer);
+
+        // Setup image mock
+        mockImage = {
+            inspect: vi.fn(),
+        };
+        mockDockerApi.getImage.mockReturnValue(mockImage);
+
+        // Setup store mock
+        storeContainer.getContainers.mockReturnValue([]);
+        storeContainer.getContainer.mockReturnValue(undefined);
+        storeContainer.insertContainer.mockImplementation((c) => c);
+        storeContainer.updateContainer.mockImplementation((c) => c);
+        storeContainer.deleteContainer.mockImplementation(() => {});
+
+        // Setup registry mock
+        registry.getState.mockReturnValue({ registry: {} });
+
+        // Setup event mock
+        event.emitWatcherStart.mockImplementation(() => {});
+        event.emitWatcherStop.mockImplementation(() => {});
+        event.emitContainerReport.mockImplementation(() => {});
+        event.emitContainerReports.mockImplementation(() => {});
+
+        // Setup tag mock
+        mockTag.parse.mockReturnValue({ major: 1, minor: 0, patch: 0 });
+        mockTag.isGreater.mockReturnValue(false);
+        mockTag.transform.mockImplementation((transform, tag) => tag);
+
+        // Setup prometheus mock
+        const mockGauge = { set: vi.fn() };
+        mockPrometheus.getWatchContainerGauge.mockReturnValue(mockGauge);
+
+        // Setup parse mock
+        mockParse.mockReturnValue({
+            domain: 'docker.io',
+            path: 'library/nginx',
+            tag: '1.0.0',
+        });
+
+        mockAxios.post.mockResolvedValue({
+            data: {
+                access_token: 'oidc-token',
+                expires_in: 300,
+            },
+        } as any);
+
+        // Setup fullName mock
+        fullName.mockReturnValue('test_container');
+
+        docker = new Docker();
+    });
+
+    describe('Configuration', () => {
+        test('should create instance', async () => {
+            expect(docker).toBeDefined();
+            expect(docker).toBeInstanceOf(Docker);
+        });
+
+        test('should have correct configuration schema', async () => {
+            const schema = docker.getConfigurationSchema();
+            expect(schema).toBeDefined();
+        });
+
+        test('should validate configuration', async () => {
+            const config = { socket: '/var/run/docker.sock' };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should validate configuration with watchall option', async () => {
+            const config = { socket: '/var/run/docker.sock', watchall: true };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should validate configuration with custom cron', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                cron: '*/5 * * * *',
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should validate configuration with imgset presets', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                imgset: {
+                    homeassistant: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        tag: {
+                            include: '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                        display: {
+                            icon: 'mdi-home-assistant',
+                        },
+                        link: {
+                            template: 'https://example.com/changelog/${major}',
+                        },
+                    },
+                },
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should validate configuration with oidc remote auth', async () => {
+            const config = {
+                host: 'docker-proxy.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        clientid: 'wud-client',
+                        clientsecret: 'super-secret',
+                        scope: 'docker.read',
+                    },
+                },
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+    });
+
+    describe('Initialization', () => {
+        test('should initialize docker client with socket', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                socket: '/var/run/docker.sock',
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                socketPath: '/var/run/docker.sock',
+            });
+        });
+
+        test('should initialize with host configuration', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 2376,
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 2376,
+            });
+        });
+
+        test('should initialize with SSL configuration', async () => {
+            mockFs.readFileSync.mockReturnValue('cert-content');
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 2376,
+                cafile: '/ca.pem',
+                certfile: '/cert.pem',
+                keyfile: '/key.pem',
+            });
+            expect(mockFs.readFileSync).toHaveBeenCalledTimes(3);
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 2376,
+                ca: 'cert-content',
+                cert: 'cert-content',
+                key: 'cert-content',
+            });
+        });
+
+        test('should initialize with HTTPS bearer auth configuration', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'bearer',
+                    bearer: 'my-secret-token',
+                },
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                headers: {
+                    Authorization: 'Bearer my-secret-token',
+                },
+            });
+        });
+
+        test('should initialize with HTTPS basic auth configuration', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'basic',
+                    user: 'john',
+                    password: 'doe',
+                },
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                headers: {
+                    Authorization: 'Basic am9objpkb2U=',
+                },
+            });
+        });
+
+        test('should initialize with OIDC access token when provided', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        accesstoken: 'seed-access-token',
+                        expiresin: 300,
+                    },
+                },
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 443,
+                protocol: 'https',
+                headers: {
+                    Authorization: 'Bearer seed-access-token',
+                },
+            });
+        });
+
+        test('should skip auth headers when remote watcher is not HTTPS', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'localhost',
+                port: 2375,
+                protocol: 'http',
+                auth: {
+                    type: 'bearer',
+                    bearer: 'my-secret-token',
+                },
+            });
+            expect(mockDockerode).toHaveBeenCalledWith({
+                host: 'localhost',
+                port: 2375,
+                protocol: 'http',
+            });
+        });
+
+        test('should schedule cron job on init', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                cron: '0 * * * *',
+            });
+            docker.init();
+            expect(mockCron.schedule).toHaveBeenCalledWith(
+                '0 * * * *',
+                expect.any(Function),
+                { maxRandomDelay: 60000 },
+            );
+        });
+
+        test('should warn about deprecated watchdigest', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                watchdigest: true,
+            });
+            const mockLog = { warn: vi.fn(), info: vi.fn() };
+            docker.log = mockLog;
+            docker.init();
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('deprecated'),
+            );
+        });
+
+        test('should setup docker events listener', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                watchevents: true,
+            });
+            docker.init();
+            expect(mockDebounce).toHaveBeenCalled();
+        });
+
+        test('should not setup events when disabled', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                watchevents: false,
+            });
+            docker.init();
+            expect(mockDebounce).not.toHaveBeenCalled();
+        });
+
+        test('should disable watchatstart when watcher state already exists in store', async () => {
+            storeContainer.getContainers.mockReturnValue([{ id: 'existing' }]);
+            await docker.register('watcher', 'docker', 'test', {
+                watchatstart: true,
+            });
+            docker.init();
+            expect(storeContainer.getContainers).toHaveBeenCalledWith({
+                watcher: 'test',
+            });
+            expect(docker.configuration.watchatstart).toBe(false);
+        });
+
+        test('should keep watchatstart disabled when explicitly set to false', async () => {
+            storeContainer.getContainers.mockReturnValue([]);
+            await docker.register('watcher', 'docker', 'test', {
+                watchatstart: false,
+            });
+            docker.init();
+            expect(docker.configuration.watchatstart).toBe(false);
+        });
+    });
+
+    describe('Deregistration', () => {
+        test('should stop cron and clear timeouts on deregister', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            docker.init();
+            await docker.deregisterComponent();
+            expect(mockSchedule.stop).toHaveBeenCalled();
+        });
+    });
+
+    describe('OIDC Remote Auth', () => {
+        test('should fetch oidc access token before listing containers', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        clientid: 'wud-client',
+                        clientsecret: 'wud-secret',
+                        scope: 'docker.read',
+                    },
+                },
+            });
+
+            await docker.getContainers();
+
+            expect(mockAxios.post).toHaveBeenCalledWith(
+                'https://idp.example.com/oauth/token',
+                expect.stringContaining('grant_type=client_credentials'),
+                expect.objectContaining({
+                    headers: {
+                        'Content-Type':
+                            'application/x-www-form-urlencoded',
+                    },
+                }),
+            );
+            expect(mockDockerApi.modem.headers.Authorization).toBe(
+                'Bearer oidc-token',
+            );
+            expect(mockDockerApi.listContainers).toHaveBeenCalled();
+        });
+
+        test('should use refresh_token grant when refresh token is available', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        refreshtoken: 'refresh-token-1',
+                    },
+                },
+            });
+
+            await docker.getContainers();
+
+            const tokenRequestBody = mockAxios.post.mock.calls[0][1];
+            expect(tokenRequestBody).toContain('grant_type=refresh_token');
+            expect(tokenRequestBody).toContain(
+                'refresh_token=refresh-token-1',
+            );
+        });
+
+        test('should reuse cached oidc token until close to expiry', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockResolvedValue({
+                data: {
+                    access_token: 'cached-token',
+                    expires_in: 3600,
+                },
+            } as any);
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                    },
+                },
+            });
+
+            await docker.getContainers();
+            await docker.getContainers();
+
+            expect(mockAxios.post).toHaveBeenCalledTimes(1);
+            expect(mockDockerApi.listContainers).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('OIDC Device Code Flow', () => {
+        test('should validate configuration with device flow oidc settings', async () => {
+            const config = {
+                host: 'docker-proxy.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                        scope: 'docker.read',
+                    },
+                },
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should auto-detect device_code grant type when deviceurl is configured', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            const grantType = docker.getOidcGrantType();
+            expect(grantType).toBe(
+                'urn:ietf:params:oauth:grant-type:device_code',
+            );
+        });
+
+        test('should prefer refresh_token grant over device_code when refresh token exists', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                        refreshtoken: 'existing-refresh-token',
+                    },
+                },
+            });
+
+            docker.initializeRemoteOidcStateFromConfiguration();
+            const grantType = docker.getOidcGrantType();
+            expect(grantType).toBe('refresh_token');
+        });
+
+        test('should perform device code flow: request device code and poll for token', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            // First call: device authorization endpoint returns device_code
+            // Second call: token endpoint returns authorization_pending
+            // Third call: token endpoint returns access_token
+            let postCallCount = 0;
+            mockAxios.post.mockImplementation((url) => {
+                postCallCount++;
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'device-code-123',
+                            user_code: 'ABCD-1234',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                if (
+                    url === 'https://idp.example.com/oauth/token' &&
+                    postCallCount === 2
+                ) {
+                    return Promise.reject({
+                        response: {
+                            data: { error: 'authorization_pending' },
+                        },
+                    });
+                }
+                return Promise.resolve({
+                    data: {
+                        access_token: 'device-flow-token',
+                        refresh_token: 'device-flow-refresh',
+                        expires_in: 3600,
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                        scope: 'docker.read',
+                    },
+                },
+            });
+
+            // Mock sleep to avoid real delays in tests
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await docker.getContainers();
+
+            // Verify device authorization request
+            expect(mockAxios.post).toHaveBeenCalledWith(
+                'https://idp.example.com/oauth/device/code',
+                expect.stringContaining('client_id=wud-device-client'),
+                expect.objectContaining({
+                    headers: {
+                        'Content-Type':
+                            'application/x-www-form-urlencoded',
+                    },
+                }),
+            );
+
+            // Verify token polling request included device_code
+            const tokenCalls = mockAxios.post.mock.calls.filter(
+                (call) =>
+                    call[0] === 'https://idp.example.com/oauth/token',
+            );
+            expect(tokenCalls.length).toBeGreaterThanOrEqual(1);
+            expect(tokenCalls[0][1]).toContain(
+                'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code',
+            );
+            expect(tokenCalls[0][1]).toContain(
+                'device_code=device-code-123',
+            );
+
+            // Verify the token was set
+            expect(docker.remoteOidcAccessToken).toBe('device-flow-token');
+            expect(docker.remoteOidcRefreshToken).toBe(
+                'device-flow-refresh',
+            );
+            expect(docker.remoteOidcDeviceCodeCompleted).toBe(true);
+            expect(mockDockerApi.modem.headers.Authorization).toBe(
+                'Bearer device-flow-token',
+            );
+        });
+
+        test('should handle slow_down error by increasing poll interval', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            let postCallCount = 0;
+            mockAxios.post.mockImplementation((url) => {
+                postCallCount++;
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'device-code-456',
+                            user_code: 'EFGH-5678',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                if (postCallCount === 2) {
+                    return Promise.reject({
+                        response: {
+                            data: { error: 'slow_down' },
+                        },
+                    });
+                }
+                return Promise.resolve({
+                    data: {
+                        access_token: 'slow-down-token',
+                        expires_in: 3600,
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await docker.getContainers();
+
+            // First sleep with original interval (1s), second with increased (1s + 5s = 6s)
+            expect(docker.sleep).toHaveBeenCalledTimes(2);
+            expect(docker.sleep).toHaveBeenNthCalledWith(1, 1000);
+            expect(docker.sleep).toHaveBeenNthCalledWith(2, 6000);
+
+            expect(docker.remoteOidcAccessToken).toBe('slow-down-token');
+        });
+
+        test('should throw on expired_token error', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockImplementation((url) => {
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'expired-device-code',
+                            user_code: 'XXXX-0000',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                return Promise.reject({
+                    response: {
+                        data: { error: 'expired_token' },
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await expect(docker.getContainers()).rejects.toThrow(
+                'device code expired before user authorization',
+            );
+        });
+
+        test('should throw on access_denied error', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockImplementation((url) => {
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'denied-device-code',
+                            user_code: 'DENY-0001',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                return Promise.reject({
+                    response: {
+                        data: { error: 'access_denied' },
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await expect(docker.getContainers()).rejects.toThrow(
+                'user denied the authorization request',
+            );
+        });
+
+        test('should throw when device authorization endpoint returns no device_code', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockImplementation((url) => {
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            // Missing device_code
+                            user_code: 'NO-CODE',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                        },
+                    });
+                }
+                return Promise.resolve({ data: {} });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await expect(docker.getContainers()).rejects.toThrow(
+                'response does not contain device_code',
+            );
+        });
+
+        test('should fall back to client_credentials when deviceurl is missing but grant type is device_code', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockResolvedValue({
+                data: {
+                    access_token: 'fallback-cc-token',
+                    expires_in: 300,
+                },
+            } as any);
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        granttype:
+                            'urn:ietf:params:oauth:grant-type:device_code',
+                        // No deviceurl configured
+                    },
+                },
+            });
+
+            await docker.getContainers();
+
+            // Should have fallen back to client_credentials
+            const tokenRequestBody = mockAxios.post.mock.calls[0][1];
+            expect(tokenRequestBody).toContain(
+                'grant_type=client_credentials',
+            );
+            expect(docker.remoteOidcAccessToken).toBe(
+                'fallback-cc-token',
+            );
+        });
+
+        test('should log verification_uri_complete when provided by server', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockImplementation((url) => {
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'complete-uri-code',
+                            user_code: 'COMP-1234',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            verification_uri_complete:
+                                'https://idp.example.com/device?user_code=COMP-1234',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                return Promise.resolve({
+                    data: {
+                        access_token: 'complete-uri-token',
+                        expires_in: 3600,
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            const mockLog = {
+                info: vi.fn(),
+                warn: vi.fn(),
+                debug: vi.fn(),
+                child: vi.fn().mockReturnThis(),
+            };
+            docker.log = mockLog;
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await docker.ensureRemoteAuthHeaders();
+
+            expect(mockLog.info).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'visit https://idp.example.com/device?user_code=COMP-1234 to authorize this device',
+                ),
+            );
+        });
+
+        test('should send scope and audience in device authorization request', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+            mockAxios.post.mockImplementation((url) => {
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'scoped-code',
+                            user_code: 'SCOP-1234',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                return Promise.resolve({
+                    data: {
+                        access_token: 'scoped-token',
+                        expires_in: 3600,
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                        scope: 'docker.read openid',
+                        audience: 'https://docker-api.example.com',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            await docker.getContainers();
+
+            // Verify the device authorization request included scope and audience
+            const deviceCall = mockAxios.post.mock.calls.find(
+                (call) =>
+                    call[0] ===
+                    'https://idp.example.com/oauth/device/code',
+            );
+            expect(deviceCall).toBeDefined();
+            const deviceBody = deviceCall[1];
+            expect(deviceBody).toContain('scope=docker.read+openid');
+            expect(deviceBody).toContain(
+                'audience=https%3A%2F%2Fdocker-api.example.com',
+            );
+        });
+
+        test('should use refresh_token for subsequent token refreshes after device code flow completes', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            // First call sequence: device flow
+            let postCallCount = 0;
+            mockAxios.post.mockImplementation((url) => {
+                postCallCount++;
+                if (
+                    url ===
+                    'https://idp.example.com/oauth/device/code'
+                ) {
+                    return Promise.resolve({
+                        data: {
+                            device_code: 'initial-device-code',
+                            user_code: 'INIT-0001',
+                            verification_uri:
+                                'https://idp.example.com/device',
+                            interval: 1,
+                            expires_in: 300,
+                        },
+                    });
+                }
+                return Promise.resolve({
+                    data: {
+                        access_token: 'device-token-1',
+                        refresh_token: 'device-refresh-1',
+                        expires_in: 1, // Expires almost immediately
+                    },
+                });
+            });
+
+            await docker.register('watcher', 'docker', 'test', {
+                host: 'docker-api.example.com',
+                port: 443,
+                protocol: 'https',
+                auth: {
+                    type: 'oidc',
+                    oidc: {
+                        tokenurl: 'https://idp.example.com/oauth/token',
+                        deviceurl:
+                            'https://idp.example.com/oauth/device/code',
+                        clientid: 'wud-device-client',
+                    },
+                },
+            });
+
+            docker.sleep = vi.fn().mockResolvedValue(undefined);
+
+            // First getContainers triggers device flow
+            await docker.getContainers();
+            expect(docker.remoteOidcAccessToken).toBe('device-token-1');
+            expect(docker.remoteOidcRefreshToken).toBe(
+                'device-refresh-1',
+            );
+
+            // Force token to be expired so next call refreshes
+            docker.remoteOidcAccessTokenExpiresAt = Date.now() - 1000;
+
+            // Reset mock for the refresh call
+            mockAxios.post.mockResolvedValue({
+                data: {
+                    access_token: 'refreshed-token-2',
+                    refresh_token: 'refreshed-refresh-2',
+                    expires_in: 3600,
+                },
+            } as any);
+
+            await docker.getContainers();
+
+            // The refresh should use refresh_token grant, not device_code
+            const lastCall =
+                mockAxios.post.mock.calls[
+                    mockAxios.post.mock.calls.length - 1
+                ];
+            expect(lastCall[1]).toContain('grant_type=refresh_token');
+            expect(lastCall[1]).toContain(
+                'refresh_token=device-refresh-1',
+            );
+            expect(docker.remoteOidcAccessToken).toBe(
+                'refreshed-token-2',
+            );
+        });
+    });
+
+    describe('Docker Events', () => {
+        test('should listen to docker events', async () => {
+            const mockStream = { on: vi.fn() };
+            mockDockerApi.getEvents.mockImplementation((options, callback) => {
+                callback(null, mockStream);
+            });
+            await docker.register('watcher', 'docker', 'test', {});
+            await docker.listenDockerEvents();
+            expect(mockDockerApi.getEvents).toHaveBeenCalledWith(
+                {
+                    filters: {
+                        type: ['container'],
+                        event: [
+                            'create',
+                            'destroy',
+                            'start',
+                            'stop',
+                            'pause',
+                            'unpause',
+                            'die',
+                            'update',
+                            'rename',
+                        ],
+                    },
+                },
+                expect.any(Function),
+            );
+        });
+
+        test('should handle docker events error', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = {
+                warn: vi.fn(),
+                debug: vi.fn(),
+                info: vi.fn(),
+            };
+            docker.log = mockLog;
+            mockDockerApi.getEvents.mockImplementation((options, callback) => {
+                callback(new Error('Connection failed'));
+            });
+            await docker.listenDockerEvents();
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Connection failed'),
+            );
+        });
+
+        test('should process create/destroy events', async () => {
+            docker.watchCronDebounced = vi.fn();
+            const event = JSON.stringify({
+                Action: 'create',
+                id: 'container123',
+            });
+            await docker.onDockerEvent(Buffer.from(event));
+            expect(docker.watchCronDebounced).toHaveBeenCalled();
+        });
+
+        test('should update container status on other events', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = {
+                child: vi.fn().mockReturnValue({ info: vi.fn() }),
+                debug: vi.fn(),
+            };
+            docker.log = mockLog;
+            mockContainer.inspect.mockResolvedValue({
+                State: { Status: 'running' },
+            });
+            const existingContainer = { id: 'container123', status: 'stopped' };
+            storeContainer.getContainer.mockReturnValue(existingContainer);
+
+            const event = JSON.stringify({
+                Action: 'start',
+                id: 'container123',
+            });
+            await docker.onDockerEvent(Buffer.from(event));
+
+            expect(mockContainer.inspect).toHaveBeenCalled();
+            expect(storeContainer.updateContainer).toHaveBeenCalled();
+        });
+
+        test('should update container name on rename events', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = {
+                child: vi.fn().mockReturnValue({ info: vi.fn() }),
+                debug: vi.fn(),
+            };
+            docker.log = mockLog;
+            mockContainer.inspect.mockResolvedValue({
+                Name: '/renamed-container',
+                State: { Status: 'running' },
+                Config: { Labels: {} },
+            });
+            const existingContainer = {
+                id: 'container123',
+                name: 'old-temp-name',
+                displayName: 'old-temp-name',
+                status: 'running',
+                image: { name: 'library/nginx' },
+                labels: {},
+            };
+            storeContainer.getContainer.mockReturnValue(existingContainer);
+
+            const event = JSON.stringify({
+                Action: 'rename',
+                id: 'container123',
+            });
+            await docker.onDockerEvent(Buffer.from(event));
+
+            expect(existingContainer.name).toBe('renamed-container');
+            expect(existingContainer.displayName).toBe('renamed-container');
+            expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+                existingContainer,
+            );
+        });
+
+        test('should handle container not found during event processing', async () => {
+            const mockLog = { debug: vi.fn() };
+            docker.log = mockLog;
+            mockDockerApi.getContainer.mockImplementation(() => {
+                throw new Error('No such container');
+            });
+
+            const event = JSON.stringify({
+                Action: 'start',
+                id: 'nonexistent',
+            });
+            await docker.onDockerEvent(Buffer.from(event));
+
+            expect(mockLog.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Unable to get container'),
+            );
+        });
+
+        test('should handle malformed docker event payload', async () => {
+            const mockLog = { debug: vi.fn() };
+            docker.log = mockLog;
+
+            await docker.onDockerEvent(Buffer.from('{invalid-json\n'));
+
+            expect(mockLog.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Unable to process Docker event'),
+            );
+        });
+
+        test('should buffer split docker event payloads until complete', async () => {
+            docker.watchCronDebounced = vi.fn();
+            await docker.onDockerEvent(
+                Buffer.from('{"Action":"create","id":"container'),
+            );
+
+            expect(docker.watchCronDebounced).not.toHaveBeenCalled();
+            expect(docker.dockerEventsBuffer).toContain('"container');
+
+            await docker.onDockerEvent(Buffer.from('123"}\n'));
+
+            expect(docker.watchCronDebounced).toHaveBeenCalledTimes(1);
+            expect(docker.dockerEventsBuffer).toBe('');
+        });
+
+        test('should process multiple docker events from a single chunk', async () => {
+            docker.watchCronDebounced = vi.fn();
+
+            await docker.onDockerEvent(
+                Buffer.from(
+                    '{"Action":"create","id":"container123"}\n{"Action":"destroy","id":"container456"}\n',
+                ),
+            );
+
+            expect(docker.watchCronDebounced).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('Container Watching', () => {
+        test('should watch containers from cron', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                cron: '0 * * * *',
+            });
+            const mockLog = { info: vi.fn() };
+            docker.log = mockLog;
+            docker.watch = vi.fn().mockResolvedValue([]);
+
+            await docker.watchFromCron();
+
+            expect(docker.watch).toHaveBeenCalled();
+            expect(mockLog.info).toHaveBeenCalledWith(
+                expect.stringContaining('Cron started'),
+            );
+            expect(mockLog.info).toHaveBeenCalledWith(
+                expect.stringContaining('Cron finished'),
+            );
+        });
+
+        test('should report container statistics', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                cron: '0 * * * *',
+            });
+            const mockLog = { info: vi.fn() };
+            docker.log = mockLog;
+            const containerReports = [
+                { container: { updateAvailable: true, error: undefined } },
+                {
+                    container: {
+                        updateAvailable: false,
+                        error: { message: 'error' },
+                    },
+                },
+            ];
+            docker.watch = vi.fn().mockResolvedValue(containerReports);
+
+            await docker.watchFromCron();
+
+            expect(mockLog.info).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    '2 containers watched, 1 errors, 1 available updates',
+                ),
+            );
+        });
+
+        test('should emit watcher events during watch', async () => {
+            docker.getContainers = vi.fn().mockResolvedValue([]);
+
+            await docker.watch();
+
+            expect(event.emitWatcherStart).toHaveBeenCalledWith(docker);
+            expect(event.emitWatcherStop).toHaveBeenCalledWith(docker);
+        });
+
+        test('should handle error getting containers', async () => {
+            const mockLog = { warn: vi.fn() };
+            docker.log = mockLog;
+            docker.getContainers = vi
+                .fn()
+                .mockRejectedValue(new Error('Docker unavailable'));
+
+            await docker.watch();
+
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Docker unavailable'),
+            );
+        });
+
+        test('should handle error processing containers', async () => {
+            const mockLog = { warn: vi.fn() };
+            docker.log = mockLog;
+            docker.getContainers = vi
+                .fn()
+                .mockResolvedValue([{ id: 'test' }]);
+            docker.watchContainer = vi
+                .fn()
+                .mockRejectedValue(new Error('Processing failed'));
+
+            const result = await docker.watch();
+
+            expect(result).toEqual([]);
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Processing failed'),
+            );
+        });
+    });
+
+    describe('Container Processing', () => {
+        test('should watch individual container', async () => {
+            const container = { id: 'test123', name: 'test' };
+            const mockLog = {
+                child: vi.fn().mockReturnValue({ debug: vi.fn() }),
+            };
+            docker.log = mockLog;
+            docker.findNewVersion = vi
+                .fn()
+                .mockResolvedValue({ tag: '2.0.0' });
+            docker.mapContainerToContainerReport = vi
+                .fn()
+                .mockReturnValue({ container, changed: false });
+
+            await docker.watchContainer(container);
+
+            expect(docker.findNewVersion).toHaveBeenCalledWith(
+                container,
+                expect.any(Object),
+            );
+            expect(event.emitContainerReport).toHaveBeenCalled();
+        });
+
+        test('should handle container processing error', async () => {
+            const container = { id: 'test123', name: 'test' };
+            const mockLogChild = { warn: vi.fn(), debug: vi.fn() };
+            const mockLog = { child: vi.fn().mockReturnValue(mockLogChild) };
+            docker.log = mockLog;
+            docker.findNewVersion = vi
+                .fn()
+                .mockRejectedValue(new Error('Registry error'));
+            docker.mapContainerToContainerReport = vi
+                .fn()
+                .mockReturnValue({ container, changed: false });
+
+            await docker.watchContainer(container);
+
+            expect(mockLogChild.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Registry error'),
+            );
+            expect(container.error).toEqual({ message: 'Registry error' });
+        });
+    });
+
+    describe('Container Retrieval', () => {
+        test('should get containers with default options', async () => {
+            const containers = [
+                {
+                    Id: '123',
+                    Labels: { 'wud.watch': 'true' },
+                    Names: ['/test'],
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: '123' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: true,
+            });
+            const result = await docker.getContainers();
+
+            expect(mockDockerApi.listContainers).toHaveBeenCalledWith({});
+            expect(result).toHaveLength(1);
+        });
+
+        test('should get all containers when watchall enabled', async () => {
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchall: true,
+            });
+            await docker.getContainers();
+
+            expect(mockDockerApi.listContainers).toHaveBeenCalledWith({
+                all: true,
+            });
+        });
+
+        test('should filter containers based on watch label', async () => {
+            const containers = [
+                { Id: '1', Labels: { 'wud.watch': 'true' }, Names: ['/test1'] },
+                {
+                    Id: '2',
+                    Labels: { 'wud.watch': 'false' },
+                    Names: ['/test2'],
+                },
+                { Id: '3', Labels: {}, Names: ['/test3'] },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: '1' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(1);
+        });
+
+        test('should apply swarm service deploy labels to container filtering and tag include', async () => {
+            const containers = [
+                {
+                    Id: 'swarm-task-1',
+                    Image: 'authelia/authelia:4.39.15',
+                    Names: ['/authelia_authelia.1.xxxxx'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'service123',
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockReturnValue({
+                inspect: vi.fn().mockResolvedValue({
+                    Spec: {
+                        Labels: {
+                            'wud.watch': 'true',
+                            'wud.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                    },
+                }),
+            });
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'swarm-task-1' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(1);
+            expect(mockDockerApi.getService).toHaveBeenCalledWith('service123');
+            expect(docker.addImageDetailsToContainer).toHaveBeenCalledTimes(1);
+            expect(
+                docker.addImageDetailsToContainer.mock.calls[0][1],
+            ).toBe('^\\d+\\.\\d+\\.\\d+$');
+        });
+
+        test('should let container labels override swarm service labels', async () => {
+            const containers = [
+                {
+                    Id: 'swarm-task-2',
+                    Image: 'grafana/alloy:v1.12.2',
+                    Names: ['/monitoring_alloy.1.yyyyy'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'service456',
+                        'wud.watch': 'true',
+                        'wud.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockReturnValue({
+                inspect: vi.fn().mockResolvedValue({
+                    Spec: {
+                        Labels: {
+                            'wud.watch': 'false',
+                            'wud.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                    },
+                }),
+            });
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'swarm-task-2' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(1);
+            expect(
+                docker.addImageDetailsToContainer.mock.calls[0][1],
+            ).toBe('^v\\d+\\.\\d+\\.\\d+$');
+        });
+
+        test('should cache swarm service label lookups per service', async () => {
+            const containers = [
+                {
+                    Id: 'swarm-task-3a',
+                    Image: 'example/service:1.0.0',
+                    Names: ['/svc.1.a'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'service789',
+                    },
+                },
+                {
+                    Id: 'swarm-task-3b',
+                    Image: 'example/service:1.0.0',
+                    Names: ['/svc.2.b'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'service789',
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockReturnValue({
+                inspect: vi.fn().mockResolvedValue({
+                    Spec: {
+                        Labels: {
+                            'wud.watch': 'true',
+                        },
+                    },
+                }),
+            });
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'ok' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            await docker.getContainers();
+
+            expect(mockDockerApi.getService).toHaveBeenCalledTimes(1);
+            expect(mockDockerApi.getService).toHaveBeenCalledWith('service789');
+        });
+
+        test('should pick up wud labels from deploy-only labels (Spec.Labels) when container has no wud labels', async () => {
+            // Simulates: docker-compose deploy: labels: wud.tag.include (NOT root labels:)
+            // In Swarm, deploy labels go to Spec.Labels but NOT to container.Labels
+            const containers = [
+                {
+                    Id: 'swarm-deploy-only',
+                    Image: 'authelia/authelia:4.39.15',
+                    Names: ['/authelia_authelia.1.xxxxx'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'svc-deploy-labels',
+                        'com.docker.swarm.task.id': 'task1',
+                        'com.docker.swarm.task.name': 'authelia_authelia.1.xxxxx',
+                        // NO wud.* labels — they only exist in Spec.Labels
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockReturnValue({
+                inspect: vi.fn().mockResolvedValue({
+                    Spec: {
+                        Labels: {
+                            'wud.watch': 'true',
+                            'wud.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                        TaskTemplate: {
+                            ContainerSpec: {
+                                // No Labels here — deploy labels don't go to TaskTemplate
+                            },
+                        },
+                    },
+                }),
+            });
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'swarm-deploy-only' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(1);
+            expect(docker.addImageDetailsToContainer).toHaveBeenCalledTimes(1);
+            // The tag include regex should come from Spec.Labels
+            expect(
+                docker.addImageDetailsToContainer.mock.calls[0][1],
+            ).toBe('^\\d+\\.\\d+\\.\\d+$');
+        });
+
+        test('should gracefully handle swarm service inspect failure without losing container', async () => {
+            const containers = [
+                {
+                    Id: 'swarm-inspect-fail',
+                    Image: 'example/app:1.0.0',
+                    Names: ['/app.1.xxxxx'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'svc-fail',
+                        'wud.watch': 'true',
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockReturnValue({
+                inspect: vi.fn().mockRejectedValue(new Error('service not found')),
+            });
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'swarm-inspect-fail' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            // Container should still be watched using its own labels
+            expect(result).toHaveLength(1);
+            // tag.include should be undefined since service inspect failed and
+            // the container itself has no wud.tag.include
+            expect(
+                docker.addImageDetailsToContainer.mock.calls[0][1],
+            ).toBeUndefined();
+        });
+
+        test('should handle mixed label sources: deploy labels + root labels across services', async () => {
+            // Simulates: authelia with deploy labels, alloy with root labels
+            const containers = [
+                {
+                    Id: 'swarm-authelia',
+                    Image: 'authelia/authelia:4.39.15',
+                    Names: ['/authelia_authelia.1.aaa'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'svc-authelia',
+                        // deploy: labels: go to Spec.Labels, NOT here
+                    },
+                },
+                {
+                    Id: 'swarm-alloy',
+                    Image: 'grafana/alloy:v1.12.2',
+                    Names: ['/monitoring_alloy.1.bbb'],
+                    Labels: {
+                        'com.docker.swarm.service.id': 'svc-alloy',
+                        // Root labels: ARE on the container
+                        'wud.watch': 'true',
+                        'wud.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                    },
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            mockDockerApi.getService.mockImplementation((serviceId: string) => ({
+                inspect: vi.fn().mockResolvedValue(
+                    serviceId === 'svc-authelia'
+                        ? {
+                            Spec: {
+                                Labels: {
+                                    'wud.watch': 'true',
+                                    'wud.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                                },
+                            },
+                        }
+                        : {
+                            Spec: {
+                                TaskTemplate: {
+                                    ContainerSpec: {
+                                        Labels: {
+                                            'wud.watch': 'true',
+                                            'wud.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                ),
+            }));
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockImplementation((_container: any, includeTags: string) =>
+                    Promise.resolve({ id: _container.Id, includeTags }),
+                );
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(2);
+            // Authelia's tag include should come from Spec.Labels (deploy labels)
+            const autheliaCall = docker.addImageDetailsToContainer.mock.calls.find(
+                (call: any) => call[0].Id === 'swarm-authelia',
+            );
+            expect(autheliaCall[1]).toBe('^\\d+\\.\\d+\\.\\d+$');
+            // Alloy's tag include should come from container labels (root labels)
+            const alloyCall = docker.addImageDetailsToContainer.mock.calls.find(
+                (call: any) => call[0].Id === 'swarm-alloy',
+            );
+            expect(alloyCall[1]).toBe('^v\\d+\\.\\d+\\.\\d+$');
+        });
+
+        test('should prune old containers', async () => {
+            const oldContainers = [{ id: 'old1' }, { id: 'old2' }];
+            storeContainer.getContainers.mockReturnValue(oldContainers);
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            await docker.register('watcher', 'docker', 'test', {});
+            await docker.getContainers();
+
+            expect(storeContainer.deleteContainer).toHaveBeenCalledWith('old1');
+            expect(storeContainer.deleteContainer).toHaveBeenCalledWith('old2');
+        });
+
+        test('should handle pruning error', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = { warn: vi.fn() };
+            docker.log = mockLog;
+            storeContainer.getContainers.mockImplementationOnce(() => {
+                throw new Error('Store error');
+            });
+            mockDockerApi.listContainers.mockResolvedValue([]);
+
+            await docker.getContainers();
+
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Store error'),
+            );
+        });
+    });
+
+    describe('Dual-prefix ud.*/wud.* label support', () => {
+        test('should prefer ud.watch over wud.watch label', async () => {
+            const containers = [
+                {
+                    Id: 'ud-label-1',
+                    Labels: { 'ud.watch': 'true', 'wud.watch': 'false' },
+                    Names: ['/ud-test'],
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'ud-label-1' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            // ud.watch=true should override wud.watch=false
+            expect(result).toHaveLength(1);
+        });
+
+        test('should fall back to wud.watch when ud.watch is not set', async () => {
+            const containers = [
+                {
+                    Id: 'wud-fallback-1',
+                    Labels: { 'wud.watch': 'true' },
+                    Names: ['/wud-test'],
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'wud-fallback-1' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            const result = await docker.getContainers();
+
+            expect(result).toHaveLength(1);
+        });
+
+        test('should prefer ud.tag.include over wud.tag.include label', async () => {
+            const containers = [
+                {
+                    Id: 'ud-tag-1',
+                    Labels: {
+                        'ud.watch': 'true',
+                        'ud.tag.include': '^v\\d+',
+                        'wud.tag.include': '^\\d+',
+                    },
+                    Names: ['/ud-tag-test'],
+                },
+            ];
+            mockDockerApi.listContainers.mockResolvedValue(containers);
+            docker.addImageDetailsToContainer = vi
+                .fn()
+                .mockResolvedValue({ id: 'ud-tag-1' });
+
+            await docker.register('watcher', 'docker', 'test', {
+                watchbydefault: false,
+            });
+            await docker.getContainers();
+
+            // ud.tag.include should be preferred
+            expect(
+                docker.addImageDetailsToContainer.mock.calls[0][1],
+            ).toBe('^v\\d+');
+        });
+    });
+
+    describe('Version Finding', () => {
+        test('should find new version using registry', async () => {
+            const container = {
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0' },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi
+                    .fn()
+                    .mockResolvedValue(['1.0.0', '1.1.0', '2.0.0']),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const mockLogChild = { error: vi.fn() };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(mockRegistry.getTags).toHaveBeenCalledWith(container.image);
+            expect(result).toEqual({ tag: '1.0.0' });
+        });
+
+        test('should handle unsupported registry', async () => {
+            const container = {
+                image: {
+                    registry: { name: 'unknown' },
+                    tag: { value: '1.0.0' },
+                    digest: { watch: false },
+                },
+            };
+            registry.getState.mockReturnValue({ registry: {} });
+            const mockLogChild = { error: vi.fn() };
+
+            try {
+                await docker.findNewVersion(container, mockLogChild);
+            } catch (error) {
+                expect(error.message).toContain('Unsupported Registry');
+            }
+        });
+
+        test('should handle digest watching with v2 manifest', async () => {
+            const container = {
+                image: {
+                    id: 'image123',
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0' },
+                    digest: { watch: true, repo: 'sha256:abc123' },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi.fn().mockResolvedValue(['1.0.0']),
+                getImageManifestDigest: vi
+                    .fn()
+                    .mockResolvedValueOnce({
+                        digest: 'sha256:def456',
+                        created: '2023-01-01',
+                        version: 2,
+                    })
+                    .mockResolvedValueOnce({
+                        digest: 'sha256:manifest123',
+                    }),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const mockLogChild = { error: vi.fn() };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(mockRegistry.getImageManifestDigest).toHaveBeenCalledTimes(
+                2,
+            );
+            expect(result.digest).toBe('sha256:def456');
+            expect(result.created).toBe('2023-01-01');
+        });
+
+        test('should handle digest watching with v1 manifest', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                image: {
+                    id: 'image123',
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0' },
+                    digest: { watch: true, repo: 'sha256:abc123' },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi.fn().mockResolvedValue(['1.0.0']),
+                getImageManifestDigest: vi.fn().mockResolvedValue({
+                    digest: 'sha256:def456',
+                    created: '2023-01-01',
+                    version: 1,
+                }),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const mockLogChild = { error: vi.fn() };
+            const mockImageInspect = { Config: { Image: 'sha256:legacy123' } };
+            mockImage.inspect.mockResolvedValue(mockImageInspect);
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(mockImage.inspect).toHaveBeenCalled();
+            expect(container.image.digest.value).toBe('sha256:legacy123');
+        });
+
+        test('should handle tag candidates with semver', async () => {
+            const container = {
+                includeTags: '^v\\d+',
+                excludeTags: 'beta',
+                transformTags: 's/v//',
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi
+                    .fn()
+                    .mockResolvedValue([
+                        'v1.0.0',
+                        'v1.1.0',
+                        'v2.0.0-beta',
+                        'latest',
+                    ]),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            mockTag.parse.mockReturnValue({ major: 1, minor: 1, patch: 0 });
+            mockTag.isGreater.mockReturnValue(true);
+            const mockLogChild = { error: vi.fn(), warn: vi.fn() };
+
+            await docker.findNewVersion(container, mockLogChild);
+
+            expect(mockRegistry.getTags).toHaveBeenCalled();
+        });
+
+        test('should filter tags with different number of semver parts', async () => {
+            const container = {
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '1.2', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi.fn().mockResolvedValue([
+                    '1.2.1', // 3 parts, should be filtered out
+                    '1.3', // 2 parts, should be kept
+                    '1.1', // 2 parts, should be kept (but lower)
+                    '2', // 1 part, should be filtered out
+                ]),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            // Mock isGreater to return true for 1.3 > 1.2
+            mockTag.isGreater.mockImplementation((t1, t2) => {
+                if (t1 === '1.3' && t2 === '1.2') return true;
+                return false;
+            });
+
+            const mockLogChild = { error: vi.fn(), warn: vi.fn() };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(result).toEqual({ tag: '1.3' });
+        });
+
+        test('should best-effort suggest semver tag when current tag is outside include filter', async () => {
+            const container = {
+                includeTags: '^1\\.',
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: '2.0.0', semver: true },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi
+                    .fn()
+                    .mockResolvedValue(['1.8.0', '1.9.0', '2.1.0']),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const rank = {
+                '1.8.0': 180,
+                '1.9.0': 190,
+                '2.0.0': 200,
+                '2.1.0': 210,
+            };
+            mockTag.isGreater.mockImplementation(
+                (version1, version2) => rank[version1] >= rank[version2],
+            );
+            mockTag.parse.mockImplementation((version) =>
+                rank[version] ? { major: 1, minor: 0, patch: 0 } : null,
+            );
+
+            const mockLogChild = { error: vi.fn(), warn: vi.fn() };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(result).toEqual({ tag: '1.9.0' });
+            expect(mockLogChild.warn).toHaveBeenCalledWith(
+                expect.stringContaining('does not match includeTags regex'),
+            );
+        });
+
+        test('should advise best semver tag when current tag is non-semver and includeTags filter is set', async () => {
+            const container = {
+                includeTags: '^\\d+\\.\\d+',
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: 'latest', semver: false },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi
+                    .fn()
+                    .mockResolvedValue([
+                        'latest',
+                        'rolling',
+                        '1.0.0',
+                        '2.0.0',
+                        '3.0.0',
+                    ]),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const rank = {
+                '1.0.0': 100,
+                '2.0.0': 200,
+                '3.0.0': 300,
+            };
+            mockTag.isGreater.mockImplementation(
+                (version1, version2) => rank[version1] >= rank[version2],
+            );
+            mockTag.parse.mockImplementation((version) =>
+                rank[version] ? { major: 1, minor: 0, patch: 0 } : null,
+            );
+
+            const mockLogChild = {
+                error: vi.fn(),
+                warn: vi.fn(),
+                debug: vi.fn(),
+            };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            expect(result).toEqual({ tag: '3.0.0' });
+            expect(mockLogChild.warn).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'is not semver but includeTags filter',
+                ),
+            );
+        });
+
+        test('should not advise any tag when current tag is non-semver and no includeTags filter is set', async () => {
+            const container = {
+                image: {
+                    registry: { name: 'hub' },
+                    tag: { value: 'latest', semver: false },
+                    digest: { watch: false },
+                },
+            };
+            const mockRegistry = {
+                getTags: vi
+                    .fn()
+                    .mockResolvedValue(['latest', '1.0.0', '2.0.0']),
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            mockTag.parse.mockReturnValue(null);
+
+            const mockLogChild = {
+                error: vi.fn(),
+                warn: vi.fn(),
+                debug: vi.fn(),
+            };
+
+            const result = await docker.findNewVersion(container, mockLogChild);
+
+            // Without includeTags, non-semver tags should not get any advice
+            expect(result).toEqual({ tag: 'latest' });
+        });
+    });
+
+    describe('Container Details', () => {
+        const setupContainerForDigestWatch = async ({
+            labels,
+            parsedImage,
+            semverValue,
+        }) => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: `${parsedImage.domain ? `${parsedImage.domain}/` : ''}${parsedImage.path}:${parsedImage.tag}`,
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: labels || {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                RepoDigests: ['repo/image@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue(parsedImage);
+            mockTag.parse.mockReturnValue(semverValue);
+
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const {
+                validate: validateContainer,
+            } = require('../../../model/container');
+            validateContainer.mockImplementation((containerToValidate) =>
+                containerToValidate,
+            );
+
+            return docker.addImageDetailsToContainer(container);
+        };
+
+        test('should return existing container from store', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = { debug: vi.fn() };
+            docker.log = mockLog;
+            const existingContainer = { id: '123', error: undefined };
+            storeContainer.getContainer.mockReturnValue(existingContainer);
+
+            const result = await docker.addImageDetailsToContainer({
+                Id: '123',
+            });
+
+            expect(result).toBe(existingContainer);
+        });
+
+        test('should add image details to new container', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'nginx:1.0.0',
+                Names: ['/test-container'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: ['nginx@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockTag.parse.mockReturnValue({ major: 1, minor: 0, patch: 0 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            // Mock the validateContainer function to return the container
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockReturnValue({
+                id: '123',
+                name: 'test-container',
+                image: { architecture: 'amd64', variant: 'v8' },
+            });
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(mockImage.inspect).toHaveBeenCalled();
+            expect(result).toBeDefined();
+        });
+
+        test('should default display name to updocker for updocker image', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/codeswhat/updocker:latest',
+                Names: ['/wud'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: ['ghcr.io/codeswhat/updocker@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue({
+                domain: 'ghcr.io',
+                path: 'codeswhat/updocker',
+                tag: 'latest',
+            });
+            mockTag.parse.mockReturnValue(null);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.displayName).toBe('updocker');
+        });
+
+        test('should keep custom display name when provided', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/codeswhat/updocker:latest',
+                Names: ['/wud'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: ['ghcr.io/codeswhat/updocker@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue({
+                domain: 'ghcr.io',
+                path: 'codeswhat/updocker',
+                tag: 'latest',
+            });
+            mockTag.parse.mockReturnValue(null);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                'WUD CE Custom',
+            );
+
+            expect(result.displayName).toBe('WUD CE Custom');
+        });
+
+        test('should apply imgset defaults when labels are missing', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    homeassistant: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        tag: {
+                            include: '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                        display: {
+                            name: 'Home Assistant',
+                            icon: 'mdi-home-assistant',
+                        },
+                        link: {
+                            template:
+                                'https://www.home-assistant.io/changelogs/core-${major}${minor}${patch}',
+                        },
+                        trigger: {
+                            include: 'ntfy.default:major',
+                        },
+                        registry: {
+                            lookup: {
+                                image: 'ghcr.io/home-assistant/home-assistant',
+                            },
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/home-assistant/home-assistant:2026.2.1',
+                Names: ['/homeassistant'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: [
+                    'ghcr.io/home-assistant/home-assistant@sha256:abc123',
+                ],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'ghcr.io/home-assistant/home-assistant:2026.2.1') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                        tag: '2026.2.1',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 2026, minor: 2, patch: 1 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.includeTags).toBe('^\\d+\\.\\d+\\.\\d+$');
+            expect(result.displayName).toBe('Home Assistant');
+            expect(result.displayIcon).toBe('mdi-home-assistant');
+            expect(result.linkTemplate).toBe(
+                'https://www.home-assistant.io/changelogs/core-${major}${minor}${patch}',
+            );
+            expect(result.triggerInclude).toBe('ntfy.default:major');
+            expect(result.image.registry.lookupImage).toBe(
+                'ghcr.io/home-assistant/home-assistant',
+            );
+        });
+
+        test('should let labels override imgset defaults', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    homeassistant: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        tag: {
+                            include: '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                        display: {
+                            name: 'Home Assistant',
+                            icon: 'mdi-home-assistant',
+                        },
+                        link: {
+                            template:
+                                'https://www.home-assistant.io/changelogs/core-${major}${minor}${patch}',
+                        },
+                        trigger: {
+                            include: 'ntfy.default:major',
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/home-assistant/home-assistant:2026.2.1',
+                Names: ['/homeassistant'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: [
+                    'ghcr.io/home-assistant/home-assistant@sha256:abc123',
+                ],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'ghcr.io/home-assistant/home-assistant:2026.2.1') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                        tag: '2026.2.1',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 2026, minor: 2, patch: 1 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(
+                container,
+                '^stable$',
+                undefined,
+                undefined,
+                undefined,
+                'HA Label Name',
+                'mdi-docker',
+                'discord.default:major',
+            );
+
+            expect(result.includeTags).toBe('^stable$');
+            expect(result.displayName).toBe('HA Label Name');
+            expect(result.displayIcon).toBe('mdi-docker');
+            expect(result.triggerInclude).toBe('discord.default:major');
+            expect(result.linkTemplate).toBe(
+                'https://www.home-assistant.io/changelogs/core-${major}${minor}${patch}',
+            );
+        });
+
+        test('should apply imgset watchDigest when label is missing', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    customregistry: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        watch: {
+                            digest: 'true',
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/home-assistant/home-assistant:2026.2.1',
+                Names: ['/homeassistant'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: [
+                    'ghcr.io/home-assistant/home-assistant@sha256:abc123',
+                ],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'ghcr.io/home-assistant/home-assistant:2026.2.1') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                        tag: '2026.2.1',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 2026, minor: 2, patch: 1 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.image.digest.watch).toBe(true);
+        });
+
+        test('should let wud.watch.digest label override imgset watchDigest', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    customregistry: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        watch: {
+                            digest: 'true',
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/home-assistant/home-assistant:2026.2.1',
+                Names: ['/homeassistant'],
+                State: 'running',
+                Labels: {
+                    'wud.watch.digest': 'false',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: [
+                    'ghcr.io/home-assistant/home-assistant@sha256:abc123',
+                ],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'ghcr.io/home-assistant/home-assistant:2026.2.1') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                        tag: '2026.2.1',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 2026, minor: 2, patch: 1 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            // Label says false, overriding imgset's true
+            expect(result.image.digest.watch).toBe(false);
+        });
+
+        test('should apply imgset inspectTagPath when label is missing', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    haos: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        inspect: {
+                            tag: {
+                                path: 'Config/Labels/org.opencontainers.image.version',
+                            },
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/home-assistant/home-assistant:stable',
+                Names: ['/homeassistant'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Variant: 'v8',
+                Created: '2023-01-01',
+                RepoDigests: [
+                    'ghcr.io/home-assistant/home-assistant@sha256:abc123',
+                ],
+                Config: {
+                    Labels: {
+                        'org.opencontainers.image.version': '2026.2.1',
+                    },
+                },
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'ghcr.io/home-assistant/home-assistant:stable') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                        tag: 'stable',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 2026, minor: 2, patch: 1, version: '2026.2.1' });
+            mockTag.transform.mockImplementation((_transform, value) => value);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'ghcr',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { ghcr: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            // The tag should be resolved from the inspect path via imgset
+            expect(result.image.tag.value).toBe('2026.2.1');
+        });
+
+        test('should not apply imgset when image does not match any preset', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    homeassistant: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        tag: {
+                            include: '^\\d+\\.\\d+\\.\\d+$',
+                        },
+                        display: {
+                            name: 'Home Assistant',
+                            icon: 'mdi-home-assistant',
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '456',
+                Image: 'nginx:1.25.0',
+                Names: ['/nginx'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image456',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                RepoDigests: ['nginx@sha256:def456'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'nginx:1.25.0') {
+                    return {
+                        domain: undefined,
+                        path: 'library/nginx',
+                        tag: '1.25.0',
+                    };
+                }
+                if (value === 'ghcr.io/home-assistant/home-assistant') {
+                    return {
+                        domain: 'ghcr.io',
+                        path: 'home-assistant/home-assistant',
+                    };
+                }
+                return {
+                    domain: undefined,
+                    path: 'library/nginx',
+                    tag: '1.25.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 1, minor: 25, patch: 0 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            // No imgset should be applied - fields should be undefined
+            expect(result.includeTags).toBeUndefined();
+            expect(result.displayName).toBe('nginx');
+            expect(result.displayIcon).toBeUndefined();
+        });
+
+        test('should pick the most specific imgset when multiple match', async () => {
+            await docker.register('watcher', 'docker', 'test', {
+                imgset: {
+                    // Less specific: short path only
+                    generic: {
+                        image: 'nginx',
+                        display: {
+                            name: 'Generic Nginx',
+                            icon: 'mdi-web',
+                        },
+                    },
+                    // More specific: fully qualified with custom registry domain
+                    specific: {
+                        image: 'harbor.example.com/library/nginx',
+                        display: {
+                            name: 'Harbor Nginx',
+                            icon: 'mdi-web-lock',
+                        },
+                    },
+                },
+            });
+            const container = {
+                Id: '789',
+                Image: 'harbor.example.com/library/nginx:1.25.0',
+                Names: ['/mynginx'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image789',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                RepoDigests: ['harbor.example.com/library/nginx@sha256:ghi789'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (value === 'harbor.example.com/library/nginx:1.25.0') {
+                    return {
+                        domain: 'harbor.example.com',
+                        path: 'library/nginx',
+                        tag: '1.25.0',
+                    };
+                }
+                if (value === 'harbor.example.com/library/nginx') {
+                    return {
+                        domain: 'harbor.example.com',
+                        path: 'library/nginx',
+                    };
+                }
+                if (value === 'nginx') {
+                    return {
+                        domain: undefined,
+                        path: 'nginx',
+                    };
+                }
+                return {
+                    domain: undefined,
+                    path: value,
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 1, minor: 25, patch: 0 });
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'harbor',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { harbor: mockRegistry },
+            });
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            // The more specific imgset (harbor.example.com/library/nginx) should win
+            expect(result.displayIcon).toBe('mdi-web-lock');
+        });
+
+        test('should validate configuration with imgset watchDigest and inspectTagPath', async () => {
+            const config = {
+                socket: '/var/run/docker.sock',
+                imgset: {
+                    homeassistant: {
+                        image: 'ghcr.io/home-assistant/home-assistant',
+                        watch: {
+                            digest: 'true',
+                        },
+                        inspect: {
+                            tag: {
+                                path: 'Config/Labels/org.opencontainers.image.version',
+                            },
+                        },
+                    },
+                },
+            };
+            expect(() => docker.validateConfiguration(config)).not.toThrow();
+        });
+
+        test('should use lookup image label for registry matching', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'harbor.example.com/dockerhub-proxy/traefik:v3.5.3',
+                Names: ['/traefik'],
+                State: 'running',
+                Labels: {
+                    'wud.registry.lookup.image': 'library/traefik',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                RepoDigests: ['harbor.example.com/dockerhub-proxy/traefik@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockImplementation((value) => {
+                if (
+                    value ===
+                    'harbor.example.com/dockerhub-proxy/traefik:v3.5.3'
+                ) {
+                    return {
+                        domain: 'harbor.example.com',
+                        path: 'dockerhub-proxy/traefik',
+                        tag: 'v3.5.3',
+                    };
+                }
+                if (value === 'library/traefik') {
+                    return {
+                        path: 'library/traefik',
+                    };
+                }
+                return {
+                    domain: 'docker.io',
+                    path: 'library/nginx',
+                    tag: '1.0.0',
+                };
+            });
+            mockTag.parse.mockReturnValue({ major: 3, minor: 5, patch: 3 });
+            const harborRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'harbor',
+                match: (img) => img.registry.url === 'harbor.example.com',
+            };
+            const hubRegistry = {
+                normalizeImage: vi.fn((img) => ({
+                    ...img,
+                    registry: {
+                        ...img.registry,
+                        url: 'https://registry-1.docker.io/v2',
+                    },
+                })),
+                getId: () => 'hub',
+                match: (img) =>
+                    !img.registry.url ||
+                    /^.*\.?docker.io$/.test(img.registry.url),
+            };
+            registry.getState.mockReturnValue({
+                registry: {
+                    harbor: harborRegistry,
+                    hub: hubRegistry,
+                },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.image.registry.name).toBe('hub');
+            expect(result.image.registry.url).toBe(
+                'https://registry-1.docker.io/v2',
+            );
+            expect(result.image.registry.lookupImage).toBe('library/traefik');
+            expect(result.image.name).toBe('library/traefik');
+        });
+
+        test('should support legacy lookup url label without crashing', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'harbor.example.com/dockerhub-proxy/traefik:v3.5.3',
+                Names: ['/traefik'],
+                State: 'running',
+                Labels: {
+                    'wud.registry.lookup.url': 'https://registry-1.docker.io',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                RepoDigests: ['harbor.example.com/dockerhub-proxy/traefik@sha256:abc123'],
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue({
+                domain: 'harbor.example.com',
+                path: 'dockerhub-proxy/traefik',
+                tag: 'v3.5.3',
+            });
+            mockTag.parse.mockReturnValue({ major: 3, minor: 5, patch: 3 });
+            const harborRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'harbor',
+                match: (img) => img.registry.url === 'harbor.example.com',
+            };
+            const hubRegistry = {
+                normalizeImage: vi.fn((img) => ({
+                    ...img,
+                    registry: {
+                        ...img.registry,
+                        url: 'https://registry-1.docker.io/v2',
+                    },
+                })),
+                getId: () => 'hub',
+                match: (img) =>
+                    !img.registry.url ||
+                    /^.*\.?docker.io$/.test(img.registry.url),
+            };
+            registry.getState.mockReturnValue({
+                registry: {
+                    harbor: harborRegistry,
+                    hub: hubRegistry,
+                },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.image.registry.name).toBe('hub');
+            expect(result.image.registry.lookupImage).toBe(
+                'https://registry-1.docker.io',
+            );
+            expect(result.image.name).toBe('dockerhub-proxy/traefik');
+        });
+
+        test('should handle container with implicit docker hub image (no domain)', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'prom/prometheus:v3.8.0',
+                Names: ['/prometheus'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                RepoTags: ['prom/prometheus:v3.8.0'],
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                Id: 'image123',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            // Mock parse to return undefined domain (simulating parse-docker-image-name behavior)
+            mockParse.mockReturnValue({
+                domain: undefined,
+                path: 'prom/prometheus',
+                tag: 'v3.8.0',
+            });
+
+            // Mock registry to handle unknown/docker hub
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockReturnValue({
+                id: '123',
+                name: 'prometheus',
+                image: { architecture: 'amd64' },
+            });
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result).toBeDefined();
+            // Verify parse was called
+            expect(mockParse).toHaveBeenCalledWith('prom/prometheus:v3.8.0');
+        });
+
+        test('should handle container with SHA256 image', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'sha256:abcdef123456',
+                Names: ['/test'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                RepoTags: ['nginx:latest'],
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                Id: 'image123',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            // Mock the validateContainer function to return the container
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockReturnValue({
+                id: '123',
+                name: 'test',
+                image: { architecture: 'amd64' },
+            });
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result).toBeDefined();
+        });
+
+        test('should handle container with no repo tags', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = { warn: vi.fn() };
+            docker.log = mockLog;
+            const container = {
+                Id: '123',
+                Image: 'sha256:abcdef123456',
+                Names: ['/test'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = { RepoTags: [] };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(mockLog.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Cannot get a reliable tag'),
+            );
+            expect(result).toBeUndefined();
+        });
+
+        test('should warn for non-semver without digest watching', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const mockLog = { warn: vi.fn() };
+            docker.log = mockLog;
+            const container = {
+                Id: '123',
+                Image: 'nginx:latest',
+                Names: ['/test'],
+                State: 'running',
+                Labels: {},
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockTag.parse.mockReturnValue(null);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            // Mock the validateContainer function to return the container
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockReturnValue({
+                id: '123',
+                name: 'test',
+                image: { architecture: 'amd64' },
+            });
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result).toBeDefined();
+        });
+
+        test('should use inspect path semver when wud.inspect.tag.path is set', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/example/service:latest',
+                Names: ['/service'],
+                State: 'running',
+                Labels: {
+                    'wud.inspect.tag.path':
+                        'Config/Labels/org.opencontainers.image.version',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                Config: {
+                    Labels: {
+                        'org.opencontainers.image.version': '2.7.5',
+                    },
+                },
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue({
+                domain: 'ghcr.io',
+                path: 'example/service',
+                tag: 'latest',
+            });
+            mockTag.parse.mockImplementation((tag) =>
+                tag === '2.7.5' ? { version: '2.7.5' } : null,
+            );
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.image.tag.value).toBe('2.7.5');
+            expect(result.image.tag.semver).toBe(true);
+        });
+
+        test('should fall back to parsed image tag when inspect path is missing', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/example/service:latest',
+                Names: ['/service'],
+                State: 'running',
+                Labels: {
+                    'wud.inspect.tag.path':
+                        'Config/Labels/org.opencontainers.image.version',
+                },
+            };
+            const imageDetails = {
+                Id: 'image123',
+                Architecture: 'amd64',
+                Os: 'linux',
+                Created: '2023-01-01',
+                Config: { Labels: {} },
+            };
+            mockImage.inspect.mockResolvedValue(imageDetails);
+            mockParse.mockReturnValue({
+                domain: 'ghcr.io',
+                path: 'example/service',
+                tag: 'latest',
+            });
+            mockTag.parse.mockReturnValue(null);
+            const mockRegistry = {
+                normalizeImage: vi.fn((img) => img),
+                getId: () => 'hub',
+                match: () => true,
+            };
+            registry.getState.mockReturnValue({
+                registry: { hub: mockRegistry },
+            });
+
+            const containerModule = await import('../../../model/container.js');
+            const validateContainer = containerModule.validate;
+            // @ts-ignore
+            validateContainer.mockImplementation((c) => c);
+
+            const result = await docker.addImageDetailsToContainer(container);
+
+            expect(result.image.tag.value).toBe('latest');
+            expect(result.image.tag.semver).toBe(false);
+        });
+
+        test('should return a clear error when image inspection fails', async () => {
+            await docker.register('watcher', 'docker', 'test', {});
+            const container = {
+                Id: '123',
+                Image: 'ghcr.io/example/service:latest',
+                Names: ['/service'],
+                State: 'running',
+                Labels: {},
+            };
+            mockImage.inspect.mockRejectedValue(new Error('inspect failed'));
+
+            await expect(
+                docker.addImageDetailsToContainer(container),
+            ).rejects.toThrow(
+                'Unable to inspect image for container 123: inspect failed',
+            );
+        });
+    });
+
+    describe('Container Reporting', () => {
+        test('should map container to report for new container', async () => {
+            const container = { id: '123', name: 'test' };
+            const mockLogChild = { debug: vi.fn() };
+            const mockLog = { child: vi.fn().mockReturnValue(mockLogChild) };
+            docker.log = mockLog;
+            storeContainer.getContainer.mockReturnValue(undefined);
+            storeContainer.insertContainer.mockReturnValue(container);
+
+            const result = docker.mapContainerToContainerReport(container);
+
+            expect(result.changed).toBe(true);
+            expect(storeContainer.insertContainer).toHaveBeenCalledWith(
+                container,
+            );
+        });
+
+        test('should map container to report for existing container', async () => {
+            const container = {
+                id: '123',
+                name: 'test',
+                updateAvailable: true,
+            };
+            const existingContainer = {
+                resultChanged: vi.fn().mockReturnValue(true),
+            };
+            const mockLogChild = { debug: vi.fn() };
+            const mockLog = { child: vi.fn().mockReturnValue(mockLogChild) };
+            docker.log = mockLog;
+            storeContainer.getContainer.mockReturnValue(existingContainer);
+            storeContainer.updateContainer.mockReturnValue(container);
+
+            const result = docker.mapContainerToContainerReport(container);
+
+            expect(result.changed).toBe(true);
+            expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+                container,
+            );
+        });
+
+        test('should not mark as changed when no update available', async () => {
+            const container = {
+                id: '123',
+                name: 'test',
+                updateAvailable: false,
+            };
+            const existingContainer = {
+                resultChanged: vi.fn().mockReturnValue(true),
+            };
+            const mockLogChild = { debug: vi.fn() };
+            const mockLog = { child: vi.fn().mockReturnValue(mockLogChild) };
+            docker.log = mockLog;
+            storeContainer.getContainer.mockReturnValue(existingContainer);
+            storeContainer.updateContainer.mockReturnValue(container);
+
+            const result = docker.mapContainerToContainerReport(container);
+
+            expect(result.changed).toBe(false);
+        });
+    });
+
+    describe('Utility Functions', () => {
+        test('should get tag candidates with include filter', async () => {
+            const tags = ['v1.0.0', 'latest', 'v2.0.0', 'beta'];
+            const filtered = tags.filter((tag) => /^v\d+/.test(tag));
+            expect(filtered).toEqual(['v1.0.0', 'v2.0.0']);
+        });
+
+        test('should get container name and strip slash', async () => {
+            const container = { Names: ['/test-container'] };
+            const name = container.Names[0].replace(/\//, '');
+            expect(name).toBe('test-container');
+        });
+
+        test('should get repo digest from image', async () => {
+            const image = { RepoDigests: ['nginx@sha256:abc123def456'] };
+            const digest = image.RepoDigests[0].split('@')[1];
+            expect(digest).toBe('sha256:abc123def456');
+        });
+
+        test('should handle empty repo digests', async () => {
+            const image = { RepoDigests: [] };
+            expect(image.RepoDigests.length).toBe(0);
+        });
+
+        test('should get old containers for pruning', async () => {
+            const newContainers = [{ id: '1' }, { id: '2' }];
+            const storeContainers = [{ id: '1' }, { id: '3' }];
+
+            const oldContainers = storeContainers.filter((storeContainer) => {
+                const stillExists = newContainers.find(
+                    (newContainer) => newContainer.id === storeContainer.id,
+                );
+                return stillExists === undefined;
+            });
+
+            expect(oldContainers).toEqual([{ id: '3' }]);
+        });
+
+        test('should handle null inputs for old containers', async () => {
+            expect([].filter(() => false)).toEqual([]);
+        });
+    });
+});
+
+describe('isDigestToWatch Logic', () => {
+    let docker;
+    let mockImage;
+
+    beforeEach(async () => {
+        // Setup dockerode mock
+        const mockDockerApi = {
+            getImage: vi.fn(),
+        };
+        mockDockerode.mockImplementation(mockConstructor(mockDockerApi));
+
+        mockImage = {
+            inspect: vi.fn(),
+        };
+        mockDockerApi.getImage.mockReturnValue(mockImage);
+
+        // Setup store mock
+        storeContainer.getContainer.mockReturnValue(undefined);
+        storeContainer.insertContainer.mockImplementation((c) => c);
+        storeContainer.updateContainer.mockImplementation((c) => c);
+
+        // Setup registry mock
+        registry.getState.mockReturnValue({ registry: {} });
+
+        // Setup event mock
+        event.emitContainerReport.mockImplementation(() => {});
+
+        // Setup prometheus mock
+        const mockGauge = { set: vi.fn() };
+        mockPrometheus.getWatchContainerGauge.mockReturnValue(mockGauge);
+
+        // Setup fullName mock
+        fullName.mockReturnValue('test_container');
+
+        docker = new Docker();
+        docker.name = 'test';
+        docker.dockerApi = mockDockerApi;
+        docker.ensureLogger();
+    });
+
+    // Helper to setup the environment for addImageDetailsToContainer
+    const setupTest = async (labels, domain, tag, isSemver = false) => {
+        const container = {
+            Id: '123',
+            Image: `${domain ? domain + '/' : ''}repo/image:${tag}`,
+            Names: ['/test'],
+            State: 'running',
+            Labels: labels || {},
+        };
+        const imageDetails = {
+            Id: 'image123',
+            Architecture: 'amd64',
+            Os: 'linux',
+            Created: '2023-01-01',
+            RepoDigests: ['repo/image@sha256:abc'],
+            RepoTags: [`${domain ? domain + '/' : ''}repo/image:${tag}`],
+        };
+        mockImage.inspect.mockResolvedValue(imageDetails);
+        // Mock parse to return appropriate structure
+        mockParse.mockReturnValue({
+            domain: domain,
+            path: 'repo/image',
+            tag: tag,
+        });
+
+        // Mock semver check
+        if (isSemver) {
+            mockTag.parse.mockReturnValue({ major: 1, minor: 0, patch: 0 });
+        } else {
+            mockTag.parse.mockReturnValue(null);
+        }
+
+        const mockRegistry = {
+            normalizeImage: vi.fn((img) => img),
+            getId: () => 'registry',
+            match: () => true,
+        };
+        registry.getState.mockReturnValue({
+            registry: { registry: mockRegistry },
+        });
+
+        const containerModule = await import('../../../model/container.js');
+        const validateContainer = containerModule.validate;
+        // @ts-ignore
+        validateContainer.mockImplementation((c) => c);
+
+        return container;
+    };
+
+    // Case 1: Explicit Label present
+    test('should watch digest if label is true (semver)', async () => {
+        const container = await setupTest(
+            { 'wud.watch.digest': 'true' },
+            'my.registry',
+            '1.0.0',
+            true,
+        );
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(true);
+    });
+
+    test('should watch digest if label is true (non-semver)', async () => {
+        const container = await setupTest(
+            { 'wud.watch.digest': 'true' },
+            'my.registry',
+            'latest',
+            false,
+        );
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(true);
+    });
+
+    test('should NOT watch digest if label is false (semver)', async () => {
+        const container = await setupTest(
+            { 'wud.watch.digest': 'false' },
+            'my.registry',
+            '1.0.0',
+            true,
+        );
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    test('should NOT watch digest if label is false (non-semver)', async () => {
+        const container = await setupTest(
+            { 'wud.watch.digest': 'false' },
+            'my.registry',
+            'latest',
+            false,
+        );
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    // Case 2: Semver (no label) -> default false
+    test('should NOT watch digest by default for semver images', async () => {
+        const container = await setupTest({}, 'my.registry', '1.0.0', true);
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    test('should NOT watch digest by default for semver images (Docker Hub)', async () => {
+        const container = await setupTest({}, 'docker.io', '1.0.0', true);
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    // Case 3: Non-Semver (no label) -> default true, EXCEPT Docker Hub
+    test('should watch digest by default for non-semver images (Custom Registry)', async () => {
+        const container = await setupTest({}, 'my.registry', 'latest', false);
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(true);
+    });
+
+    test('should NOT watch digest by default for non-semver images (Docker Hub Explicit)', async () => {
+        const container = await setupTest({}, 'docker.io', 'latest', false);
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    test('should NOT watch digest by default for non-semver images (Docker Hub Registry-1)', async () => {
+        const container = await setupTest(
+            {},
+            'registry-1.docker.io',
+            'latest',
+            false,
+        );
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+
+    test('should NOT watch digest by default for non-semver images (Docker Hub Implicit)', async () => {
+        const container = await setupTest({}, undefined, 'latest', false); // Implicit
+        const result = await docker.addImageDetailsToContainer(container);
+        expect(result.image.digest.watch).toBe(false);
+    });
+});

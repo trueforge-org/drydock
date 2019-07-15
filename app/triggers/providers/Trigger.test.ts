@@ -1,0 +1,702 @@
+// @ts-nocheck
+import joi from 'joi';
+import * as event from '../../event/index.js';
+import log from '../../log/index.js';
+import Trigger from './Trigger.js';
+
+vi.mock('../../log');
+vi.mock('../../event');
+vi.mock('../../prometheus/trigger', () => ({
+    getTriggerCounter: () => ({
+        inc: () => ({}),
+    }),
+}));
+
+let trigger;
+
+const configurationValid = {
+    threshold: 'all',
+    once: true,
+    mode: 'simple',
+    auto: true,
+    order: 100,
+    simpletitle:
+        'New ${container.updateKind.kind} found for container ${container.name}',
+
+    simplebody:
+        'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+
+    batchtitle: '${containers.length} updates available',
+};
+
+beforeEach(async () => {
+    vi.resetAllMocks();
+    trigger = new Trigger();
+    trigger.log = log;
+    trigger.configuration = { ...configurationValid };
+});
+
+test('validateConfiguration should return validated configuration when valid', async () => {
+    const validatedConfiguration =
+        trigger.validateConfiguration(configurationValid);
+    expect(validatedConfiguration).toStrictEqual(configurationValid);
+});
+
+test('validateConfiguration should accept digest and non-digest thresholds', async () => {
+    expect(
+        trigger.validateConfiguration({
+            ...configurationValid,
+            threshold: 'digest',
+        }).threshold,
+    ).toStrictEqual('digest');
+    expect(
+        trigger.validateConfiguration({
+            ...configurationValid,
+            threshold: 'patch-no-digest',
+        }).threshold,
+    ).toStrictEqual('patch-no-digest');
+});
+
+test('validateConfiguration should throw error when invalid', async () => {
+    const configuration = {
+        url: 'git://xxx.com',
+    };
+    expect(() => {
+        trigger.validateConfiguration(configuration);
+    }).toThrowError(joi.ValidationError);
+});
+
+test('init should register to container report when simple mode enabled', async () => {
+    const spy = vi.spyOn(event, 'registerContainerReport');
+    await trigger.init();
+    expect(spy).toHaveBeenCalled();
+});
+
+test('init should register to container reports when batch mode enabled', async () => {
+    const spy = vi.spyOn(event, 'registerContainerReports');
+    trigger.configuration.mode = 'batch';
+    await trigger.init();
+    expect(spy).toHaveBeenCalled();
+});
+
+test('init should register handlers with trigger id and order', async () => {
+    const spy = vi.spyOn(event, 'registerContainerReport');
+    trigger.type = 'docker';
+    trigger.name = 'update';
+    trigger.configuration.order = 42;
+    await trigger.init();
+    expect(spy).toHaveBeenCalledWith(expect.any(Function), {
+        id: 'docker.update',
+        order: 42,
+    });
+});
+
+test('deregister should unregister container report handler', async () => {
+    const unregisterHandler = vi.fn();
+    vi.spyOn(event, 'registerContainerReport').mockReturnValue(
+        unregisterHandler,
+    );
+
+    await trigger.init();
+    await trigger.deregister();
+
+    expect(unregisterHandler).toHaveBeenCalled();
+});
+
+const handleContainerReportTestCases = [
+    {
+        shouldTrigger: true,
+        threshold: 'all',
+        once: true,
+        changed: true,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: true,
+        threshold: 'all',
+        once: false,
+        changed: false,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: true,
+        changed: true,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: false,
+        changed: false,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: false,
+        changed: true,
+        updateAvailable: false,
+        semverDiff: 'major',
+    },
+];
+
+test.each(handleContainerReportTestCases)(
+    'handleContainerReport should call trigger? ($shouldTrigger) when changed=$changed and updateAvailable=$updateAvailable and threshold=$threshold',
+    async (item) => {
+        trigger.configuration = {
+            threshold: item.threshold,
+            once: item.once,
+            mode: 'simple',
+        };
+        await trigger.init();
+
+        const spy = vi.spyOn(trigger, 'trigger');
+        await trigger.handleContainerReport({
+            changed: item.changed,
+            container: {
+                name: 'container1',
+                updateAvailable: item.updateAvailable,
+                updateKind: {
+                    kind: 'tag',
+                    semverDiff: item.semverDiff,
+                },
+            },
+        });
+        if (item.shouldTrigger) {
+            expect(spy).toHaveBeenCalledWith({
+                name: 'container1',
+                updateAvailable: item.updateAvailable,
+                updateKind: {
+                    kind: 'tag',
+                    semverDiff: item.semverDiff,
+                },
+            });
+        } else {
+            expect(spy).not.toHaveBeenCalled();
+        }
+    },
+);
+
+test('handleContainerReport should warn when trigger method of the trigger fails', async () => {
+    trigger.configuration = {
+        threshold: 'all',
+        mode: 'simple',
+    };
+    trigger.trigger = () => {
+        throw new Error('Fail!!!');
+    };
+    await trigger.init();
+    const spyLog = vi.spyOn(log, 'warn');
+    await trigger.handleContainerReport({
+        changed: true,
+        container: {
+            name: 'container1',
+            updateAvailable: true,
+        },
+    });
+    expect(spyLog).toHaveBeenCalledWith('Error (Fail!!!)');
+});
+
+const handleContainerReportsTestCases = [
+    {
+        shouldTrigger: true,
+        threshold: 'all',
+        once: true,
+        changed: true,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: true,
+        threshold: 'all',
+        once: false,
+        changed: false,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: true,
+        changed: true,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: false,
+        changed: false,
+        updateAvailable: true,
+        semverDiff: 'major',
+    },
+    {
+        shouldTrigger: false,
+        threshold: 'minor',
+        once: false,
+        changed: true,
+        updateAvailable: false,
+        semverDiff: 'major',
+    },
+];
+
+test.each(handleContainerReportsTestCases)(
+    'handleContainerReports should call triggerBatch? ($shouldTrigger) when changed=$changed and updateAvailable=$updateAvailable and threshold=$threshold',
+    async (item) => {
+        trigger.configuration = {
+            threshold: item.threshold,
+            once: item.once,
+            mode: 'simple',
+        };
+        await trigger.init();
+
+        const spy = vi.spyOn(trigger, 'triggerBatch');
+        await trigger.handleContainerReports([
+            {
+                changed: item.changed,
+                container: {
+                    name: 'container1',
+                    updateAvailable: item.updateAvailable,
+                    updateKind: {
+                        kind: 'tag',
+                        semverDiff: item.semverDiff,
+                    },
+                },
+            },
+        ]);
+        if (item.shouldTrigger) {
+            expect(spy).toHaveBeenCalledWith([
+                {
+                    name: 'container1',
+                    updateAvailable: item.updateAvailable,
+                    updateKind: {
+                        kind: 'tag',
+                        semverDiff: item.semverDiff,
+                    },
+                },
+            ]);
+        } else {
+            expect(spy).not.toHaveBeenCalled();
+        }
+    },
+);
+
+const isThresholdReachedTestCases = [
+    {
+        result: true,
+        threshold: 'all',
+        change: undefined,
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'major',
+        change: 'major',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'major',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'major',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'minor',
+        change: 'major',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'minor',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'minor',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'patch',
+        change: 'major',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'patch',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'patch',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'all',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'major',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'minor',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'patch',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'digest',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: false,
+        threshold: 'digest',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'patch-no-digest',
+        change: 'unknown',
+        kind: 'digest',
+    },
+    {
+        result: true,
+        threshold: 'patch-no-digest',
+        change: 'patch',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'patch-no-digest',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: true,
+        threshold: 'minor-only-no-digest',
+        change: 'minor',
+        kind: 'tag',
+    },
+    {
+        result: false,
+        threshold: 'minor-only-no-digest',
+        change: 'major',
+        kind: 'tag',
+    },
+];
+
+test.each(isThresholdReachedTestCases)(
+    'isThresholdReached should return $result when threshold is $threshold and change is $change',
+    (item) => {
+        trigger.configuration = {
+            threshold: item.threshold,
+        };
+        expect(
+            Trigger.isThresholdReached(
+                {
+                    updateKind: {
+                        kind: item.kind,
+                        semverDiff: item.change,
+                    },
+                },
+                trigger.configuration.threshold,
+            ),
+        ).toEqual(item.result);
+    },
+);
+
+test('isThresholdReached should return true when there is no semverDiff regardless of the threshold', async () => {
+    trigger.configuration = {
+        threshold: 'all',
+    };
+    expect(
+        Trigger.isThresholdReached(
+            {
+                updateKind: { kind: 'digest' },
+            },
+            trigger.configuration.threshold,
+        ),
+    ).toBeTruthy();
+});
+
+test('parseIncludeOrIncludeTriggerString should parse digest thresholds', async () => {
+    expect(
+        Trigger.parseIncludeOrIncludeTriggerString('docker.local:digest'),
+    ).toStrictEqual({
+        id: 'docker.local',
+        threshold: 'digest',
+    });
+    expect(
+        Trigger.parseIncludeOrIncludeTriggerString(
+            'docker.local:patch-no-digest',
+        ),
+    ).toStrictEqual({
+        id: 'docker.local',
+        threshold: 'patch-no-digest',
+    });
+});
+
+test('doesReferenceMatchId should match full trigger id and trigger name', async () => {
+    expect(Trigger.doesReferenceMatchId('docker.update', 'docker.update')).toBe(
+        true,
+    );
+    expect(Trigger.doesReferenceMatchId('update', 'docker.update')).toBe(true);
+    expect(Trigger.doesReferenceMatchId('notify', 'docker.update')).toBe(false);
+});
+
+test('mustTrigger should accept trigger name-only include filters', async () => {
+    trigger.type = 'docker';
+    trigger.name = 'update';
+
+    expect(
+        trigger.mustTrigger({
+            triggerInclude: 'update:minor',
+            updateKind: {
+                kind: 'tag',
+                semverDiff: 'minor',
+            },
+        }),
+    ).toBe(true);
+});
+
+test('mustTrigger should accept trigger name-only exclude filters', async () => {
+    trigger.type = 'docker';
+    trigger.name = 'update';
+
+    expect(
+        trigger.mustTrigger({
+            triggerExclude: 'update',
+            updateKind: {
+                kind: 'tag',
+                semverDiff: 'patch',
+            },
+        }),
+    ).toBe(false);
+});
+
+// --- Hybrid Triggers: name-only matching for include/exclude ---
+
+test('doesReferenceMatchId should match name-only against multiple trigger types', async () => {
+    // "update" should match "docker.update", "discord.update", etc.
+    expect(Trigger.doesReferenceMatchId('update', 'docker.update')).toBe(true);
+    expect(Trigger.doesReferenceMatchId('update', 'discord.update')).toBe(true);
+    expect(Trigger.doesReferenceMatchId('update', 'slack.update')).toBe(true);
+    // But not a different name
+    expect(Trigger.doesReferenceMatchId('update', 'docker.notify')).toBe(false);
+});
+
+test('doesReferenceMatchId should be case-insensitive', async () => {
+    expect(Trigger.doesReferenceMatchId('UPDATE', 'docker.update')).toBe(true);
+    expect(Trigger.doesReferenceMatchId('Docker.Update', 'docker.update')).toBe(true);
+});
+
+test('mustTrigger should exclude multiple trigger types by name-only', async () => {
+    // When a container has triggerExclude='update', ALL triggers named 'update'
+    // should be excluded regardless of provider type
+    const dockerTrigger = new Trigger();
+    dockerTrigger.log = log;
+    dockerTrigger.configuration = { ...configurationValid };
+    dockerTrigger.type = 'docker';
+    dockerTrigger.name = 'update';
+
+    const discordTrigger = new Trigger();
+    discordTrigger.log = log;
+    discordTrigger.configuration = { ...configurationValid };
+    discordTrigger.type = 'discord';
+    discordTrigger.name = 'update';
+
+    const container = {
+        triggerExclude: 'update',
+        updateKind: { kind: 'tag', semverDiff: 'minor' },
+    };
+
+    // Both docker.update and discord.update should be excluded by 'update'
+    expect(dockerTrigger.mustTrigger(container)).toBe(false);
+    expect(discordTrigger.mustTrigger(container)).toBe(false);
+});
+
+test('mustTrigger should include multiple trigger types by name-only', async () => {
+    const dockerTrigger = new Trigger();
+    dockerTrigger.log = log;
+    dockerTrigger.configuration = { ...configurationValid };
+    dockerTrigger.type = 'docker';
+    dockerTrigger.name = 'update';
+
+    const discordTrigger = new Trigger();
+    discordTrigger.log = log;
+    discordTrigger.configuration = { ...configurationValid };
+    discordTrigger.type = 'discord';
+    discordTrigger.name = 'update';
+
+    const slackNotify = new Trigger();
+    slackNotify.log = log;
+    slackNotify.configuration = { ...configurationValid };
+    slackNotify.type = 'slack';
+    slackNotify.name = 'notify';
+
+    const container = {
+        triggerInclude: 'update:minor',
+        updateKind: { kind: 'tag', semverDiff: 'minor' },
+    };
+
+    // Both docker.update and discord.update should be included
+    expect(dockerTrigger.mustTrigger(container)).toBe(true);
+    expect(discordTrigger.mustTrigger(container)).toBe(true);
+    // But slack.notify should NOT be included (different name)
+    expect(slackNotify.mustTrigger(container)).toBe(false);
+});
+
+test('mustTrigger should support name-only include with threshold for hybrid triggers', async () => {
+    const dockerTrigger = new Trigger();
+    dockerTrigger.log = log;
+    dockerTrigger.configuration = { ...configurationValid };
+    dockerTrigger.type = 'docker';
+    dockerTrigger.name = 'update';
+
+    const discordTrigger = new Trigger();
+    discordTrigger.log = log;
+    discordTrigger.configuration = { ...configurationValid };
+    discordTrigger.type = 'discord';
+    discordTrigger.name = 'update';
+
+    // Include 'update' triggers only for minor (excludes major)
+    const containerMinor = {
+        triggerInclude: 'update:minor',
+        updateKind: { kind: 'tag', semverDiff: 'minor' },
+    };
+    const containerMajor = {
+        triggerInclude: 'update:minor',
+        updateKind: { kind: 'tag', semverDiff: 'major' },
+    };
+
+    expect(dockerTrigger.mustTrigger(containerMinor)).toBe(true);
+    expect(discordTrigger.mustTrigger(containerMinor)).toBe(true);
+    // Major should be excluded because threshold is 'minor'
+    expect(dockerTrigger.mustTrigger(containerMajor)).toBe(false);
+    expect(discordTrigger.mustTrigger(containerMajor)).toBe(false);
+});
+
+test('renderSimpleTitle should replace placeholders when called', async () => {
+    expect(
+        trigger.renderSimpleTitle({
+            name: 'container-name',
+            updateKind: {
+                kind: 'tag',
+            },
+        }),
+    ).toEqual('New tag found for container container-name');
+});
+
+test('renderSimpleBody should replace placeholders when called', async () => {
+    expect(
+        trigger.renderSimpleBody({
+            name: 'container-name',
+            updateKind: {
+                kind: 'tag',
+                localValue: '1.0.0',
+                remoteValue: '2.0.0',
+            },
+            result: {
+                link: 'http://test',
+            },
+        }),
+    ).toEqual(
+        'Container container-name running with tag 1.0.0 can be updated to tag 2.0.0\nhttp://test',
+    );
+});
+
+test('renderSimpleBody should replace placeholders when template is a customized one', async () => {
+    trigger.configuration.simplebody =
+        'Watcher ${watcher} reports container ${name} available update';
+    expect(
+        trigger.renderSimpleBody({
+            name: 'container-name',
+            watcher: 'DUMMY',
+        }),
+    ).toEqual(
+        'Watcher DUMMY reports container container-name available update',
+    );
+});
+
+test('renderSimpleBody should evaluate js functions when template is a customized one', async () => {
+    trigger.configuration.simplebody =
+        'Container ${name} update from ${local.substring(0, 15)} to ${remote.substring(0, 15)}';
+    expect(
+        trigger.renderSimpleBody({
+            name: 'container-name',
+            updateKind: {
+                kind: 'digest',
+                localValue:
+                    'sha256:9a82d5773ccfcb73ba341619fd44790a30750731568c25a6e070c2c44aa30bde',
+                remoteValue:
+                    'sha256:6cdd479147e4d2f1f853c7205ead7e2a0b0ccbad6e3ff0986e01936cbd179c17',
+            },
+        }),
+    ).toEqual(
+        'Container container-name update from sha256:9a82d577 to sha256:6cdd4791',
+    );
+});
+
+test('renderBatchTitle should replace placeholders when called', async () => {
+    expect(
+        trigger.renderBatchTitle([
+            {
+                name: 'container-name',
+                updateKind: {
+                    kind: 'tag',
+                },
+            },
+        ]),
+    ).toEqual('1 updates available');
+});
+
+test('renderBatchBody should replace placeholders when called', async () => {
+    expect(
+        trigger.renderBatchBody([
+            {
+                name: 'container-name',
+                updateKind: {
+                    kind: 'tag',
+                    localValue: '1.0.0',
+                    remoteValue: '2.0.0',
+                },
+                result: {
+                    link: 'http://test',
+                },
+            },
+        ]),
+    ).toEqual(
+        '- Container container-name running with tag 1.0.0 can be updated to tag 2.0.0\nhttp://test\n',
+    );
+});

@@ -1,0 +1,339 @@
+<div align="center">
+
+<img src="docs/assets/updocker.png" alt="upDocker" width="220">
+
+<h1>upDocker &nbsp;<img src="docs/assets/codeswhat-logo-original.svg" alt="CodesWhat" height="32"></h1>
+
+**What's upDocker? Open source container update monitoring with an open community.**
+
+Community-maintained fork of [`getwud/wud`](https://github.com/getwud/wud) — rebuilt in TypeScript, modernized tooling, new features.
+
+</div>
+
+<p align="center">
+  <a href="https://github.com/CodesWhat/updocker/releases"><img src="https://img.shields.io/badge/version-9.0.0--ce-blue" alt="Version"></a>
+  <a href="https://github.com/orgs/CodesWhat/packages/container/package/updocker"><img src="https://img.shields.io/badge/GHCR-image-2ea44f?logo=docker&logoColor=white" alt="GHCR package"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-C9A227" alt="License MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/CodesWhat/updocker/stargazers"><img src="https://img.shields.io/github/stars/CodesWhat/updocker?style=flat" alt="Stars"></a>
+  <a href="https://github.com/CodesWhat/updocker/forks"><img src="https://img.shields.io/github/forks/CodesWhat/updocker?style=flat" alt="Forks"></a>
+  <a href="https://github.com/CodesWhat/updocker/issues"><img src="https://img.shields.io/github/issues/CodesWhat/updocker?style=flat" alt="Issues"></a>
+  <a href="https://github.com/CodesWhat/updocker/commits/main"><img src="https://img.shields.io/github/last-commit/CodesWhat/updocker?style=flat" alt="Last commit"></a>
+</p>
+
+<p align="center">
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/CodesWhat/updocker"><img src="https://api.securityscorecards.dev/projects/github.com/CodesWhat/updocker/badge" alt="OpenSSF Scorecard"></a>
+  <a href="https://codecov.io/gh/CodesWhat/whatsupdocker-ce"><img src="https://codecov.io/gh/CodesWhat/whatsupdocker-ce/graph/badge.svg?token=b90d4863-46c5-40d2-bf00-f6e4a79c8656" alt="Codecov"></a>
+</p>
+
+---
+
+## Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Where CE Diverges from Upstream](#where-ce-diverges-from-upstream)
+- [Supported Registries](#supported-registries)
+- [Supported Triggers](#supported-triggers)
+- [Authentication](#authentication)
+- [Migrating from WUD](#migrating-from-wud)
+- [Documentation](#documentation)
+- [Built With](#built-with)
+
+---
+
+## Quick Start
+
+```bash
+docker run -d \
+  --name updocker \
+  -p 3000:3000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/codeswhat/updocker:latest
+```
+
+<details>
+<summary><strong>Docker Compose</strong></summary>
+
+```yaml
+services:
+  updocker:
+    image: ghcr.io/codeswhat/updocker:latest
+    container_name: updocker
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+```
+
+</details>
+
+<details>
+<summary><strong>Verify it's running</strong></summary>
+
+```bash
+# Health check
+curl http://localhost:3000/health
+
+# Open the UI
+open http://localhost:3000
+```
+
+</details>
+
+<details>
+<summary><strong>If GHCR requires auth</strong></summary>
+
+```bash
+echo '<GITHUB_PAT>' | docker login ghcr.io -u <github-username> --password-stdin
+docker pull ghcr.io/codeswhat/updocker:latest
+```
+
+</details>
+
+---
+
+## Features
+
+<table>
+<tr>
+<td align="center" width="33%">
+<h3>Container Monitoring</h3>
+Auto-detect running containers and check for image updates across registries
+</td>
+<td align="center" width="33%">
+<h3>17 Notification Triggers</h3>
+Slack, Discord, Telegram, SMTP, MQTT, HTTP webhooks, Gotify, NTFY, and more
+</td>
+<td align="center" width="33%">
+<h3>10+ Registry Providers</h3>
+Docker Hub, GHCR, ECR, GCR, GitLab, Quay, LSCR, Codeberg, DHI, and custom
+</td>
+</tr>
+<tr>
+<td align="center">
+<h3>Docker Compose Updates</h3>
+Auto-pull and recreate services via docker-compose with multi-network support
+</td>
+<td align="center">
+<h3>Distributed Agents</h3>
+Monitor remote Docker hosts with SSE-based agent architecture
+</td>
+<td align="center">
+<h3>Update Policies</h3>
+Skip, snooze, or threshold-filter updates per container or globally
+</td>
+</tr>
+<tr>
+<td align="center" width="33%">
+<h3>OIDC Authentication</h3>
+Authelia, Auth0, Authentik — secure your dashboard with OpenID Connect
+</td>
+<td align="center" width="33%">
+<h3>Prometheus Metrics</h3>
+Built-in /metrics endpoint with optional auth bypass for monitoring stacks
+</td>
+<td align="center" width="33%">
+<h3>In-App Log Viewer</h3>
+Browse application logs directly in the web UI
+</td>
+</tr>
+</table>
+
+---
+
+## Where CE Diverges from Upstream
+
+upDocker is a full rewrite of the WUD codebase. The core monitoring logic is the same, but the architecture, tooling, and feature set have diverged significantly.
+
+> For the full itemized changelog, see [CHANGELOG.md](CHANGELOG.md).
+
+### Architecture
+
+| | Upstream WUD | upDocker |
+|---|---|---|
+| **Language** | JavaScript | TypeScript (ESM, `NodeNext`) |
+| **Test runner** | Jest | Vitest 4 |
+| **Linter** | ESLint + Prettier | Biome |
+| **Express** | 4.x | 5.x |
+| **Build system** | Babel | `tsc` (no transpiler) |
+
+### upDocker-Only Features
+
+These exist in upDocker but **not** in upstream WUD:
+
+| Feature | Description |
+|---------|-------------|
+| **Agent mode** | Distributed monitoring with remote agents over SSE |
+| **OIDC token lifecycle** | Bearer/Basic auth for remote watcher HTTPS connections |
+| **Container update policy** | Skip/snooze specific versions per container via API and UI |
+| **Metrics auth toggle** | `WUD_SERVER_METRICS_AUTH=false` to expose `/metrics` without auth |
+| **NTFY provider-level threshold** | Set threshold at the ntfy provider level, not just per-trigger |
+| **Docker pull progress logging** | Rate-limited pull progress during compose updates |
+| **Registry lookup image override** | `lookupImage` field to override tag lookup image |
+| **DHI registry** | `dhi.io` registry provider |
+| **Custom URL icons** | URL-based icons via `wud.display.icon` label |
+| **Version skip UI** | Skip specific versions from the web interface |
+| **In-app log viewer** | Browse logs in the UI |
+| **Semver tag recovery** | Recover mismatched semver tags from include filters |
+| **Per-image config presets** | `imgset` defaults for per-image configuration |
+
+### upDocker Bug Fixes (not in upstream)
+
+| Fix | Impact |
+|-----|--------|
+| `eval()` code injection | Replaced with safe `String.replace()` interpolation |
+| OIDC session state races | Serialized redirect checks, multiple pending states |
+| Docker event stream crash | Buffered split payloads before JSON parse |
+| Multi-network container recreate | Reconnects additional networks after recreation |
+| docker-compose post_start hooks | Hooks now execute after updates |
+| Express 5 wildcard routes | Named wildcard params for Express 5 compat |
+
+### Upstream Backports
+
+Changes from upstream `main` (post-fork) that have been ported to upDocker:
+
+| Change | Status |
+|--------|--------|
+| Codeberg default registry | Ported (new TS provider) |
+| YAML `maxAliasCount` increase | Ported |
+| Async `getAuthPull` for ECR | Ported across all registries |
+| `WUD_PROMETHEUS_ENABLED` config | Ported |
+| Authelia OIDC doc field names | Ported |
+| Docker event stream buffering | Already fixed independently |
+
+---
+
+## Supported Registries
+
+<details>
+<summary><strong>Public registries</strong> (auto-registered, no config needed)</summary>
+
+| Registry | Provider | URL |
+|----------|----------|-----|
+| Docker Hub | `hub` | `hub.docker.com` |
+| GitHub Container Registry | `ghcr` | `ghcr.io` |
+| Google Container Registry | `gcr` | `gcr.io` |
+| Quay | `quay` | `quay.io` |
+| LinuxServer (LSCR) | `lscr` | `lscr.io` |
+| DigitalOcean | `docr` | `registry.digitalocean.com` |
+| Codeberg | `codeberg` | `codeberg.org` |
+| DHI | `dhi` | `dhi.io` |
+| Amazon ECR Public | `ecr` | `public.ecr.aws` |
+
+</details>
+
+<details>
+<summary><strong>Private registries</strong> (require credentials)</summary>
+
+| Registry | Provider | Env vars |
+|----------|----------|----------|
+| Docker Hub | `hub` | `WUD_REGISTRY_HUB_{name}_LOGIN`, `_TOKEN` |
+| Amazon ECR | `ecr` | `WUD_REGISTRY_ECR_{name}_ACCESSKEYID`, `_SECRETACCESSKEY`, `_REGION` |
+| Azure ACR | `acr` | `WUD_REGISTRY_ACR_{name}_CLIENTID`, `_CLIENTSECRET` |
+| GitLab | `gitlab` | `WUD_REGISTRY_GITLAB_{name}_TOKEN` |
+| GitHub (GHCR) | `ghcr` | `WUD_REGISTRY_GHCR_{name}_TOKEN` |
+| Gitea / Forgejo | `gitea` | `WUD_REGISTRY_GITEA_{name}_LOGIN`, `_PASSWORD` |
+| Custom (any v2) | `custom` | `WUD_REGISTRY_CUSTOM_{name}_URL` + optional auth |
+
+See [Registry docs](docs/configuration/registries/README.md) for full configuration.
+
+</details>
+
+---
+
+## Supported Triggers
+
+<details>
+<summary><strong>Notification triggers</strong> (17 providers)</summary>
+
+All env vars accept both `UD_` and `WUD_` prefixes; Docker labels accept both `ud.` and `wud.`. When both are set, `UD_`/`ud.` takes precedence.
+
+| Trigger | Description | Docs |
+|---------|-------------|------|
+| Apprise | Universal notification gateway | [docs](docs/configuration/triggers/apprise/README.md) |
+| Command | Run arbitrary shell commands | [docs](docs/configuration/triggers/command/README.md) |
+| Discord | Discord webhook | [docs](docs/configuration/triggers/discord/README.md) |
+| Docker | Auto-pull and restart containers | [docs](docs/configuration/triggers/docker/README.md) |
+| Docker Compose | Auto-pull and recreate compose services | [docs](docs/configuration/triggers/docker-compose/README.md) |
+| Gotify | Gotify push notifications | [docs](docs/configuration/triggers/gotify/README.md) |
+| HTTP | Generic webhook (POST) | [docs](docs/configuration/triggers/http/README.md) |
+| IFTTT | IFTTT applet trigger | [docs](docs/configuration/triggers/ifttt/README.md) |
+| Kafka | Kafka message producer | [docs](docs/configuration/triggers/kafka/README.md) |
+| MQTT | MQTT message (Home Assistant compatible) | [docs](docs/configuration/triggers/mqtt/README.md) |
+| NTFY | ntfy.sh push notifications | [docs](docs/configuration/triggers/ntfy/README.md) |
+| Pushover | Pushover notifications | [docs](docs/configuration/triggers/pushover/README.md) |
+| Rocket.Chat | Rocket.Chat webhook | [docs](docs/configuration/triggers/rocketchat/README.md) |
+| Slack | Slack webhook | [docs](docs/configuration/triggers/slack/README.md) |
+| SMTP | Email notifications | [docs](docs/configuration/triggers/smtp/README.md) |
+| Telegram | Telegram bot messages | [docs](docs/configuration/triggers/telegram/README.md) |
+
+All triggers support **threshold filtering** (`all`, `major`, `minor`, `patch`) to control which updates fire notifications.
+
+</details>
+
+---
+
+## Authentication
+
+<details>
+<summary><strong>Supported auth methods</strong></summary>
+
+| Method | Description | Docs |
+|--------|-------------|------|
+| Anonymous | No auth (default) | — |
+| Basic | Username + password hash | [docs](docs/configuration/authentications/basic/README.md) |
+| OIDC | OpenID Connect (Authelia, Auth0, Authentik) | [docs](docs/configuration/authentications/oidc/README.md) |
+
+</details>
+
+---
+
+## Migrating from WUD
+
+If you're running `getwud/wud`, switch only the image reference:
+
+```diff
+- image: getwud/wud:8.1.1
++ image: ghcr.io/codeswhat/updocker:latest
+```
+
+Your Docker socket mount, env vars, and labels all stay the same. upDocker is a drop-in replacement. Both `WUD_`/`wud.` and the new `UD_`/`ud.` prefixes are accepted — migrate at your own pace.
+
+---
+
+## Documentation
+
+| Resource | Link |
+|----------|------|
+| Docs | [`docs/README.md`](docs/README.md) |
+| Configuration | [`docs/configuration/README.md`](docs/configuration/README.md) |
+| Quick Start | [`docs/quickstart/README.md`](docs/quickstart/README.md) |
+| Changelog | [`CHANGELOG.md`](CHANGELOG.md) |
+| Upstream Docs | [getwud.github.io/wud](https://getwud.github.io/wud/) |
+| Issues | [GitHub Issues](https://github.com/CodesWhat/updocker/issues) |
+
+---
+
+<div align="center">
+
+### Built With
+
+[![TypeScript](https://img.shields.io/badge/TypeScript_5.9-3178C6?logo=typescript&logoColor=fff)](#)
+[![Vue 3](https://img.shields.io/badge/Vue_3-42b883?logo=vuedotjs&logoColor=fff)](#)
+[![Express 5](https://img.shields.io/badge/Express_5-000?logo=express&logoColor=fff)](#)
+[![Vitest](https://img.shields.io/badge/Vitest_4-6E9F18?logo=vitest&logoColor=fff)](#)
+[![Biome](https://img.shields.io/badge/Biome_2.3-60a5fa?logo=biome&logoColor=fff)](#)
+[![Node 24](https://img.shields.io/badge/Node_24_Alpine-339933?logo=nodedotjs&logoColor=fff)](#)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=fff)](#)
+
+---
+
+**[MIT License](LICENSE)** | Forked from [getwud/wud](https://github.com/getwud/wud)
+
+<a href="#updocker">Back to top</a>
+
+</div>

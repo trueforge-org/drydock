@@ -1,0 +1,74 @@
+const { defineConfig } = require("@vue/cli-service");
+const webpack = require("webpack");
+
+module.exports = defineConfig({
+  parallel: false, // Disable parallel build to avoid Thread Loader errors
+  devServer: {
+    host: '0.0.0.0',
+    proxy: {
+      "^/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true
+      },
+      "^/auth": {
+        target: "http://localhost:3000",
+        changeOrigin: true
+      },
+    }
+  },
+
+  pwa: {
+    name: "upDocker",
+    themeColor: "#00355E",
+    msTileColor: "#00355E",
+    mobileWebAppCapable: "no",
+    iconPaths: {
+      faviconSVG: null,
+      favicon96: null,
+      favicon32: null,
+      favicon16: null,
+      appleTouchIcon: null,
+      maskIcon: null,
+      msTileImage: null,
+    },
+    manifestOptions: {
+      short_name: "upDocker",
+      background_color: "#00355E",
+    },
+  },
+
+  chainWebpack: config => {
+    // Prioritize .vue files
+    config.resolve.extensions.prepend('.vue');
+    config.plugin('fork-ts-checker').tap(args => {
+      args[0].typescript = {
+        ...args[0].typescript,
+        configFile: 'tsconfig.build.json'
+      }
+      return args
+    })
+
+    config.module
+      .rule('ts')
+      .use('ts-loader')
+      .loader('ts-loader')
+      .tap(options => {
+        return {
+          ...options,
+          configFile: 'tsconfig.build.json',
+          appendTsSuffixTo: [/\.vue$/],
+          transpileOnly: true
+        }
+      })
+  },
+
+  configureWebpack: {
+    plugins: [
+      new webpack.DefinePlugin({
+        __VUE_OPTIONS_API__: "true",
+        __VUE_PROD_DEVTOOLS__: "false",
+        __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: "false",
+      }),
+    ],
+  },
+});

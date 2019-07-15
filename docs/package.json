@@ -1,0 +1,15 @@
+{
+  "name": "updocker-doc",
+  "version": "2026.2.0",
+  "description": "upDocker - the docs",
+  "main": "index.js",
+  "scripts": {
+    "doc": "docsify serve"
+  },
+  "author": "fmartinou",
+  "repository": "CodesWhat/updocker",
+  "license": "MIT",
+  "devDependencies": {
+    "docsify-cli": "4.4.4"
+  }
+}

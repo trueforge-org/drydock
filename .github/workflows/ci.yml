@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: |
+          (cd app && npm ci)
+          (cd e2e && npm ci)
+          (cd ui && npm ci)
+
+      - name: Lint app
+        run: npm run lint
+        working-directory: app
+
+      - name: Lint e2e
+        run: npm run lint
+        working-directory: e2e
+
+      - name: Lint ui
+        run: npm run lint
+        working-directory: ui
+
+      - name: ESM readiness check
+        run: ./scripts/esm-readiness.sh || true
+
+  test:
+    name: Test & Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Install app dependencies
+        run: npm ci
+        working-directory: app
+
+      - name: Install ui dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Run app tests
+        run: npm test
+        working-directory: app
+
+      - name: Run ui tests
+        run: npm run test:unit
+        working-directory: ui
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@18283e04ce6e62d37312384ff67231eb8fd56d24 # v5.4.3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: app/coverage/lcov.info,ui/coverage/lcov.info
+          flags: app,ui
+          fail_ci_if_error: true
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Install ui dependencies
+        run: npm ci
+        working-directory: ui
+
+      - name: Build ui
+        run: npm run build
+        working-directory: ui
+
+      - name: Docker build (smoke test)
+        run: docker build --no-cache -t updocker --build-arg WUD_VERSION=ci .

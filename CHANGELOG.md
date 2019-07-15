@@ -1,0 +1,114 @@
+# Changelog — upDocker
+
+This changelog covers all changes in **upDocker** since forking from [getwud/wud](https://github.com/getwud/wud) upstream.
+
+**Fork point:** upstream post-8.1.1 (2025-11-27)
+**Upstream baseline:** WUD 8.1.1 + 65 merged PRs on `main` (Vue 3 migration, Alpine base image, Rocket.Chat trigger, threshold system, semver improvements, request→axios migration, and more)
+
+---
+
+## 9.0.0-ce (398 files changed)
+
+### Architecture / Tooling
+
+- **TypeScript migration (app)** — Entire backend converted from JavaScript to TypeScript with ES Modules (`NodeNext`). 232 `.ts` files added/renamed, all `.js` source files removed.
+- **TypeScript migration (UI)** — Vue 3 frontend migrated from JS to TS. 29 `.vue` files updated, component props/emits typed.
+- **Jest → Vitest (app)** — All 64 app test files (664 tests) migrated from Jest to Vitest. Test runner unified across app and UI.
+- **Jest → Vitest (UI)** — UI unit tests migrated from Jest to Vitest with improved coverage.
+- **Vitest 4 + modern deps** — Upgraded vitest 3→4, uuid 11→13, flat 5→6, snake-case 3→4. Fixed vitest 4 mock constructor breaking change.
+- **ESM baseline** — Cut over to `NodeNext` module resolution. Removed Babel, added `tsconfig.json`.
+- **Biome linter** — Replaced ESLint with Biome for formatting and linting.
+- **CI cleanup** — Removed Code Climate config, renamed Travis config to `ci.config.yml`.
+
+### Features
+
+- **Agent mode** — Distributed monitoring with remote agent architecture. Agent components, SSE-based communication, dedicated API routes.
+- **OIDC token lifecycle** — Remote watcher HTTPS auth with `Basic` + `Bearer` token support. TLS/mTLS compatibility for `WUD_WATCHER_{name}_HOST`.
+- **OIDC device-flow (Phase 2)** — RFC 8628 Device Authorization Grant for headless remote watcher auth. Auto-detection, polling with backoff, and refresh token rotation.
+- **Per-image config presets** — `imgset` defaults for per-image configuration. Added `watchDigest` and `inspectTagPath` imgset properties.
+- **Hybrid triggers** — Trigger group defaults (`WUD_TRIGGER_{name}_THRESHOLD`) shared across providers. Name-only include/exclude for multi-provider trigger management.
+- **Container update policy** — Skip/snooze specific update versions. Per-container policy stored in DB, exposed via API and UI.
+- **Metrics auth toggle** — `WUD_SERVER_METRICS_AUTH` env var to disable auth on `/metrics` endpoint.
+- **Trigger thresholds** — Digest and no-digest thresholds for triggers.
+- **NTFY provider-level threshold** — Provider-level threshold support for ntfy trigger.
+- **Docker pull progress logging** — Rate-limited pull progress output during docker-compose updates.
+- **Registry lookup image override** — `lookupImage` field on registry config to override the image used for tag lookups.
+- **Docker inspect tag path** — Support custom tag path in Docker inspect output.
+- **Anonymous LSCR and TrueForge registries** — Allow anonymous access to LSCR (LinuxServer) and Quay-backed TrueForge.
+- **DHI registry** — New `dhi.io` registry provider with matcher, auth flow, and docs.
+- **Custom URL icons** — Support URL-based icons via `wud.display.icon` label.
+- **Version skip** — Skip specific versions in the UI.
+- **Log viewer** — In-app log viewer.
+- **Semver tag recovery** — Recover include-filter mismatched semver tags from watchers. Extended to advise best semver tag when current tag is non-semver (e.g., `latest`).
+- **Dashboard update chips** — Replaced verbose update status text with compact colored chips: green "up to date" or warning "N update(s)" (clickable).
+
+### Bug Fixes
+
+- **eval() code injection** — Replaced `eval()` in trigger template rendering with safe expression evaluator supporting property paths, method allowlist, ternaries, and string concatenation.
+- **Digest-only update prune crash** — Docker trigger prune logic now correctly excludes current image during digest-only updates and handles post-prune errors gracefully.
+- **Swarm deploy-label debug logging** — Added warn-level logging when Swarm service inspect fails, and debug logging showing which label sources contain `wud.*` labels.
+- **OIDC session state races** — Serialized redirect session checks, multiple pending callback states per session.
+- **semverDiff undefined** — Normalized `semverDiff` for non-tag (digest-only/created-date-only) updates.
+- **Docker event stream crash** — Buffered and parsed split Docker event stream payloads.
+- **Multi-network container recreate** — Reconnects additional networks after container recreation.
+- **Remote watcher delayed first scan** — `watchatstart` now checks watcher-local store for new remote watchers.
+- **docker-compose post_start hooks** — Hooks now execute after updates.
+- **docker-compose image-only triggers** — Only trigger on compose services with actual image changes.
+- **docker-compose imageless services** — Skip compose services without an `image` field.
+- **docker-compose implicit latest tag** — Normalize `image: nginx` to `image: nginx:latest` so compose triggers don't treat implicit latest as a version mismatch.
+- **Express 5 wildcard routes** — Named wildcard route params for express 5 compatibility.
+- **Semver filtering** — Fixed semver part filtering and prefix handling.
+- **SMTP TLS_VERIFY inverted** — `rejectUnauthorized` was inverted; `TLS_VERIFY=false` now correctly allows self-signed certificates.
+- **HA MQTT deprecated object_id** — Replaced `object_id` with `default_entity_id` for Home Assistant 2025.10+ compatibility.
+- **Open redirect on authenticated pages** — Validate `next` query parameter to only allow internal routes.
+- **Trigger test updateKind crash** — Test-button triggers no longer crash with "Cannot read properties of undefined (reading 'updateKind')" on unvalidated containers.
+- **Docker rename event not captured** — Added `rename` to Docker event listener so container name updates are captured after compose recreates.
+- **UI duplicate drawer logo** — Removed duplicate logo in navigation drawer.
+
+### Dependencies
+
+| Package | Upstream (8.1.1) | CE |
+| --- | --- | --- |
+| vitest | 3.x (Jest) | 4.x |
+| uuid | 9.x | 13.x |
+| flat | 5.x | 6.x |
+| snake-case | 3.x | 4.x |
+| express | 4.x | 5.x |
+| typescript | — | 5.9 |
+| biome | — | 2.3 |
+
+### Stats
+
+| Metric | Value |
+| --- | --- |
+| Files changed | 392 |
+| Insertions | +25,725 |
+| Deletions | -25,995 |
+| App tests | 709 (vitest) |
+| UI tests | 163 (vitest) |
+| Total tests | 872 |
+
+---
+
+## Upstream Backports
+
+The following changes from `upstream/main` (post-fork) have been ported to CE:
+
+| Description | Status |
+| --- | --- |
+| Add Codeberg to default registries | Ported (new TS provider) |
+| Increase `maxAliasCount` in YAML parsing | Ported |
+| Fix authentication for private ECR registry (async `getAuthPull`) | Ported across all registries |
+| Prometheus: add `WUD_PROMETHEUS_ENABLED` config | Ported |
+| Fix Authelia OIDC docs (field names) | Ported |
+| Buffer Docker event stream before JSON parse | Already fixed independently |
+| SMTP trigger: allow display name in from address ([#908](https://github.com/getwud/wud/pull/908)) | Ported |
+
+Remaining upstream-only changes (not ported — not applicable to CE):
+
+| Description | Reason |
+| --- | --- |
+| Fix e2e tests (x2) | JS-based, CE tests are TS |
+| Fix prettier | CE uses Biome |
+| Fix codeberg tests | Covered by CE's own tests |
+| Update changelog | Upstream-specific |
