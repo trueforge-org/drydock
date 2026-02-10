@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import Docker from '../docker/Docker.js';
 import Dockercompose from './Dockercompose.js';
 import { getState } from '../../../registry/index.js';

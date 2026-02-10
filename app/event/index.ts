@@ -1,5 +1,5 @@
 // @ts-nocheck
-import events from 'events';
+import events from 'node:events';
 
 // Build EventEmitter
 const eventEmitter = new events.EventEmitter();

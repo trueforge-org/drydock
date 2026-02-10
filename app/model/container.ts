@@ -227,7 +227,7 @@ function getRawTagUpdate(container: Container): ContainerUpdateKind {
                 semverDiffResult = 'prerelease';
                 break;
             default:
-                semverDiffResult = 'unknown';
+                break;
         }
     }
 

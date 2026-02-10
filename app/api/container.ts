@@ -82,7 +82,7 @@ function getSnoozeUntilFromActionPayload(payload = {}) {
     if (payload.snoozeUntil) {
         const customDate = new Date(payload.snoozeUntil);
         if (Number.isNaN(customDate.getTime())) {
-            throw new Error('Invalid snoozeUntil date');
+            throw new TypeError('Invalid snoozeUntil date');
         }
         return customDate.toISOString();
     }
@@ -128,38 +128,42 @@ export async function deleteContainer(req, res) {
     const serverConfiguration = getServerConfiguration();
     if (!serverConfiguration.feature.delete) {
         res.sendStatus(403);
-    } else {
-        const { id } = req.params;
-        const container = storeContainer.getContainer(id);
-        if (container) {
-            if (container.agent) {
-                const agent = getAgent(container.agent);
-                if (agent) {
-                    try {
-                        await agent.deleteContainer(id);
-                        storeContainer.deleteContainer(id);
-                        res.sendStatus(204);
-                    } catch (e) {
-                        if (e.response && e.response.status === 404) {
-                            storeContainer.deleteContainer(id);
-                            res.sendStatus(204);
-                        } else {
-                            res.status(500).json({
-                                error: `Error deleting container on agent (${e.message})`,
-                            });
-                        }
-                    }
-                } else {
-                    res.status(500).json({
-                        error: `Agent ${container.agent} not found`,
-                    });
-                }
-            } else {
-                storeContainer.deleteContainer(id);
-                res.sendStatus(204);
-            }
+        return;
+    }
+
+    const { id } = req.params;
+    const container = storeContainer.getContainer(id);
+    if (!container) {
+        res.sendStatus(404);
+        return;
+    }
+
+    if (!container.agent) {
+        storeContainer.deleteContainer(id);
+        res.sendStatus(204);
+        return;
+    }
+
+    const agent = getAgent(container.agent);
+    if (!agent) {
+        res.status(500).json({
+            error: `Agent ${container.agent} not found`,
+        });
+        return;
+    }
+
+    try {
+        await agent.deleteContainer(id);
+        storeContainer.deleteContainer(id);
+        res.sendStatus(204);
+    } catch (e) {
+        if (e.response?.status === 404) {
+            storeContainer.deleteContainer(id);
+            res.sendStatus(204);
         } else {
-            res.sendStatus(404);
+            res.status(500).json({
+                error: `Error deleting container on agent (${e.message})`,
+            });
         }
     }
 }
@@ -239,7 +243,7 @@ export async function getContainerTriggers(req, res) {
             }
             if (
                 excludedTriggers &&
-                excludedTriggers.find((excludedTrigger) =>
+                excludedTriggers.some((excludedTrigger) =>
                     Trigger.doesReferenceMatchId(
                         excludedTrigger.id,
                         triggerId,
@@ -319,48 +323,43 @@ async function watchContainer(req, res) {
     const { id } = req.params;
 
     const container = storeContainer.getContainer(id);
-    if (container) {
-        let watcherId = `docker.${container.watcher}`;
-        if (container.agent) {
-            watcherId = `${container.agent}.${watcherId}`;
-        }
-        const watcher = getWatchers()[watcherId];
-        if (!watcher) {
-            res.status(500).json({
-                error: `No provider found for container ${id} and provider ${watcherId}`,
-            });
-        } else {
-            try {
-                if (typeof watcher.getContainers === 'function') {
-                    // Ensure container is still in store
-                    // (for cases where it has been removed before running an new watchAll)
-                    const containers = await watcher.getContainers();
-                    const containerFound = containers.find(
-                        (containerInList) => containerInList.id === container.id,
-                    );
+    if (!container) {
+        res.sendStatus(404);
+        return;
+    }
 
-                    if (!containerFound) {
-                        res.status(404).send();
-                    } else {
-                        // Run watchContainer from the Provider
-                        const containerReport =
-                            await watcher.watchContainer(container);
-                        res.status(200).json(containerReport.container);
-                    }
-                } else {
-                    // Run watchContainer from the Provider
-                    const containerReport =
-                        await watcher.watchContainer(container);
-                    res.status(200).json(containerReport.container);
-                }
-            } catch (e) {
-                res.status(500).json({
-                    error: `Error when watching container ${id} (${e.message})`,
-                });
+    let watcherId = `docker.${container.watcher}`;
+    if (container.agent) {
+        watcherId = `${container.agent}.${watcherId}`;
+    }
+    const watcher = getWatchers()[watcherId];
+    if (!watcher) {
+        res.status(500).json({
+            error: `No provider found for container ${id} and provider ${watcherId}`,
+        });
+        return;
+    }
+
+    try {
+        if (typeof watcher.getContainers === 'function') {
+            // Ensure container is still in store
+            // (for cases where it has been removed before running a new watchAll)
+            const containers = await watcher.getContainers();
+            const containerFound = containers.some(
+                (containerInList) => containerInList.id === container.id,
+            );
+            if (!containerFound) {
+                res.status(404).send();
+                return;
             }
         }
-    } else {
-        res.sendStatus(404);
+        // Run watchContainer from the Provider
+        const containerReport = await watcher.watchContainer(container);
+        res.status(200).json(containerReport.container);
+    } catch (e) {
+        res.status(500).json({
+            error: `Error when watching container ${id} (${e.message})`,
+        });
     }
 }
 

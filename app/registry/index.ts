@@ -2,9 +2,9 @@
  * Registry handling all components (registries, triggers, watchers).
  */
 import capitalize from 'capitalize';
-import fs from 'fs';
-import path from 'path';
-import { pathToFileURL } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import logger from '../log/index.js';
 import { resolveFromRuntimeRoot, resolveRuntimeRoot } from '../runtime/paths.js';
 const log = logger.child({ component: 'registry' });

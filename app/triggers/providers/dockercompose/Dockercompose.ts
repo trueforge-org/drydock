@@ -1,6 +1,6 @@
 // @ts-nocheck
-import fs from 'fs/promises';
-import path from 'path';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import yaml from 'yaml';
 import Docker from '../docker/Docker.js';
 import { getState } from '../../../registry/index.js';

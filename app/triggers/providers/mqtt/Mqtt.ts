@@ -1,5 +1,5 @@
 // @ts-nocheck
-import fs from 'fs/promises';
+import fs from 'node:fs/promises';
 import mqtt from 'mqtt';
 import Trigger from '../Trigger.js';
 import Hass from './Hass.js';

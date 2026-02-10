@@ -1,5 +1,5 @@
 // @ts-nocheck
-import fs from 'fs';
+import fs from 'node:fs';
 import joi from 'joi';
 import setValue from 'set-value';
 

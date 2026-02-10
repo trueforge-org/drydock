@@ -95,10 +95,10 @@ services:
 
 For example, instead of providing the Basic auth details as
 ```
-DD_AUTH_BASIC_JOHN_HASH=$$apr1$$aefKbZEa$$ZSA5Y3zv9vDQOxr283NGx/
+DD_AUTH_BASIC_JOHN_HASH={SHA}1rToTufzHYhhemtgQhRRJy6/Gjo=
 ```
 
-You can create an external file with the appropriate permissions (let's say `/tmp/john_hash`) containing the secret value (`$$apr1$$aefKbZEa$$ZSA5Y3zv9vDQOxr283NGx/`).
+You can create an external file with the appropriate permissions (let's say `/tmp/john_hash`) containing the secret value (`{SHA}1rToTufzHYhhemtgQhRRJy6/Gjo=`).
 Then you need to reference this file by using the following env var
 ```
 DD_AUTH_BASIC_JOHN_HASH__FILE=/tmp/john_hash

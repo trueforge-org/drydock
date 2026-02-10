@@ -18,13 +18,13 @@ vi.mock('../../../model/container');
 vi.mock('../../../tag');
 vi.mock('../../../prometheus/watcher');
 vi.mock('parse-docker-image-name');
-vi.mock('fs');
+vi.mock('node:fs');
 vi.mock('axios');
 
 import mockDockerode from 'dockerode';
 import mockCron from 'node-cron';
 import mockDebounce from 'just-debounce';
-import mockFs from 'fs';
+import mockFs from 'node:fs';
 import axios from 'axios';
 import mockParse from 'parse-docker-image-name';
 import * as mockTag from '../../../tag/index.js';
@@ -157,7 +157,7 @@ describe('Docker Watcher', () => {
                     homeassistant: {
                         image: 'ghcr.io/home-assistant/home-assistant',
                         tag: {
-                            include: '^\\d+\\.\\d+\\.\\d+$',
+                            include: String.raw`^\d+\.\d+\.\d+$`,
                         },
                         display: {
                             icon: 'mdi-home-assistant',
@@ -1453,7 +1453,7 @@ describe('Docker Watcher', () => {
                     Spec: {
                         Labels: {
                             'dd.watch': 'true',
-                            'dd.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                            'dd.tag.include': String.raw`^\d+\.\d+\.\d+$`,
                         },
                     },
                 }),
@@ -1472,7 +1472,7 @@ describe('Docker Watcher', () => {
             expect(docker.addImageDetailsToContainer).toHaveBeenCalledTimes(1);
             expect(
                 docker.addImageDetailsToContainer.mock.calls[0][1],
-            ).toBe('^\\d+\\.\\d+\\.\\d+$');
+            ).toBe(String.raw`^\d+\.\d+\.\d+$`);
         });
 
         test('should let container labels override swarm service labels', async () => {
@@ -1484,7 +1484,7 @@ describe('Docker Watcher', () => {
                     Labels: {
                         'com.docker.swarm.service.id': 'service456',
                         'dd.watch': 'true',
-                        'dd.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                        'dd.tag.include': String.raw`^v\d+\.\d+\.\d+$`,
                     },
                 },
             ];
@@ -1494,7 +1494,7 @@ describe('Docker Watcher', () => {
                     Spec: {
                         Labels: {
                             'dd.watch': 'false',
-                            'dd.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                            'dd.tag.include': String.raw`^\d+\.\d+\.\d+$`,
                         },
                     },
                 }),
@@ -1511,7 +1511,7 @@ describe('Docker Watcher', () => {
             expect(result).toHaveLength(1);
             expect(
                 docker.addImageDetailsToContainer.mock.calls[0][1],
-            ).toBe('^v\\d+\\.\\d+\\.\\d+$');
+            ).toBe(String.raw`^v\d+\.\d+\.\d+$`);
         });
 
         test('should cache swarm service label lookups per service', async () => {
@@ -1578,7 +1578,7 @@ describe('Docker Watcher', () => {
                     Spec: {
                         Labels: {
                             'dd.watch': 'true',
-                            'dd.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                            'dd.tag.include': String.raw`^\d+\.\d+\.\d+$`,
                         },
                         TaskTemplate: {
                             ContainerSpec: {
@@ -1602,7 +1602,7 @@ describe('Docker Watcher', () => {
             // The tag include regex should come from Spec.Labels
             expect(
                 docker.addImageDetailsToContainer.mock.calls[0][1],
-            ).toBe('^\\d+\\.\\d+\\.\\d+$');
+            ).toBe(String.raw`^\d+\.\d+\.\d+$`);
         });
 
         test('should gracefully handle swarm service inspect failure without losing container', async () => {
@@ -1659,7 +1659,7 @@ describe('Docker Watcher', () => {
                         'com.docker.swarm.service.id': 'svc-alloy',
                         // Root labels: ARE on the container
                         'dd.watch': 'true',
-                        'dd.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                        'dd.tag.include': String.raw`^v\d+\.\d+\.\d+$`,
                     },
                 },
             ];
@@ -1671,7 +1671,7 @@ describe('Docker Watcher', () => {
                             Spec: {
                                 Labels: {
                                     'dd.watch': 'true',
-                                    'dd.tag.include': '^\\d+\\.\\d+\\.\\d+$',
+                                    'dd.tag.include': String.raw`^\d+\.\d+\.\d+$`,
                                 },
                             },
                         }
@@ -1681,7 +1681,7 @@ describe('Docker Watcher', () => {
                                     ContainerSpec: {
                                         Labels: {
                                             'dd.watch': 'true',
-                                            'dd.tag.include': '^v\\d+\\.\\d+\\.\\d+$',
+                                            'dd.tag.include': String.raw`^v\d+\.\d+\.\d+$`,
                                         },
                                     },
                                 },
@@ -1705,12 +1705,12 @@ describe('Docker Watcher', () => {
             const autheliaCall = docker.addImageDetailsToContainer.mock.calls.find(
                 (call: any) => call[0].Id === 'swarm-authelia',
             );
-            expect(autheliaCall[1]).toBe('^\\d+\\.\\d+\\.\\d+$');
+            expect(autheliaCall[1]).toBe(String.raw`^\d+\.\d+\.\d+$`);
             // Alloy's tag include should come from container labels (root labels)
             const alloyCall = docker.addImageDetailsToContainer.mock.calls.find(
                 (call: any) => call[0].Id === 'swarm-alloy',
             );
-            expect(alloyCall[1]).toBe('^v\\d+\\.\\d+\\.\\d+$');
+            expect(alloyCall[1]).toBe(String.raw`^v\d+\.\d+\.\d+$`);
         });
 
         test('should prune old containers', async () => {
@@ -1792,8 +1792,8 @@ describe('Docker Watcher', () => {
                     Id: 'dd-tag-1',
                     Labels: {
                         'dd.watch': 'true',
-                        'dd.tag.include': '^v\\d+',
-                        'wud.tag.include': '^\\d+',
+                        'dd.tag.include': String.raw`^v\d+`,
+                        'wud.tag.include': String.raw`^\d+`,
                     },
                     Names: ['/dd-tag-test'],
                 },
@@ -1811,7 +1811,7 @@ describe('Docker Watcher', () => {
             // dd.tag.include should be preferred
             expect(
                 docker.addImageDetailsToContainer.mock.calls[0][1],
-            ).toBe('^v\\d+');
+            ).toBe(String.raw`^v\d+`);
         });
     });
 
@@ -1927,7 +1927,7 @@ describe('Docker Watcher', () => {
 
         test('should handle tag candidates with semver', async () => {
             const container = {
-                includeTags: '^v\\d+',
+                includeTags: String.raw`^v\d+`,
                 excludeTags: 'beta',
                 transformTags: 's/v//',
                 image: {
@@ -2034,7 +2034,7 @@ describe('Docker Watcher', () => {
 
         test('should advise best semver tag when current tag is non-semver and includeTags filter is set', async () => {
             const container = {
-                includeTags: '^\\d+\\.\\d+',
+                includeTags: String.raw`^\d+\.\d+`,
                 image: {
                     registry: { name: 'hub' },
                     tag: { value: 'latest', semver: false },
@@ -2317,7 +2317,7 @@ describe('Docker Watcher', () => {
                     homeassistant: {
                         image: 'ghcr.io/home-assistant/home-assistant',
                         tag: {
-                            include: '^\\d+\\.\\d+\\.\\d+$',
+                            include: String.raw`^\d+\.\d+\.\d+$`,
                         },
                         display: {
                             name: 'Home Assistant',
@@ -2392,7 +2392,7 @@ describe('Docker Watcher', () => {
 
             const result = await docker.addImageDetailsToContainer(container);
 
-            expect(result.includeTags).toBe('^\\d+\\.\\d+\\.\\d+$');
+            expect(result.includeTags).toBe(String.raw`^\d+\.\d+\.\d+$`);
             expect(result.displayName).toBe('Home Assistant');
             expect(result.displayIcon).toBe('mdi-home-assistant');
             expect(result.linkTemplate).toBe(
@@ -2410,7 +2410,7 @@ describe('Docker Watcher', () => {
                     homeassistant: {
                         image: 'ghcr.io/home-assistant/home-assistant',
                         tag: {
-                            include: '^\\d+\\.\\d+\\.\\d+$',
+                            include: String.raw`^\d+\.\d+\.\d+$`,
                         },
                         display: {
                             name: 'Home Assistant',
@@ -2720,7 +2720,7 @@ describe('Docker Watcher', () => {
                     homeassistant: {
                         image: 'ghcr.io/home-assistant/home-assistant',
                         tag: {
-                            include: '^\\d+\\.\\d+\\.\\d+$',
+                            include: String.raw`^\d+\.\d+\.\d+$`,
                         },
                         display: {
                             name: 'Home Assistant',

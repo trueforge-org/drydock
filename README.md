@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/drydock.png" alt="drydock" width="220">
+<img src="docs/assets/whale-logo.png" alt="drydock" width="220">
 
 <h1>drydock &nbsp;<img src="docs/assets/codeswhat-logo-original.svg" alt="CodesWhat" height="32"></h1>
 
@@ -25,7 +25,11 @@ Community-maintained fork of [`getwud/wud`](https://github.com/getwud/wud) — r
 
 <p align="center">
   <a href="https://securityscorecards.dev/viewer/?uri=github.com/CodesWhat/drydock"><img src="https://api.securityscorecards.dev/projects/github.com/CodesWhat/drydock/badge" alt="OpenSSF Scorecard"></a>
-  <a href="https://codecov.io/gh/CodesWhat/drydock"><img src="https://codecov.io/gh/CodesWhat/drydock/graph/badge.svg?token=b90d4863-46c5-40d2-bf00-f6e4a79c8656" alt="Codecov"></a>
+  <a href="https://app.codecov.io/gh/CodesWhat/drydock"><img src="https://codecov.io/gh/CodesWhat/drydock/graph/badge.svg?token=b90d4863-46c5-40d2-bf00-f6e4a79c8656" alt="Codecov"></a>
+  <a href="https://app.codacy.com/gh/CodesWhat/drydock/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade"><img src="https://app.codacy.com/project/badge/Grade/7d85925194a545519a07687a9061fb38" alt="Codacy Badge"></a>
+  <a href="https://sonarcloud.io/summary/overall?id=CodesWhat_drydock"><img src="https://sonarcloud.io/api/project_badges/measure?project=CodesWhat_drydock&metric=alert_status" alt="SonarCloud"></a>
+  <a href="https://snyk.io/test/github/CodesWhat/drydock"><img src="https://snyk.io/test/github/CodesWhat/drydock/badge.svg" alt="Snyk"></a>
+  <a href="https://app.fossa.com/projects/custom%2B60291%2Fgithub.com%2FCodesWhat%2Fdrydock?ref=badge_shield&issueType=license"><img src="https://app.fossa.com/api/projects/custom%2B60291%2Fgithub.com%2FCodesWhat%2Fdrydock.svg?type=shield&issueType=license" alt="FOSSA Status"></a>
   <a href="https://qlty.sh/gh/CodesWhat/projects/drydock"><img src="https://qlty.sh/gh/CodesWhat/projects/drydock/maintainability.svg" alt="Maintainability"></a>
 </p>
 

@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import Dockerode from 'dockerode';
 import axios from 'axios';
 import Joi from 'joi';
@@ -169,26 +169,21 @@ function getRegistries() {
 }
 
 /**
- * Filter candidate tags (based on tag name).
- * @param container
- * @param tags
- * @returns {*}
+ * Apply include/exclude regex filters to tags.
+ * Returns the filtered tags and whether include-filter recovery mode is active.
  */
-function getTagCandidates(
+function applyIncludeExcludeFilters(
     container: Container,
     tags: string[],
     logContainer: any,
-) {
+): { filteredTags: string[]; allowIncludeFilterRecovery: boolean } {
     let filteredTags = tags;
     let allowIncludeFilterRecovery = false;
 
-    // Match include tag regex
     if (container.includeTags) {
         const includeTagsRegex = safeRegExp(container.includeTags, logContainer);
         if (includeTagsRegex) {
             filteredTags = filteredTags.filter((tag) => includeTagsRegex.test(tag));
-            // If current semver tag falls outside include filter, still attempt to
-            // move toward the include-filtered semver stream.
             if (
                 container.image.tag.semver &&
                 !includeTagsRegex.test(container.image.tag.value)
@@ -200,11 +195,9 @@ function getTagCandidates(
             }
         }
     } else {
-        // If no includeTags, filter out tags starting with "sha"
         filteredTags = filteredTags.filter((tag) => !tag.startsWith('sha'));
     }
 
-    // Match exclude tag regex
     if (container.excludeTags) {
         const excludeTagsRegex = safeRegExp(container.excludeTags, logContainer);
         if (excludeTagsRegex) {
@@ -214,128 +207,139 @@ function getTagCandidates(
         }
     }
 
-    // Always filter out tags ending with ".sig"
     filteredTags = filteredTags.filter((tag) => !tag.endsWith('.sig'));
+    return { filteredTags, allowIncludeFilterRecovery };
+}
 
-    // Semver image -> find higher semver tag
-    if (container.image.tag.semver) {
-        if (filteredTags.length === 0) {
-            logContainer.warn(
-                'No tags found after filtering; check you regex filters',
-            );
-        }
+/**
+ * Filter tags by prefix to match the current tag's prefix convention.
+ */
+function filterByCurrentPrefix(
+    tags: string[],
+    container: Container,
+    logContainer: any,
+): string[] {
+    const currentTag = container.image.tag.value;
+    const match = currentTag.match(/^(.*?)(\d+.*)$/);
+    const currentPrefix = match ? match[1] : '';
 
-        // If user has not specified custom include regex, default to keep current prefix
-        // Prefix is almost-always standardised around "must stay the same" for tags
-        if (!container.includeTags) {
-            const currentTag = container.image.tag.value;
-            const match = currentTag.match(/^(.*?)(\d+.*)$/);
-            const currentPrefix = match ? match[1] : '';
+    const filtered = currentPrefix
+        ? tags.filter((tag) => tag.startsWith(currentPrefix))
+        : tags.filter((tag) => /^\d/.test(tag));
 
-            if (currentPrefix) {
-                // Retain only tags with the same non-empty prefix
-                filteredTags = filteredTags.filter((tag) =>
-                    tag.startsWith(currentPrefix),
-                );
-            } else {
-                // Retain only tags that start with a number (no prefix)
-                filteredTags = filteredTags.filter((tag) => /^\d/.test(tag));
-            }
+    if (filtered.length === 0) {
+        const msg = currentPrefix
+            ? `No tags found with existing prefix: '${currentPrefix}'; check your regex filters`
+            : 'No tags found starting with a number (no prefix); check your regex filters';
+        logContainer.warn(msg);
+    }
 
-            // Ensure we throw good errors when we've prefix-related issues
-            if (filteredTags.length === 0) {
-                if (currentPrefix) {
-                    logContainer.warn(
-                        "No tags found with existing prefix: '" +
-                            currentPrefix +
-                            "'; check your regex filters",
-                    );
-                } else {
-                    logContainer.warn(
-                        'No tags found starting with a number (no prefix); check your regex filters',
-                    );
-                }
-            }
-        }
+    return filtered;
+}
 
-        // Keep semver only
-        filteredTags = filteredTags.filter(
-            (tag) =>
-                parseSemver(transformTag(container.transformTags, tag)) !==
-                null,
-        );
+/**
+ * Filter tags to only those with the same number of numeric segments as the current tag.
+ */
+function filterBySegmentCount(tags: string[], container: Container): string[] {
+    const numericPart = transformTag(
+        container.transformTags,
+        container.image.tag.value,
+    ).match(/(\d+(\.\d+)*)/);
 
-        // Remove prefix and suffix (keep only digits and dots)
-        const numericPart = transformTag(
+    if (!numericPart) {
+        return tags;
+    }
+
+    const referenceGroups = numericPart[0].split('.').length;
+    return tags.filter((tag) => {
+        const tagNumericPart = transformTag(
             container.transformTags,
-            container.image.tag.value,
+            tag,
         ).match(/(\d+(\.\d+)*)/);
+        if (!tagNumericPart) return false;
+        return tagNumericPart[0].split('.').length === referenceGroups;
+    });
+}
 
-        if (numericPart) {
-            const referenceGroups = numericPart[0].split('.').length;
+/**
+ * Sort tags by semver in descending order (mutates the array).
+ */
+function sortSemverDescending(tags: string[], transformTags: string | undefined): void {
+    tags.sort((t1, t2) => {
+        const greater = isGreaterSemver(
+            transformTag(transformTags, t2),
+            transformTag(transformTags, t1),
+        );
+        return greater ? 1 : -1;
+    });
+}
 
-            filteredTags = filteredTags.filter((tag) => {
-                const tagNumericPart = transformTag(
-                    container.transformTags,
-                    tag,
-                ).match(/(\d+(\.\d+)*)/);
-                if (!tagNumericPart) return false; // skip tags without numeric part
-                const tagGroups = tagNumericPart[0].split('.').length;
+/**
+ * Keep only tags that are valid semver.
+ */
+function filterSemverOnly(tags: string[], transformTags: string | undefined): string[] {
+    return tags.filter(
+        (tag) => parseSemver(transformTag(transformTags, tag)) !== null,
+    );
+}
 
-                // Keep only tags with the same number of numeric segments
-                return tagGroups === referenceGroups;
-            });
-        }
+/**
+ * Filter candidate tags (based on tag name).
+ * @param container
+ * @param tags
+ * @returns {*}
+ */
+function getTagCandidates(
+    container: Container,
+    tags: string[],
+    logContainer: any,
+) {
+    const { filteredTags: baseTags, allowIncludeFilterRecovery } =
+        applyIncludeExcludeFilters(container, tags, logContainer);
 
-        // Keep only greater semver unless we are recovering from an include-filter
-        // mismatch on current tag, in which case we keep best matching semver.
-        if (!allowIncludeFilterRecovery) {
-            filteredTags = filteredTags.filter((tag) =>
-                isGreaterSemver(
-                    transformTag(container.transformTags, tag),
-                    transformTag(
-                        container.transformTags,
-                        container.image.tag.value,
-                    ),
-                ),
-            );
-        }
+    if (!container.image.tag.semver && !container.includeTags) {
+        return [];
+    }
 
-        // Apply semver sort desc
-        filteredTags.sort((t1, t2) => {
-            const greater = isGreaterSemver(
-                transformTag(container.transformTags, t2),
-                transformTag(container.transformTags, t1),
-            );
-            return greater ? 1 : -1;
-        });
-    } else if (container.includeTags) {
-        // Non-semver tag (e.g. "latest", "rolling") with an includeTags filter:
-        // advise the best semver tag from the filtered set so users get a concrete
-        // version to migrate to (see issue #843).
+    if (!container.image.tag.semver) {
+        // Non-semver tag with includeTags filter: advise best semver tag
         logContainer.warn(
             `Current tag "${container.image.tag.value}" is not semver but includeTags filter "${container.includeTags}" is set. Advising best semver tag from filtered candidates.`,
         );
-
-        // Keep only semver tags from the include-filtered set
-        filteredTags = filteredTags.filter(
-            (tag) =>
-                parseSemver(transformTag(container.transformTags, tag)) !==
-                null,
-        );
-
-        // Sort descending (highest semver first)
-        filteredTags.sort((t1, t2) => {
-            const greater = isGreaterSemver(
-                transformTag(container.transformTags, t2),
-                transformTag(container.transformTags, t1),
-            );
-            return greater ? 1 : -1;
-        });
-    } else {
-        // Non semver tag without include filter -> do not propose any other registry tag
-        filteredTags = [];
+        const semverTags = filterSemverOnly(baseTags, container.transformTags);
+        sortSemverDescending(semverTags, container.transformTags);
+        return semverTags;
     }
+
+    // Semver image -> find higher semver tag
+    let filteredTags = baseTags;
+
+    if (filteredTags.length === 0) {
+        logContainer.warn(
+            'No tags found after filtering; check you regex filters',
+        );
+    }
+
+    if (!container.includeTags) {
+        filteredTags = filterByCurrentPrefix(filteredTags, container, logContainer);
+    }
+
+    filteredTags = filterSemverOnly(filteredTags, container.transformTags);
+    filteredTags = filterBySegmentCount(filteredTags, container);
+
+    if (!allowIncludeFilterRecovery) {
+        filteredTags = filteredTags.filter((tag) =>
+            isGreaterSemver(
+                transformTag(container.transformTags, tag),
+                transformTag(
+                    container.transformTags,
+                    container.image.tag.value,
+                ),
+            ),
+        );
+    }
+
+    sortSemverDescending(filteredTags, container.transformTags);
     return filteredTags;
 }
 
@@ -443,10 +447,9 @@ function getOldContainers(
         return [];
     }
     return containersFromTheStore.filter((containerFromStore) => {
-        const isContainerStillToWatch = newContainers.find(
+        return !newContainers.some(
             (newContainer) => newContainer.id === containerFromStore.id,
         );
-        return isContainerStillToWatch === undefined;
     });
 }
 

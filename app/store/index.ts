@@ -1,7 +1,7 @@
 // @ts-nocheck
 import joi from 'joi';
 import Loki from 'lokijs';
-import fs from 'fs';
+import fs from 'node:fs';
 import logger from '../log/index.js';
 const log = logger.child({ component: 'store' });
 import { getStoreConfiguration } from '../configuration/index.js';

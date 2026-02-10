@@ -32,7 +32,7 @@ describe('Agent API dual-prefix support', () => {
         process.env.DD_AGENT_SECRET = 'dd-secret';
         process.env.WUD_AGENT_SECRET = 'wud-secret';
 
-        const { init } = await import('./index.js');
+        await import('./index.js');
 
         // init() will start an express server; we just verify it doesn't throw
         // (meaning it picked up a secret successfully)

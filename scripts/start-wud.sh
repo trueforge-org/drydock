@@ -33,7 +33,7 @@ docker run -d \
   --env DD_REGISTRY_GCR_PRIVATE_CLIENTEMAIL="${GCR_CLIENT_EMAIL:-gcr@drydock-test.iam.gserviceaccount.com}" \
   --env DD_REGISTRY_GCR_PRIVATE_PRIVATEKEY="${GCR_PRIVATE_KEY:------BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDZ\n-----END PRIVATE KEY-----}" \
   --env DD_AUTH_BASIC_JOHN_USER="john" \
-  --env DD_AUTH_BASIC_JOHN_HASH='$apr1$8zDVtSAY$62WBh9DspNbUKMZXYRsjS/' \
+  --env DD_AUTH_BASIC_JOHN_HASH='{SHA}1rToTufzHYhhemtgQhRRJy6/Gjo=' \
   drydock
 
 echo "drydock started on http://localhost:3000"

@@ -3,7 +3,8 @@ const assert = require('node:assert');
 const config = require('../../config');
 
 const baseUrl = `${config.protocol}://${config.host}:${config.port}`;
-const authHeader = `Basic ${Buffer.from(`${config.username}:${config.password}`).toString('base64')}`;
+const credentials = config.username + ':' + config.password;
+const authHeader = 'Basic ' + Buffer.from(credentials).toString('base64');
 
 function resolveJsonPath(obj, path) {
     let p = path.startsWith('$') ? path.slice(1) : path;
@@ -26,7 +27,7 @@ function resolveJsonPath(obj, path) {
 }
 
 function resolveTemplate(str, scope) {
-    return str.replace(/`([^`]+)`/g, (_, name) => {
+    return str.replaceAll(/`([^`]+)`/g, (_, name) => {
         if (scope[name] !== undefined) return scope[name];
         return `\`${name}\``;
     });

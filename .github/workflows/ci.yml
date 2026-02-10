@@ -10,13 +10,12 @@ on:
       CODECOV_TOKEN:
         required: false
 
-permissions:
-  contents: read
-
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -51,6 +50,8 @@ jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -89,6 +90,8 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [lint, test]
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout

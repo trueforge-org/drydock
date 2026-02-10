@@ -87,7 +87,7 @@ function getUniqueStrategies() {
     const uniqueStrategies = [];
     strategies.forEach((strategy) => {
         if (
-            !uniqueStrategies.find(
+            !uniqueStrategies.some(
                 (item) =>
                     item.type === strategy.type && item.name === strategy.name,
             )

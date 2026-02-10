@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import https from 'https';
-import fs from 'fs';
-import { StringDecoder } from 'string_decoder';
+import https from 'node:https';
+import fs from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import logger from '../log/index.js';
 import * as storeContainer from '../store/container.js';
 import { emitContainerReport } from '../event/index.js';
@@ -20,9 +20,9 @@ export interface AgentClientConfig {
 export class AgentClient {
     public name: string;
     public config: AgentClientConfig;
-    private log: any;
-    private baseUrl: string;
-    private axiosOptions: AxiosRequestConfig;
+    private readonly log: any;
+    private readonly baseUrl: string;
+    private readonly axiosOptions: AxiosRequestConfig;
     public isConnected: boolean;
     private reconnectTimer: NodeJS.Timeout | null;
 
@@ -75,7 +75,7 @@ export class AgentClient {
 
         const containersToRemove = containersInStore.filter(
             (containerInStore) =>
-                !newContainers.find((c) => c.id === containerInStore.id),
+                !newContainers.some((c) => c.id === containerInStore.id),
         );
 
         containersToRemove.forEach((c) => {
@@ -161,11 +161,7 @@ export class AgentClient {
             changed: false,
         };
 
-        if (!existing) {
-            containerReport.container =
-                storeContainer.insertContainer(container);
-            containerReport.changed = true;
-        } else {
+        if (existing) {
             containerReport.container =
                 storeContainer.updateContainer(container);
             // existing is the old state (from store), container is new state (from Agent)
@@ -176,6 +172,10 @@ export class AgentClient {
                     existing.resultChanged(containerReport.container) &&
                     containerReport.container.updateAvailable;
             }
+        } else {
+            containerReport.container =
+                storeContainer.insertContainer(container);
+            containerReport.changed = true;
         }
 
         // Emit report so Triggers can fire if changed

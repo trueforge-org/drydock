@@ -681,7 +681,7 @@ class Trigger extends Component {
      * Trigger method. Must be overridden in trigger implementation class.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    trigger(containerWithResult: Container) {
+    async trigger(containerWithResult: Container) {
         // do nothing by default
         this.log.warn(
             'Cannot trigger container result; this trigger does not implement "simple" mode',
@@ -694,7 +694,7 @@ class Trigger extends Component {
      * @param containersWithResult
      * @returns {*}
      */
-    triggerBatch(containersWithResult: Container[]) {
+    async triggerBatch(containersWithResult: Container[]) {
         // do nothing by default
         this.log.warn(
             'Cannot trigger container results; this trigger does not implement "batch" mode',

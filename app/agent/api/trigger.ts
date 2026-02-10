@@ -20,7 +20,7 @@ export function getTriggers(req: Request, res: Response) {
  * Delegates to the common API handler but ensures no proxying happens.
  */
 export async function runTrigger(req: Request, res: Response) {
-    if (req.body && req.body.agent) {
+    if (req.body?.agent) {
         delete req.body.agent;
     }
     return triggerApi.runTrigger(req, res);

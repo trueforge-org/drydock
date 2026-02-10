@@ -1,5 +1,5 @@
 // @ts-nocheck
-import fs from 'fs';
+import fs from 'node:fs';
 import * as store from './index.js';
 
 // Mock dependencies
@@ -14,7 +14,7 @@ vi.mock('lokijs', () => ({
     }),
 }));
 
-vi.mock('fs', () => ({
+vi.mock('node:fs', () => ({
     default: { existsSync: vi.fn(), mkdirSync: vi.fn() },
 }));
 

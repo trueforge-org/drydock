@@ -17,9 +17,7 @@ export function getContainers(req: Request, res: Response) {
  */
 export function deleteContainer(req: Request, res: Response) {
     const serverConfiguration = getServerConfiguration();
-    if (!serverConfiguration.feature.delete) {
-        res.sendStatus(403);
-    } else {
+    if (serverConfiguration.feature.delete) {
         const { id } = req.params;
         const container = storeContainer.getContainer(id);
         if (container) {
@@ -28,5 +26,7 @@ export function deleteContainer(req: Request, res: Response) {
         } else {
             res.sendStatus(404);
         }
+    } else {
+        res.sendStatus(403);
     }
 }
