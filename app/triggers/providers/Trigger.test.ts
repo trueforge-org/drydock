@@ -982,6 +982,41 @@ test('renderSimpleBody should return empty for unsupported expression syntax', a
     ).toBe('Result: ');
 });
 
+test('renderSimpleBody should handle method call without closing paren', async () => {
+    trigger.configuration.simplebody = 'Result: ${name.substring(0, 5}';
+    expect(
+        trigger.renderSimpleBody({ name: 'hello world' }),
+    ).toBe('Result: ');
+});
+
+test('renderSimpleBody should handle method call with nested closing paren in args', async () => {
+    trigger.configuration.simplebody = 'Result: ${name.substring(0, foo())}';
+    expect(
+        trigger.renderSimpleBody({ name: 'hello world' }),
+    ).toBe('Result: ');
+});
+
+test('renderSimpleBody should handle method call with no dot before method', async () => {
+    trigger.configuration.simplebody = 'Result: ${substring(0, 5)}';
+    expect(
+        trigger.renderSimpleBody({ substring: 'test' }),
+    ).toBe('Result: ');
+});
+
+test('renderSimpleBody should handle invalid property path with leading dot', async () => {
+    trigger.configuration.simplebody = 'Result: ${.name}';
+    expect(
+        trigger.renderSimpleBody({ name: 'test' }),
+    ).toBe('Result: ');
+});
+
+test('renderSimpleBody should handle empty segments in property path', async () => {
+    trigger.configuration.simplebody = 'Result: ${name..value}';
+    expect(
+        trigger.renderSimpleBody({ name: { value: 'test' } }),
+    ).toBe('Result: ');
+});
+
 test('renderSimpleBody should handle templates with single-quoted strings in expressions', async () => {
     trigger.configuration.simplebody =
         "Container ${name} status is ${'running'}";

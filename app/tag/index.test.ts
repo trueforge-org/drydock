@@ -288,6 +288,11 @@ describe('transform', () => {
                 '1.2.3',
             );
         });
+
+        test('should return original tag when regex pattern exceeds max length', async () => {
+            const longPattern = 'a'.repeat(1025) + ' => $1';
+            expect(semver.transform(longPattern, '1.2.3')).toBe('1.2.3');
+        });
     });
 });
 
