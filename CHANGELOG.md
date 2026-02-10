@@ -41,6 +41,18 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 
 - **Auto-dismiss notifications after container update** — New `resolvenotifications` option for triggers (default: `false`). When enabled, notification triggers automatically delete the sent message after the Docker trigger successfully updates the container. Implemented for Gotify via its `deleteMessage` API. Other providers (Slack, Discord, ntfy) can add support by overriding the new `dismiss()` method on the base Trigger class. New `containerUpdateApplied` event emitted by the Docker trigger on successful update.
 
+### Bug Fixes
+
+- **Agent mode Prometheus crash** — Guard `getWatchContainerGauge().set()` against undefined in Agent mode where Prometheus is not initialized, fixing "Cannot read properties of undefined (reading 'set')" crash (#23)
+- **Sanitize version logging** — Sanitize version strings from env vars before logging to resolve CodeQL clear-text-logging alerts in `index.ts` and `store/migrate.ts`
+- **Broken event test assertion** — Fix `expect()` without matcher in event test
+
+### Infrastructure
+
+- **Multi-arch container images** — Docker images now built for both `linux/amd64` and `linux/arm64` architectures, published to GHCR
+- **Lefthook pre-push hooks** — Added lefthook config with pre-push checks (lint + build + test) and `npm run check` convenience script
+- **CodeQL query exclusion** — Exclude `js/clear-text-logging` query (false positives on DD_VERSION env var)
+
 ---
 
 ## 2026.1.0 (398 files changed)
