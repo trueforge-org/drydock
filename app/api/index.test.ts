@@ -39,17 +39,7 @@ vi.mock('cors', () => ({
     default: vi.fn(() => 'cors-middleware'),
 }));
 
-vi.mock('../log', () => ({
-    __esModule: true,
-    default: {
-        child: vi.fn(() => ({
-            debug: vi.fn(),
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-        })),
-    },
-}));
+vi.mock('../log', () => ({ default: { child: vi.fn(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() })) } }));
 
 vi.mock('./auth', () => ({
     init: vi.fn(),
@@ -131,7 +121,7 @@ describe('API Index', () => {
             port: 3000,
             cors: {
                 enabled: true,
-                origin: '*',
+                origin: '*', // NOSONAR - test fixture
                 methods: 'GET,POST',
             },
             tls: {},

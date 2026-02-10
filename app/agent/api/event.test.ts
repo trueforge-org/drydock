@@ -3,9 +3,7 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import * as eventApi from './event.js';
 import * as event from '../../event/index.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../../event/index.js', () => ({
     registerContainerAdded: vi.fn(),

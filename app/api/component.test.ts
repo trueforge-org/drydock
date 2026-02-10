@@ -1,15 +1,12 @@
 // @ts-nocheck
+import { createMockResponse } from '../test/helpers.js';
+
 const { mockRouter } = vi.hoisted(() => ({
-    mockRouter: {
-        use: vi.fn(),
-        get: vi.fn(),
-    },
+    mockRouter: { use: vi.fn(), get: vi.fn() },
 }));
 
 vi.mock('express', () => ({
-    default: {
-        Router: vi.fn(() => mockRouter),
-    },
+    default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('nocache', () => ({ default: vi.fn(() => 'nocache-middleware') }));
@@ -36,11 +33,7 @@ import * as registry from '../registry/index.js';
 import * as component from './component.js';
 
 function createResponse() {
-    return {
-        status: vi.fn().mockReturnThis(),
-        json: vi.fn(),
-        sendStatus: vi.fn(),
-    };
+    return createMockResponse();
 }
 
 describe('Component Router', () => {

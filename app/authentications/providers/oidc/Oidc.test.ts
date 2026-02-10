@@ -7,7 +7,7 @@ const app = express();
 
 const configurationValid = {
     clientid: '123465798',
-    clientsecret: 'secret',
+    clientsecret: 'secret', // NOSONAR - test fixture, not a real credential
     discovery: 'https://idp/.well-known/openid-configuration',
     redirect: false,
     timeout: 5000,
@@ -40,8 +40,8 @@ beforeEach(() => {
     oidc.client = new Configuration(
         { issuer: 'https://idp.example.com' },
         'dd-client',
-        'dd-secret',
-        ClientSecretPost('dd-secret'),
+        'dd-secret', // NOSONAR - test fixture, not a real credential
+        ClientSecretPost('dd-secret'), // NOSONAR - test fixture, not a real credential
     );
     oidc.name = '';
     oidc.log = {

@@ -181,7 +181,7 @@ describe('Docker Watcher', () => {
                     oidc: {
                         tokenurl: 'https://idp.example.com/oauth/token',
                         clientid: 'dd-client',
-                        clientsecret: 'super-secret',
+                        clientsecret: 'super-secret', // NOSONAR - test fixture, not a real credential
                         scope: 'docker.read',
                     },
                 },
@@ -237,7 +237,7 @@ describe('Docker Watcher', () => {
                 protocol: 'https',
                 auth: {
                     type: 'bearer',
-                    bearer: 'my-secret-token',
+                    bearer: 'my-secret-token', // NOSONAR - test fixture, not a real credential
                 },
             });
             expect(mockDockerode).toHaveBeenCalledWith({
@@ -245,7 +245,7 @@ describe('Docker Watcher', () => {
                 port: 443,
                 protocol: 'https',
                 headers: {
-                    Authorization: 'Bearer my-secret-token',
+                    Authorization: 'Bearer my-secret-token', // NOSONAR
                 },
             });
         });
@@ -258,7 +258,7 @@ describe('Docker Watcher', () => {
                 auth: {
                     type: 'basic',
                     user: 'john',
-                    password: 'doe',
+                    password: 'doe', // NOSONAR - test fixture, not a real credential
                 },
             });
             expect(mockDockerode).toHaveBeenCalledWith({
@@ -280,7 +280,7 @@ describe('Docker Watcher', () => {
                     type: 'oidc',
                     oidc: {
                         tokenurl: 'https://idp.example.com/oauth/token',
-                        accesstoken: 'seed-access-token',
+                        accesstoken: 'seed-access-token', // NOSONAR - test fixture
                         expiresin: 300,
                     },
                 },
@@ -302,7 +302,7 @@ describe('Docker Watcher', () => {
                 protocol: 'http',
                 auth: {
                     type: 'bearer',
-                    bearer: 'my-secret-token',
+                    bearer: 'my-secret-token', // NOSONAR - test fixture, not a real credential
                 },
             });
             expect(mockDockerode).toHaveBeenCalledWith({
@@ -395,7 +395,7 @@ describe('Docker Watcher', () => {
                     oidc: {
                         tokenurl: 'https://idp.example.com/oauth/token',
                         clientid: 'dd-client',
-                        clientsecret: 'dd-secret',
+                        clientsecret: 'dd-secret', // NOSONAR - test fixture, not a real credential
                         scope: 'docker.read',
                     },
                 },

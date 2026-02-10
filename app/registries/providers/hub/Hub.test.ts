@@ -48,7 +48,7 @@ describe('Docker Hub Registry', () => {
     });
 
     test('should mask configuration with token', async () => {
-        hub.configuration = { login: 'testuser', token: 'secret_token' };
+        hub.configuration = { login: 'testuser', token: 'secret_token' }; // NOSONAR - test fixture, not a real credential
         const masked = hub.maskConfiguration();
         expect(masked.login).toBe('testuser');
         expect(masked.token).toBe('s**********n');

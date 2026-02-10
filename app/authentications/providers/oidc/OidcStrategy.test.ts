@@ -6,8 +6,8 @@ import log from '../../../log/index.js';
 const oidcConfig = new Configuration(
     { issuer: 'https://idp.example.com' },
     'wud-client',
-    'wud-secret',
-    ClientSecretPost('wud-secret'),
+    'wud-secret', // NOSONAR - test fixture, not a real credential
+    ClientSecretPost('wud-secret'), // NOSONAR - test fixture
 );
 const oidcStrategy = new OidcStrategy(
     {

@@ -1,14 +1,12 @@
 // @ts-nocheck
+import { createMockResponse } from '../test/helpers.js';
+
 const { mockRouter } = vi.hoisted(() => ({
-    mockRouter: {
-        get: vi.fn(),
-    },
+    mockRouter: { get: vi.fn() },
 }));
 
 vi.mock('express', () => ({
-    default: {
-        Router: vi.fn(() => mockRouter),
-    },
+    default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('../agent', () => ({
@@ -19,9 +17,7 @@ import { getAgents } from '../agent/index.js';
 import * as agentRouter from './agent.js';
 
 function createResponse() {
-    return {
-        json: vi.fn(),
-    };
+    return createMockResponse();
 }
 
 describe('Agent Router', () => {

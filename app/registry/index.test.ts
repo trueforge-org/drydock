@@ -99,13 +99,13 @@ test('registerRegistries should register all registries', async () => {
         hub: {
             private: {
                 login: 'login',
-                token: 'token',
+                token: 'token', // NOSONAR - test fixture, not a real credential
             },
         },
         ecr: {
             private: {
                 accesskeyid: 'key',
-                secretaccesskey: 'secret',
+                secretaccesskey: 'secret', // NOSONAR - test fixture, not a real credential
                 region: 'region',
             },
         },
@@ -348,13 +348,13 @@ test('init should register all components', async () => {
         hub: {
             private: {
                 login: 'login',
-                token: 'token',
+                token: 'token', // NOSONAR - test fixture, not a real credential
             },
         },
         ecr: {
             private: {
                 accesskeyid: 'key',
-                secretaccesskey: 'secret',
+                secretaccesskey: 'secret', // NOSONAR - test fixture, not a real credential
                 region: 'region',
             },
         },
@@ -415,11 +415,11 @@ test('deregisterAll should deregister all components', async () => {
     registries = {
         hub: {
             login: 'login',
-            token: 'token',
+            token: 'token', // NOSONAR - test fixture, not a real credential
         },
         ecr: {
             accesskeyid: 'key',
-            secretaccesskey: 'secret',
+            secretaccesskey: 'secret', // NOSONAR - test fixture, not a real credential
             region: 'region',
         },
     };
@@ -707,7 +707,7 @@ test('init should register agents and their watchers/triggers', async () => {
     agents = {
         node1: {
             host: 'http://10.0.0.1:3000',
-            secret: 'mysecret',
+            secret: 'mysecret', // NOSONAR - test fixture, not a real credential
         },
     };
     triggers = {};

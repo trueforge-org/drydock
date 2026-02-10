@@ -17,7 +17,7 @@ vi.mock('@aws-sdk/client-ecr', () => ({
 const ecr = new Ecr();
 ecr.configuration = {
     accesskeyid: 'accesskeyid',
-    secretaccesskey: 'secretaccesskey',
+    secretaccesskey: 'secretaccesskey', // NOSONAR - test fixture, not a real credential
     region: 'region',
 };
 
@@ -27,12 +27,12 @@ test('validatedConfiguration should initialize when configuration is valid', asy
     expect(
         ecr.validateConfiguration({
             accesskeyid: 'accesskeyid',
-            secretaccesskey: 'secretaccesskey',
+            secretaccesskey: 'secretaccesskey', // NOSONAR - test fixture, not a real credential
             region: 'region',
         }),
     ).toStrictEqual({
         accesskeyid: 'accesskeyid',
-        secretaccesskey: 'secretaccesskey',
+        secretaccesskey: 'secretaccesskey', // NOSONAR - test fixture, not a real credential
         region: 'region',
     });
 });
@@ -40,7 +40,7 @@ test('validatedConfiguration should initialize when configuration is valid', asy
 test('validatedConfiguration should throw error when accessKey is missing', async () => {
     expect(() => {
         ecr.validateConfiguration({
-            secretaccesskey: 'secretaccesskey',
+            secretaccesskey: 'secretaccesskey', // NOSONAR - test fixture, not a real credential
             region: 'region',
         });
     }).toThrow('"accesskeyid" is required');
@@ -59,7 +59,7 @@ test('validatedConfiguration should throw error when secretaccesskey is missing'
     expect(() => {
         ecr.validateConfiguration({
             accesskeyid: 'accesskeyid',
-            secretaccesskey: 'secretaccesskey',
+            secretaccesskey: 'secretaccesskey', // NOSONAR - test fixture, not a real credential
         });
     }).toThrow('"region" is required');
 });

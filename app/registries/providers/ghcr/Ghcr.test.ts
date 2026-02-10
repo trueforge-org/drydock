@@ -39,7 +39,7 @@ describe('GitHub Container Registry', () => {
     });
 
     test('should mask configuration token', async () => {
-        ghcr.configuration = { username: 'testuser', token: 'secret_token' };
+        ghcr.configuration = { username: 'testuser', token: 'secret_token' }; // NOSONAR - test fixture, not a real credential
         const masked = ghcr.maskConfiguration();
         expect(masked.username).toBe('testuser');
         expect(masked.token).toBe('s**********n');

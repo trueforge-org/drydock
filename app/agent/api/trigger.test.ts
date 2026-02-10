@@ -4,9 +4,7 @@ import * as triggerApi from './trigger.js';
 import * as registry from '../../registry/index.js';
 import * as apiTrigger from '../../api/trigger.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../../registry/index.js', () => ({
     getState: vi.fn(),

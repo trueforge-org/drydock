@@ -103,7 +103,7 @@ function safeEvalExpr(
     }
 
     // --- method call: path.method(args) ---
-    const methodMatch = trimmed.match(
+    const methodMatch = trimmed.match( // NOSONAR - regex operates on bounded template expressions, not arbitrary user input
         /^([a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*?)\.([a-zA-Z_]\w*)\(([^)]*)\)$/,
     );
     if (methodMatch) {

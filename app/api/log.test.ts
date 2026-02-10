@@ -1,15 +1,12 @@
 // @ts-nocheck
+import { createMockResponse } from '../test/helpers.js';
+
 const { mockRouter } = vi.hoisted(() => ({
-    mockRouter: {
-        use: vi.fn(),
-        get: vi.fn(),
-    },
+    mockRouter: { use: vi.fn(), get: vi.fn() },
 }));
 
 vi.mock('express', () => ({
-    default: {
-        Router: vi.fn(() => mockRouter),
-    },
+    default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('nocache', () => ({ default: vi.fn(() => 'nocache-middleware') }));
@@ -22,10 +19,7 @@ import { getLogLevel } from '../configuration/index.js';
 import * as logRouter from './log.js';
 
 function createResponse() {
-    return {
-        status: vi.fn().mockReturnThis(),
-        json: vi.fn(),
-    };
+    return createMockResponse();
 }
 
 describe('Log Router', () => {

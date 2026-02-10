@@ -4,9 +4,7 @@ import * as watcherApi from './watcher.js';
 import * as registry from '../../registry/index.js';
 import * as storeContainer from '../../store/container.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../../registry/index.js', () => ({
     getState: vi.fn(),

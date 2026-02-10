@@ -1,16 +1,12 @@
 // @ts-nocheck
+import { createMockResponse } from '../test/helpers.js';
+
 const { mockRouter } = vi.hoisted(() => ({
-    mockRouter: {
-        use: vi.fn(),
-        get: vi.fn(),
-        post: vi.fn(),
-    },
+    mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
 }));
 
 vi.mock('express', () => ({
-    default: {
-        Router: vi.fn(() => mockRouter),
-    },
+    default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('nocache', () => ({ default: vi.fn(() => 'nocache-middleware') }));
@@ -29,16 +25,7 @@ vi.mock('../agent', () => ({
     getAgent: vi.fn(),
 }));
 
-vi.mock('../log', () => ({
-    __esModule: true,
-    default: {
-        child: vi.fn(() => ({
-            info: vi.fn(),
-            warn: vi.fn(),
-            debug: vi.fn(),
-        })),
-    },
-}));
+vi.mock('../log', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn() }) } }));
 
 import * as registry from '../registry/index.js';
 import * as agent from '../agent/index.js';
@@ -46,11 +33,7 @@ import { runTrigger } from './trigger.js';
 import * as triggerRouter from './trigger.js';
 
 function createResponse() {
-    return {
-        status: vi.fn().mockReturnThis(),
-        json: vi.fn(),
-        sendStatus: vi.fn(),
-    };
+    return createMockResponse();
 }
 
 describe('Trigger Router', () => {

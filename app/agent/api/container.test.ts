@@ -4,9 +4,7 @@ import * as containerApi from './container.js';
 import * as storeContainer from '../../store/container.js';
 import * as configuration from '../../configuration/index.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../../store/container.js', () => ({
     getContainers: vi.fn(),

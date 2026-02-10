@@ -3,9 +3,7 @@ import { describe, test, expect, beforeEach } from 'vitest';
 import AgentWatcher from './AgentWatcher.js';
 import * as manager from '../manager.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../manager.js', () => ({
     getAgent: vi.fn(),

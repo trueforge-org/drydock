@@ -1,16 +1,10 @@
 // @ts-nocheck
 const { mockRouter } = vi.hoisted(() => ({
-    mockRouter: {
-        use: vi.fn(),
-        get: vi.fn(),
-        post: vi.fn(),
-    },
+    mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
 }));
 
 vi.mock('express', () => ({
-    default: {
-        Router: vi.fn(() => mockRouter),
-    },
+    default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('express-session', () => ({
@@ -53,12 +47,7 @@ vi.mock('../registry', () => ({
     })),
 }));
 
-vi.mock('../log', () => ({
-    __esModule: true,
-    default: {
-        warn: vi.fn(),
-    },
-}));
+vi.mock('../log', () => ({ default: { warn: vi.fn() } }));
 
 vi.mock('../configuration', () => ({
     getVersion: vi.fn(() => '1.0.0'),

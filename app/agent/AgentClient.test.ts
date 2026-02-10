@@ -7,16 +7,7 @@ vi.mock('axios');
 vi.mock('node:fs', () => ({
     default: { readFileSync: vi.fn().mockReturnValue(Buffer.from('cert-data')) },
 }));
-vi.mock('../log/index.js', () => ({
-    default: {
-        child: () => ({
-            info: vi.fn(),
-            warn: vi.fn(),
-            error: vi.fn(),
-            debug: vi.fn(),
-        }),
-    },
-}));
+vi.mock('../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 vi.mock('../store/container.js', () => ({
     getContainers: vi.fn().mockReturnValue([]),
     getContainer: vi.fn(),
@@ -46,7 +37,7 @@ describe('AgentClient', () => {
         client = new AgentClient('test-agent', {
             host: 'localhost',
             port: 3001,
-            secret: 'test-secret',
+            secret: 'test-secret', // NOSONAR - test fixture, not a real credential
         });
     });
 

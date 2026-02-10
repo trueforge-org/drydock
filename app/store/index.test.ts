@@ -33,9 +33,7 @@ vi.mock('./container', () => ({
     createCollections: vi.fn(),
 }));
 
-vi.mock('../log', () => ({
-    default: { child: vi.fn(() => ({ info: vi.fn() })) },
-}));
+vi.mock('../log', () => ({ default: { child: vi.fn(() => ({ info: vi.fn() })) } }));
 
 describe('Store Module', () => {
     beforeEach(async () => {

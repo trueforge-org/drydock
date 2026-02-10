@@ -25,9 +25,7 @@ vi.mock('node:https', () => ({
     default: { createServer: vi.fn().mockReturnValue({ listen: vi.fn((port, cb) => cb && cb()) }) },
 }));
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 vi.mock('../../configuration/index.js', () => ({
     getServerConfiguration: () => mockServerConfig,
@@ -99,13 +97,13 @@ describe('Agent API index', () => {
         });
 
         test('should use DD_AGENT_SECRET env var', async () => {
-            process.env.DD_AGENT_SECRET = 'dd-secret';
+            process.env.DD_AGENT_SECRET = 'dd-secret'; // NOSONAR - test fixture, not a real credential
             await init();
             expect(mockApp.listen).toHaveBeenCalled();
         });
 
         test('should use WUD_AGENT_SECRET as fallback', async () => {
-            process.env.WUD_AGENT_SECRET = 'wud-secret';
+            process.env.WUD_AGENT_SECRET = 'wud-secret'; // NOSONAR - test fixture, not a real credential
             await init();
             expect(mockApp.listen).toHaveBeenCalled();
         });
@@ -113,7 +111,7 @@ describe('Agent API index', () => {
         test('should use DD_AGENT_SECRET_FILE env var', async () => {
             process.env.DD_AGENT_SECRET_FILE = '/tmp/secret';
             const fs = await import('node:fs');
-            fs.default.readFileSync.mockReturnValue('file-secret\n');
+            fs.default.readFileSync.mockReturnValue('file-secret\n'); // NOSONAR - test fixture, not a real credential
             await init();
             expect(mockApp.listen).toHaveBeenCalled();
         });
@@ -121,7 +119,7 @@ describe('Agent API index', () => {
         test('should use WUD_AGENT_SECRET_FILE as fallback', async () => {
             process.env.WUD_AGENT_SECRET_FILE = '/tmp/secret';
             const fs = await import('node:fs');
-            fs.default.readFileSync.mockReturnValue('file-secret\n');
+            fs.default.readFileSync.mockReturnValue('file-secret\n'); // NOSONAR - test fixture, not a real credential
             await init();
             expect(mockApp.listen).toHaveBeenCalled();
         });
@@ -136,18 +134,18 @@ describe('Agent API index', () => {
         });
 
         test('should enable cors when configured', async () => {
-            process.env.DD_AGENT_SECRET = 'secret';
+            process.env.DD_AGENT_SECRET = 'secret'; // NOSONAR - test fixture, not a real credential
             Object.assign(mockServerConfig, {
                 port: 3000,
                 tls: { enabled: false },
-                cors: { enabled: true, origin: '*', methods: 'GET' },
+                cors: { enabled: true, origin: '*', methods: 'GET' }, // NOSONAR - test fixture
             });
             await init();
             expect(mockApp.use).toHaveBeenCalled();
         });
 
         test('should start HTTPS server when TLS is enabled', async () => {
-            process.env.DD_AGENT_SECRET = 'secret';
+            process.env.DD_AGENT_SECRET = 'secret'; // NOSONAR - test fixture, not a real credential
             Object.assign(mockServerConfig, {
                 port: 3000,
                 tls: { enabled: true, key: '/key.pem', cert: '/cert.pem' },
@@ -161,10 +159,10 @@ describe('Agent API index', () => {
         });
 
         test('authenticate should pass with correct secret after init', async () => {
-            process.env.DD_AGENT_SECRET = 'correct-secret';
+            process.env.DD_AGENT_SECRET = 'correct-secret'; // NOSONAR - test fixture, not a real credential
             await init();
 
-            const req = { headers: { 'x-dd-agent-secret': 'correct-secret' }, ip: '127.0.0.1' };
+            const req = { headers: { 'x-dd-agent-secret': 'correct-secret' }, ip: '127.0.0.1' }; // NOSONAR
             const res = { status: vi.fn().mockReturnThis(), send: vi.fn() };
             const next = vi.fn();
             authenticate(req, res, next);
@@ -172,10 +170,10 @@ describe('Agent API index', () => {
         });
 
         test('authenticate should reject with wrong secret after init', async () => {
-            process.env.DD_AGENT_SECRET = 'correct-secret';
+            process.env.DD_AGENT_SECRET = 'correct-secret'; // NOSONAR - test fixture, not a real credential
             await init();
 
-            const req = { headers: { 'x-dd-agent-secret': 'wrong-secret' }, ip: '127.0.0.1' };
+            const req = { headers: { 'x-dd-agent-secret': 'wrong-secret' }, ip: '127.0.0.1' }; // NOSONAR
             const res = { status: vi.fn().mockReturnThis(), send: vi.fn() };
             const next = vi.fn();
             authenticate(req, res, next);

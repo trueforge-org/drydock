@@ -1,13 +1,7 @@
 // @ts-nocheck
 import { describe, test, expect, beforeEach } from 'vitest';
 
-vi.mock('../log/index.js', () => ({
-    default: {
-        child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
-        warn: vi.fn(),
-        info: vi.fn(),
-    },
-}));
+vi.mock('../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), warn: vi.fn(), info: vi.fn() } }));
 
 vi.mock('../registry/index.js', () => ({
     getState: vi.fn(),
@@ -42,11 +36,11 @@ describe('agent/index', () => {
             agent: {
                 'dd.agent1': {
                     name: 'agent1',
-                    configuration: { host: 'host1', port: 3001, secret: 'secret1' },
+                    configuration: { host: 'host1', port: 3001, secret: 'secret1' }, // NOSONAR - test fixture
                 },
                 'dd.agent2': {
                     name: 'agent2',
-                    configuration: { host: 'host2', port: 3002, secret: 'secret2' },
+                    configuration: { host: 'host2', port: 3002, secret: 'secret2' }, // NOSONAR - test fixture
                 },
             },
         });
@@ -62,7 +56,7 @@ describe('agent/index', () => {
             agent: {
                 'dd.agent1': {
                     name: 'agent1',
-                    configuration: { secret: 'secret1' },
+                    configuration: { secret: 'secret1' }, // NOSONAR - test fixture
                 },
             },
         });

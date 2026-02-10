@@ -2,9 +2,7 @@
 import { describe, test, expect } from 'vitest';
 import Agent from './Agent.js';
 
-vi.mock('../../log/index.js', () => ({
-    default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
-}));
+vi.mock('../../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
 
 describe('Agent component', () => {
     test('getConfigurationSchema should validate valid config', () => {
@@ -13,7 +11,7 @@ describe('Agent component', () => {
         const result = schema.validate({
             host: 'localhost',
             port: 3001,
-            secret: 'my-secret',
+            secret: 'my-secret', // NOSONAR - test fixture, not a real credential
         });
         expect(result.error).toBeUndefined();
         expect(result.value.host).toBe('localhost');
@@ -26,7 +24,7 @@ describe('Agent component', () => {
         const schema = agent.getConfigurationSchema();
         const result = schema.validate({
             host: 'localhost',
-            secret: 'my-secret',
+            secret: 'my-secret', // NOSONAR - test fixture, not a real credential
         });
         expect(result.error).toBeUndefined();
         expect(result.value.port).toBe(3000);
@@ -51,7 +49,7 @@ describe('Agent component', () => {
         const schema = agent.getConfigurationSchema();
         const result = schema.validate({
             host: 'localhost',
-            secret: 'my-secret',
+            secret: 'my-secret', // NOSONAR - test fixture, not a real credential
             cafile: '/path/to/ca.pem',
             certfile: '/path/to/cert.pem',
             keyfile: '/path/to/key.pem',
@@ -65,7 +63,7 @@ describe('Agent component', () => {
         agent.configuration = {
             host: 'localhost',
             port: 3000,
-            secret: 'supersecret',
+            secret: 'supersecret', // NOSONAR - test fixture, not a real credential
         };
         const masked = agent.maskConfiguration();
         expect(masked.host).toBe('localhost');
@@ -79,7 +77,7 @@ describe('Agent component', () => {
         const config = {
             host: 'myhost',
             port: 3000,
-            secret: 'abc123',
+            secret: 'abc123', // NOSONAR - test fixture, not a real credential
         };
         const masked = agent.maskConfiguration(config);
         expect(masked.host).toBe('myhost');
