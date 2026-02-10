@@ -706,7 +706,7 @@ test('registerTriggers should let explicit config override trigger group default
 test('init should register agents and their watchers/triggers', async () => {
     agents = {
         node1: {
-            host: 'http://10.0.0.1:3000',
+            host: 'http://10.0.0.1:3000', // NOSONAR - intentional http for test fixture
             secret: 'mysecret', // NOSONAR - test fixture, not a real credential
         },
     };

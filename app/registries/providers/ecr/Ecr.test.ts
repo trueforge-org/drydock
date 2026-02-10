@@ -136,7 +136,7 @@ test('authenticate should fetch public ECR gallery token for public images', asy
     );
     expect(result).toEqual({
         headers: {
-            Authorization: 'Bearer public-token-123',
+            Authorization: 'Bearer public-token-123', // NOSONAR - test fixture, not a real credential
         },
     });
 });

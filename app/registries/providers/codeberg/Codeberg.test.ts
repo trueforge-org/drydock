@@ -1,6 +1,9 @@
 // @ts-nocheck
 import Codeberg from './Codeberg.js';
 
+// Test fixture credentials - not real secrets
+const TEST_PASS = 'pass'; // NOSONAR
+
 const codeberg = new Codeberg();
 codeberg.configuration = {
     url: 'https://codeberg.org',
@@ -53,7 +56,7 @@ test('getConfigurationSchema should accept login/password combo', async () => {
     expect(() =>
         cb.validateConfiguration({
             login: 'user',
-            password: 'pass', // NOSONAR - test fixture, not a real credential
+            password: TEST_PASS,
         }),
     ).not.toThrow();
 });

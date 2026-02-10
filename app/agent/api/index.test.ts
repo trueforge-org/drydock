@@ -109,7 +109,7 @@ describe('Agent API index', () => {
         });
 
         test('should use DD_AGENT_SECRET_FILE env var', async () => {
-            process.env.DD_AGENT_SECRET_FILE = '/tmp/secret';
+            process.env.DD_AGENT_SECRET_FILE = '/opt/drydock/test/secret';
             const fs = await import('node:fs');
             fs.default.readFileSync.mockReturnValue('file-secret\n'); // NOSONAR - test fixture, not a real credential
             await init();
@@ -117,7 +117,7 @@ describe('Agent API index', () => {
         });
 
         test('should use WUD_AGENT_SECRET_FILE as fallback', async () => {
-            process.env.WUD_AGENT_SECRET_FILE = '/tmp/secret';
+            process.env.WUD_AGENT_SECRET_FILE = '/opt/drydock/test/secret';
             const fs = await import('node:fs');
             fs.default.readFileSync.mockReturnValue('file-secret\n'); // NOSONAR - test fixture, not a real credential
             await init();

@@ -76,8 +76,9 @@ describe('AgentClient', () => {
         });
 
         test('should handle host that already starts with http', () => {
+            // Intentionally using http:// to verify protocol-prefix detection logic
             const c = new AgentClient('a', {
-                host: 'http://myhost',
+                host: 'http://myhost', // NOSONAR - intentional http for branch coverage
                 port: 4000,
                 secret: 's', // NOSONAR - test fixture, not a real credential
             });
