@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import logger from '../log/index.js';
-import { resolveFromRuntimeRoot } from '../runtime/paths.js';
+import { resolveFromRuntimeRoot, resolveRuntimeRoot } from '../runtime/paths.js';
 const log = logger.child({ component: 'registry' });
 import {
     getWatcherConfigurations,
@@ -79,6 +79,11 @@ export function getState() {
 function getAvailableProviders(basePath: string) {
     try {
         const resolvedPath = resolveFromRuntimeRoot(basePath);
+        const runtimeRoot = resolveRuntimeRoot();
+        if (!resolvedPath.startsWith(runtimeRoot)) {
+            log.warn(`Path ${resolvedPath} is outside runtime root ${runtimeRoot}`);
+            return [];
+        }
         const providers = fs
             .readdirSync(resolvedPath)
             .filter((file) => {

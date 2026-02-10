@@ -357,15 +357,15 @@ class Oidc extends Authentication {
                     this.log.warn(
                         `Error when logging the user [${err.message}]`,
                     );
-                    res.status(401).send(err.message);
+                    res.status(401).json({ error: 'Authentication failed' });
                 } else {
                     this.log.debug('User authenticated => redirect to app');
-                    res.redirect(`${getPublicUrl(req)}`);
+                    res.redirect(getPublicUrl(req) || '/');
                 }
             });
         } catch (err) {
             this.log.warn(`Error when logging the user [${err.message}]`);
-            res.status(401).send(err.message);
+            res.status(401).json({ error: 'Authentication failed' });
         }
     }
 

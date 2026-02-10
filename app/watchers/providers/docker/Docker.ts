@@ -88,6 +88,19 @@ function getLabel(labels: Record<string, string>, ddKey: string, wudKey?: string
     return labels[ddKey] ?? (wudKey ? labels[wudKey] : undefined);
 }
 
+/**
+ * Safely compile a user-supplied regex pattern.
+ * Returns null (and logs a warning) when the pattern is invalid.
+ */
+function safeRegExp(pattern: string, logger: any): RegExp | null {
+    try {
+        return new RegExp(pattern);
+    } catch (e: any) {
+        logger.warn(`Invalid regex pattern "${pattern}": ${e.message}`);
+        return null;
+    }
+}
+
 // The delay before starting the watcher when the app is started
 const START_WATCHER_DELAY_MS = 1000;
 
@@ -171,18 +184,20 @@ function getTagCandidates(
 
     // Match include tag regex
     if (container.includeTags) {
-        const includeTagsRegex = new RegExp(container.includeTags);
-        filteredTags = filteredTags.filter((tag) => includeTagsRegex.test(tag));
-        // If current semver tag falls outside include filter, still attempt to
-        // move toward the include-filtered semver stream.
-        if (
-            container.image.tag.semver &&
-            !includeTagsRegex.test(container.image.tag.value)
-        ) {
-            logContainer.warn(
-                `Current tag "${container.image.tag.value}" does not match includeTags regex "${container.includeTags}". Trying best-effort semver upgrade within filtered tags.`,
-            );
-            allowIncludeFilterRecovery = true;
+        const includeTagsRegex = safeRegExp(container.includeTags, logContainer);
+        if (includeTagsRegex) {
+            filteredTags = filteredTags.filter((tag) => includeTagsRegex.test(tag));
+            // If current semver tag falls outside include filter, still attempt to
+            // move toward the include-filtered semver stream.
+            if (
+                container.image.tag.semver &&
+                !includeTagsRegex.test(container.image.tag.value)
+            ) {
+                logContainer.warn(
+                    `Current tag "${container.image.tag.value}" does not match includeTags regex "${container.includeTags}". Trying best-effort semver upgrade within filtered tags.`,
+                );
+                allowIncludeFilterRecovery = true;
+            }
         }
     } else {
         // If no includeTags, filter out tags starting with "sha"
@@ -191,10 +206,12 @@ function getTagCandidates(
 
     // Match exclude tag regex
     if (container.excludeTags) {
-        const excludeTagsRegex = new RegExp(container.excludeTags);
-        filteredTags = filteredTags.filter(
-            (tag) => !excludeTagsRegex.test(tag),
-        );
+        const excludeTagsRegex = safeRegExp(container.excludeTags, logContainer);
+        if (excludeTagsRegex) {
+            filteredTags = filteredTags.filter(
+                (tag) => !excludeTagsRegex.test(tag),
+            );
+        }
     }
 
     // Always filter out tags ending with ".sig"

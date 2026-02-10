@@ -8,13 +8,14 @@ import { resolveUiDirectory } from '../runtime/paths.js';
  * @returns {*|Router}
  */
 export function init() {
-    const uiDirectory = resolveUiDirectory();
+    const uiDirectory = path.resolve(resolveUiDirectory());
     const router = express.Router();
     router.use(express.static(uiDirectory));
 
     // Redirect all 404 to index.html (for vue history mode)
+    const indexFile = path.resolve(path.join(uiDirectory, 'index.html'));
     router.get('/{*path}', (req, res) => {
-        res.sendFile(path.join(uiDirectory, 'index.html'));
+        res.sendFile(indexFile);
     });
     return router;
 }

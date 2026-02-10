@@ -197,6 +197,15 @@ export function getPublicUrl(req) {
     if (publicUrl) {
         return publicUrl;
     }
-    // Try to guess from request
-    return `${req.protocol}://${req.hostname}`;
+    // Try to guess from request, with validation to prevent open redirect
+    try {
+        const candidate = `${req.protocol}://${req.hostname}`;
+        const parsed = new URL(candidate);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+            return candidate;
+        }
+        return '/';
+    } catch {
+        return '/';
+    }
 }
