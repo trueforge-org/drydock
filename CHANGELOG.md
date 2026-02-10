@@ -7,6 +7,20 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 
 ---
 
+## 1.0.1
+
+### Bug Fixes
+
+- **Prometheus gauge crash in agent mode** — `getWatchContainerGauge()` returns `undefined` in agent mode since Prometheus is not initialized. Added optional chaining so the `.set()` call is safely skipped. This was the root cause of containers not being discovered in agent mode. (Fixes #23, #31)
+
+### Infrastructure
+
+- **su-exec privilege dropping** — Entrypoint detects the docker socket GID and drops from root to the `node` user via `su-exec` when possible. Stays root only for GID 0 sockets (Docker Desktop / OrbStack). (Refs #25)
+- **tini init system** — Added `tini` as PID 1 for proper signal forwarding to the Node process.
+- **Graceful shutdown** — `SIGINT`/`SIGTERM` handlers now call `process.exit()` after cleanup so the container actually stops.
+
+---
+
 ## 1.0.0
 
 First semver release. Drydock adopts semantic versioning starting with this release, replacing the previous CalVer (YYYY.MM.PATCH) scheme.
