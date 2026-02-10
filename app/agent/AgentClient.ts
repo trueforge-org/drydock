@@ -283,7 +283,7 @@ export class AgentClient {
                 )})`,
             );
             await axios.post(
-                `${this.baseUrl}/api/triggers/${triggerType}/${triggerName}`,
+                `${this.baseUrl}/api/triggers/${encodeURIComponent(triggerType)}/${encodeURIComponent(triggerName)}`,
                 container,
                 this.axiosOptions,
             );
@@ -300,7 +300,7 @@ export class AgentClient {
     ) {
         try {
             await axios.post(
-                `${this.baseUrl}/api/triggers/${triggerType}/${triggerName}/batch`,
+                `${this.baseUrl}/api/triggers/${encodeURIComponent(triggerType)}/${encodeURIComponent(triggerName)}/batch`,
                 containers,
                 this.axiosOptions,
             );
@@ -314,7 +314,7 @@ export class AgentClient {
         try {
             this.log.debug(`Deleting container ${containerId} on agent`);
             await axios.delete(
-                `${this.baseUrl}/api/containers/${containerId}`,
+                `${this.baseUrl}/api/containers/${encodeURIComponent(containerId)}`,
                 this.axiosOptions,
             );
         } catch (e: any) {
@@ -326,7 +326,7 @@ export class AgentClient {
     async watch(watcherType: string, watcherName: string) {
         try {
             const response = await axios.post<ContainerReport[]>(
-                `${this.baseUrl}/api/watchers/${watcherType}/${watcherName}`,
+                `${this.baseUrl}/api/watchers/${encodeURIComponent(watcherType)}/${encodeURIComponent(watcherName)}`,
                 {},
                 this.axiosOptions,
             );
@@ -350,7 +350,7 @@ export class AgentClient {
     ) {
         try {
             const response = await axios.post<ContainerReport>(
-                `${this.baseUrl}/api/watchers/${watcherType}/${watcherName}/container/${container.id}`,
+                `${this.baseUrl}/api/watchers/${encodeURIComponent(watcherType)}/${encodeURIComponent(watcherName)}/container/${encodeURIComponent(container.id)}`,
                 {},
                 this.axiosOptions,
             );

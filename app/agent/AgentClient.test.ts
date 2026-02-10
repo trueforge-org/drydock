@@ -57,7 +57,7 @@ describe('AgentClient', () => {
             const c = new AgentClient('a', {
                 host: 'myhost',
                 port: 4000,
-                secret: 's',
+                secret: 's', // NOSONAR - test fixture, not a real credential
             });
             // host does not start with http, so it prepends http://
             expect(c).toBeDefined();
@@ -67,7 +67,7 @@ describe('AgentClient', () => {
             const c = new AgentClient('a', {
                 host: 'myhost',
                 port: 4000,
-                secret: 's',
+                secret: 's', // NOSONAR - test fixture, not a real credential
                 certfile: '/path/to/cert.pem',
                 keyfile: '/path/to/key.pem',
                 cafile: '/path/to/ca.pem',
@@ -79,7 +79,7 @@ describe('AgentClient', () => {
             const c = new AgentClient('a', {
                 host: 'http://myhost',
                 port: 4000,
-                secret: 's',
+                secret: 's', // NOSONAR - test fixture, not a real credential
             });
             expect(c).toBeDefined();
         });
@@ -88,7 +88,7 @@ describe('AgentClient', () => {
             const c = new AgentClient('a', {
                 host: 'myhost',
                 port: 0,
-                secret: 's',
+                secret: 's', // NOSONAR - test fixture, not a real credential
             });
             expect(c).toBeDefined();
         });
@@ -97,7 +97,7 @@ describe('AgentClient', () => {
             const c = new AgentClient('a', {
                 host: 'myhost',
                 port: 4000,
-                secret: 's',
+                secret: 's', // NOSONAR - test fixture, not a real credential
                 certfile: '/path/to/cert.pem',
             });
             expect(c).toBeDefined();
@@ -452,6 +452,15 @@ describe('AgentClient', () => {
                 client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update'),
             ).rejects.toThrow('trigger failed');
         });
+
+        test('should encode path segments to prevent SSRF', async () => {
+            axios.post.mockResolvedValue({ data: {} });
+            await client.runRemoteTrigger({ id: 'c1' }, '../admin', '../../etc/passwd');
+            const url = axios.post.mock.calls[0][0];
+            expect(url).not.toContain('/../');
+            expect(url).toContain(encodeURIComponent('../admin'));
+            expect(url).toContain(encodeURIComponent('../../etc/passwd'));
+        });
     });
 
     describe('runRemoteTriggerBatch', () => {
@@ -489,6 +498,14 @@ describe('AgentClient', () => {
             await expect(client.deleteContainer('c1')).rejects.toThrow(
                 'delete failed',
             );
+        });
+
+        test('should encode containerId to prevent SSRF', async () => {
+            axios.delete.mockResolvedValue({ data: {} });
+            await client.deleteContainer('../../etc/passwd');
+            const url = axios.delete.mock.calls[0][0];
+            expect(url).not.toContain('/../');
+            expect(url).toContain(encodeURIComponent('../../etc/passwd'));
         });
     });
 
