@@ -1,8 +1,8 @@
-import Component, { ComponentConfiguration } from '../../registry/Component.js';
+import Component, { type ComponentConfiguration } from '../../registry/Component.js';
 import * as event from '../../event/index.js';
 import { registerContainerUpdateApplied } from '../../event/index.js';
 import { getTriggerCounter } from '../../prometheus/trigger.js';
-import { fullName, Container } from '../../model/container.js';
+import { fullName, type Container } from '../../model/container.js';
 
 export interface TriggerConfiguration extends ComponentConfiguration {
     auto?: boolean;

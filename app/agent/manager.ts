@@ -1,4 +1,4 @@
-import { AgentClient } from './AgentClient.js';
+import type { AgentClient } from './AgentClient.js';
 
 const clients: AgentClient[] = [];
 

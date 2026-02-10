@@ -3151,18 +3151,13 @@ describe('Docker Watcher', () => {
 
     describe('Additional Coverage - device code flow timeout', () => {
         test('should throw when polling times out', async () => {
-            mockDockerApi.listContainers.mockResolvedValue([]);
-            mockAxios.post.mockImplementation((url) => {
-                if (url === 'https://idp.example.com/oauth/device/code') {
-                    return Promise.resolve({
-                        data: createDeviceCodeResponse({ expires_in: 0 }),
-                    });
-                }
-                return Promise.reject({ response: { data: { error: 'authorization_pending' } } });
-            });
             await docker.register('watcher', 'docker', 'test', createDeviceFlowConfig());
+            // Directly call pollDeviceCodeToken with a very short timeout so it exits immediately
             docker.sleep = vi.fn().mockResolvedValue(undefined);
-            await expect(docker.getContainers()).rejects.toThrow('polling timed out');
+            mockAxios.post.mockRejectedValue({ response: { data: { error: 'authorization_pending' } } });
+            await expect(
+                docker.pollDeviceCodeToken('https://idp.example.com/oauth/token', 'device-code', 'client', undefined, undefined, 1, 0),
+            ).rejects.toThrow('polling timed out');
         });
     });
 
@@ -3224,11 +3219,11 @@ describe('Docker Watcher', () => {
 
     describe('Additional Coverage - getMatchingImgsetConfiguration with no image pattern', () => {
         test('should skip imgset entries without image/match key', async () => {
-            await docker.register('watcher', 'docker', 'test', {
-                imgset: {
-                    noimage: { display: { name: 'No Image Entry' } },
-                },
-            });
+            await docker.register('watcher', 'docker', 'test', {});
+            // Set imgset directly to bypass Joi validation requiring image field
+            docker.configuration.imgset = {
+                noimage: { display: { name: 'No Image Entry' } },
+            };
             const result = docker.getMatchingImgsetConfiguration({ path: 'library/nginx', domain: 'docker.io' });
             expect(result).toBeUndefined();
         });
@@ -3386,7 +3381,7 @@ describe('isDigestToWatch Logic', () => {
 
         const containerModule = await import('../../../model/container.js');
         const validateContainer = containerModule.validate;
-        // @ts-ignore
+        // @ts-expect-error
         validateContainer.mockImplementation((c) => c);
 
         return container;

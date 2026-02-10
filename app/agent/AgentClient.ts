@@ -1,11 +1,11 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import https from 'node:https';
 import fs from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 import logger from '../log/index.js';
 import * as storeContainer from '../store/container.js';
 import { emitContainerReport } from '../event/index.js';
-import { Container, ContainerReport } from '../model/container.js';
+import type { Container, ContainerReport } from '../model/container.js';
 import * as registry from '../registry/index.js';
 
 export interface AgentClientConfig {

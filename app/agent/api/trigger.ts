@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import * as registry from '../../registry/index.js';
 import { mapComponentsToList } from '../../api/component.js';
 import * as triggerApi from '../../api/trigger.js';

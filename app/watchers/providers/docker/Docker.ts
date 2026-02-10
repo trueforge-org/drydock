@@ -48,13 +48,13 @@ import log from '../../../log/index.js';
 import {
     validate as validateContainer,
     fullName,
-    Container,
-    ContainerImage,
+    type Container,
+    type ContainerImage,
 } from '../../../model/container.js';
 import * as registry from '../../../registry/index.js';
 import { getWatchContainerGauge } from '../../../prometheus/watcher.js';
 import Watcher from '../../Watcher.js';
-import { ComponentConfiguration } from '../../../registry/Component.js';
+import type { ComponentConfiguration } from '../../../registry/Component.js';
 
 export interface DockerWatcherConfiguration extends ComponentConfiguration {
     socket: string;

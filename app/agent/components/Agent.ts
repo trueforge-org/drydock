@@ -1,5 +1,5 @@
-import Component, { ComponentConfiguration } from '../../registry/Component.js';
-import joi from 'joi';
+import Component, { type ComponentConfiguration } from '../../registry/Component.js';
+import type joi from 'joi';
 
 export default class Agent extends Component {
     /**

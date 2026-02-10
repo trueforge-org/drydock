@@ -40,7 +40,7 @@ export function insertContainer(container) {
  * @param container
  */
 export function updateContainer(container) {
-    const hasUpdatePolicy = Object.prototype.hasOwnProperty.call(
+    const hasUpdatePolicy = Object.hasOwn(
         container,
         'updatePolicy',
     );
