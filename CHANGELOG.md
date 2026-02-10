@@ -7,6 +7,14 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 
 ---
 
+## Unreleased
+
+### Features
+
+- **Auto-dismiss notifications after container update** — New `resolvenotifications` option for triggers (default: `false`). When enabled, notification triggers automatically delete the sent message after the Docker trigger successfully updates the container. Implemented for Gotify via its `deleteMessage` API. Other providers (Slack, Discord, ntfy) can add support by overriding the new `dismiss()` method on the base Trigger class. New `containerUpdateApplied` event emitted by the Docker trigger on successful update.
+
+---
+
 ## 9.0.0-ce (398 files changed)
 
 ### Architecture / Tooling
