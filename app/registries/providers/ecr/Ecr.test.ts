@@ -122,3 +122,48 @@ test('getAuthPull should return decoded ECR credentials', async () => {
         password: 'xxxx',
     });
 });
+
+test('authenticate should fetch public ECR gallery token for public images', async () => {
+    const { default: axios } = await import('axios');
+    axios.mockResolvedValueOnce({ data: { token: 'public-token-123' } });
+
+    const ecrPublic = new Ecr();
+    ecrPublic.configuration = {};
+
+    const result = await ecrPublic.authenticate(
+        { registry: { url: 'https://public.ecr.aws/v2' } },
+        { headers: {} },
+    );
+    expect(result).toEqual({
+        headers: {
+            Authorization: 'Bearer public-token-123',
+        },
+    });
+});
+
+test('authenticate should return unchanged options when neither private nor public ECR', async () => {
+    const ecrAnon = new Ecr();
+    ecrAnon.configuration = {};
+
+    const result = await ecrAnon.authenticate(
+        { registry: { url: 'https://some-other-registry.com/v2' } },
+        { headers: {} },
+    );
+    expect(result).toEqual({ headers: {} });
+});
+
+test('getAuthPull should return undefined when no accesskeyid configured', async () => {
+    const ecrAnon = new Ecr();
+    ecrAnon.configuration = {};
+    await expect(ecrAnon.getAuthPull()).resolves.toBeUndefined();
+});
+
+test('match should return true for public ECR gallery', async () => {
+    expect(
+        ecr.match({
+            registry: {
+                url: 'public.ecr.aws',
+            },
+        }),
+    ).toBeTruthy();
+});

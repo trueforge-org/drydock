@@ -188,3 +188,86 @@ test('triggerBatch should send batch notification', async () => {
         title: '2 updates available',
     });
 });
+
+test('sendMessage should include retry and expire when priority is 2', async () => {
+    pushover.configuration = {
+        ...configurationValid,
+        priority: 2,
+        retry: 60,
+        expire: 3600,
+    };
+    const result = await pushover.sendMessage({
+        title: 'Emergency',
+        message: 'Urgent update',
+    });
+    expect(result).toStrictEqual({
+        title: 'Emergency',
+        message: 'Urgent update',
+        sound: 'pushover',
+        device: undefined,
+        priority: 2,
+        html: 0,
+        retry: 60,
+        expire: 3600,
+    });
+});
+
+test('sendMessage should include ttl when configured', async () => {
+    pushover.configuration = {
+        ...configurationValid,
+        ttl: 300,
+    };
+    const result = await pushover.sendMessage({
+        title: 'TTL Test',
+        message: 'Message with TTL',
+    });
+    expect(result).toStrictEqual({
+        title: 'TTL Test',
+        message: 'Message with TTL',
+        sound: 'pushover',
+        device: undefined,
+        priority: 0,
+        html: 0,
+        ttl: 300,
+    });
+});
+
+test('sendMessage should reject when push.onerror is called', async () => {
+    // Override mock to simulate onerror
+    vi.resetModules();
+    vi.doMock('pushover-notifications', () => ({
+        default: class Push {
+            set onerror(fn) {
+                this._onerror = fn;
+            }
+            send(_message, _cb) {
+                // Simulate an error via onerror
+                this._onerror('connection failed');
+            }
+        },
+    }));
+    const { default: PushoverFresh } = await import('./Pushover.js');
+    const po = new PushoverFresh();
+    po.configuration = { ...configurationValid };
+    await expect(
+        po.sendMessage({ title: 'Test', message: 'test' }),
+    ).rejects.toThrow('connection failed');
+});
+
+test('sendMessage should reject when send callback has error', async () => {
+    vi.resetModules();
+    vi.doMock('pushover-notifications', () => ({
+        default: class Push {
+            set onerror(_fn) {}
+            send(_message, cb) {
+                cb('send error', null);
+            }
+        },
+    }));
+    const { default: PushoverFresh } = await import('./Pushover.js');
+    const po = new PushoverFresh();
+    po.configuration = { ...configurationValid };
+    await expect(
+        po.sendMessage({ title: 'Test', message: 'test' }),
+    ).rejects.toThrow('send error');
+});

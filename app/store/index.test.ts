@@ -91,4 +91,103 @@ describe('Store Module', () => {
             'Database load failed',
         );
     });
+
+    test('should initialize store in memory mode', async () => {
+        vi.resetModules();
+
+        vi.doMock('lokijs', () => ({
+            default: vi.fn().mockImplementation(function () {
+                return {
+                    loadDatabase: vi.fn(),
+                };
+            }),
+        }));
+
+        vi.doMock('node:fs', () => ({
+            default: { existsSync: vi.fn(), mkdirSync: vi.fn(), renameSync: vi.fn() },
+        }));
+
+        vi.doMock('../configuration', () => ({
+            getStoreConfiguration: vi.fn(() => ({
+                path: '/test/store',
+                file: 'test.json',
+            })),
+        }));
+
+        vi.doMock('./app', () => ({
+            createCollections: vi.fn(),
+        }));
+
+        vi.doMock('./container', () => ({
+            createCollections: vi.fn(),
+        }));
+
+        vi.doMock('../log', () => ({
+            default: { child: vi.fn(() => ({ info: vi.fn() })) },
+        }));
+
+        const storeMemory = await import('./index.js');
+        await storeMemory.init({ memory: true });
+
+        const app = await import('./app.js');
+        const container = await import('./container.js');
+        expect(app.createCollections).toHaveBeenCalled();
+        expect(container.createCollections).toHaveBeenCalled();
+    });
+
+    test('should migrate from wud.json when dd.json does not exist', async () => {
+        vi.resetModules();
+
+        vi.doMock('lokijs', () => ({
+            default: vi.fn().mockImplementation(function () {
+                return {
+                    loadDatabase: vi.fn((options, callback) => {
+                        callback(null);
+                    }),
+                };
+            }),
+        }));
+
+        const mockFs = {
+            existsSync: vi.fn((path) => {
+                if (path === '/test/store/test.json') return false;
+                if (path === '/test/store/wud.json') return true;
+                if (path === '/test/store') return true;
+                return false;
+            }),
+            mkdirSync: vi.fn(),
+            renameSync: vi.fn(),
+        };
+
+        vi.doMock('node:fs', () => ({
+            default: mockFs,
+        }));
+
+        vi.doMock('../configuration', () => ({
+            getStoreConfiguration: vi.fn(() => ({
+                path: '/test/store',
+                file: 'test.json',
+            })),
+        }));
+
+        vi.doMock('./app', () => ({
+            createCollections: vi.fn(),
+        }));
+
+        vi.doMock('./container', () => ({
+            createCollections: vi.fn(),
+        }));
+
+        vi.doMock('../log', () => ({
+            default: { child: vi.fn(() => ({ info: vi.fn() })) },
+        }));
+
+        const storeMigrate = await import('./index.js');
+        await storeMigrate.init();
+
+        expect(mockFs.renameSync).toHaveBeenCalledWith(
+            '/test/store/wud.json',
+            '/test/store/test.json',
+        );
+    });
 });

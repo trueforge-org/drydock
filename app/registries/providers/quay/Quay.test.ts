@@ -143,3 +143,89 @@ test('authenticate should not populate header with base64 bearer when anonymous'
         headers: {},
     });
 });
+
+test('authenticate should log warning when axios throws an error', async () => {
+    axios.mockImplementationOnce(() => {
+        throw new Error('Network error');
+    });
+    const quayInstance = new Quay();
+    quayInstance.configuration = {
+        namespace: 'namespace',
+        account: 'account',
+        token: 'token',
+    };
+    quayInstance.log = { warn: vi.fn() };
+    const result = await quayInstance.authenticate(
+        { name: 'test/image' },
+        { headers: {} },
+    );
+    expect(quayInstance.log.warn).toHaveBeenCalledWith(
+        'Error when trying to get an access token (Network error)',
+    );
+    // Token is undefined so no Authorization header should be set
+    expect(result).toEqual({ headers: {} });
+});
+
+test('getTagsPage should call registry with default pagination', async () => {
+    const quayInstance = new Quay();
+    quayInstance.configuration = {};
+    quayInstance.callRegistry = vi.fn().mockResolvedValue({ data: { tags: [] } });
+    await quayInstance.getTagsPage(
+        { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        undefined,
+        undefined,
+    );
+    expect(quayInstance.callRegistry).toHaveBeenCalledWith({
+        image: { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        url: 'https://quay.io/v2/test/image/tags/list?n=1000',
+        resolveWithFullResponse: true,
+    });
+});
+
+test('getTagsPage should handle link with next_page parameter', async () => {
+    const quayInstance = new Quay();
+    quayInstance.configuration = {};
+    quayInstance.callRegistry = vi.fn().mockResolvedValue({ data: { tags: [] } });
+    await quayInstance.getTagsPage(
+        { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        'sometag',
+        '/v2/test/image/tags/list?next_page=abc123',
+    );
+    expect(quayInstance.callRegistry).toHaveBeenCalledWith({
+        image: { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        url: 'https://quay.io/v2/test/image/tags/list?n=1000&next_page=abc123',
+        resolveWithFullResponse: true,
+    });
+});
+
+test('getTagsPage should handle link with last parameter', async () => {
+    const quayInstance = new Quay();
+    quayInstance.configuration = {};
+    quayInstance.callRegistry = vi.fn().mockResolvedValue({ data: { tags: [] } });
+    await quayInstance.getTagsPage(
+        { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        'sometag',
+        '</v2/test/image/tags/list?last=xyz789>; rel="next"',
+    );
+    expect(quayInstance.callRegistry).toHaveBeenCalledWith({
+        image: { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        url: 'https://quay.io/v2/test/image/tags/list?n=1000&last=xyz789',
+        resolveWithFullResponse: true,
+    });
+});
+
+test('getTagsPage should handle link with no matching pattern', async () => {
+    const quayInstance = new Quay();
+    quayInstance.configuration = {};
+    quayInstance.callRegistry = vi.fn().mockResolvedValue({ data: { tags: [] } });
+    await quayInstance.getTagsPage(
+        { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        'sometag',
+        'some-unrecognized-link-format',
+    );
+    expect(quayInstance.callRegistry).toHaveBeenCalledWith({
+        image: { name: 'test/image', registry: { url: 'https://quay.io/v2' } },
+        url: 'https://quay.io/v2/test/image/tags/list?n=1000',
+        resolveWithFullResponse: true,
+    });
+});

@@ -1,5 +1,13 @@
 // @ts-nocheck
 import joi from 'joi';
+import axios from 'axios';
+
+vi.mock('axios', () => ({
+    default: {
+        post: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    },
+}));
+
 import Telegram from './Telegram.js';
 
 const telegram = new Telegram();
@@ -131,4 +139,64 @@ test('triggerBatch should send batch notification', async () => {
     expect(telegram.sendMessage).toHaveBeenCalledWith(
         '*2 updates available*\n\n- Container container1 running with tag 1.0.0 can be updated to tag 2.0.0\n\n- Container container2 running with tag 1.1.0 can be updated to tag 2.1.0\n',
     );
+});
+
+test('initTrigger should set apiUrl from bottoken', async () => {
+    telegram.configuration = { ...configurationValid };
+    await telegram.initTrigger();
+    expect(telegram.apiUrl).toBe('https://api.telegram.org/bottoken');
+});
+
+test('triggerBatch with disabletitle should send body only', async () => {
+    telegram.configuration = {
+        ...configurationValid,
+        disabletitle: true,
+    };
+    telegram.sendMessage = vi.fn();
+    const containers = [
+        {
+            name: 'container1',
+            updateKind: {
+                kind: 'tag',
+                localValue: '1.0.0',
+                remoteValue: '2.0.0',
+            },
+        },
+    ];
+    await telegram.triggerBatch(containers);
+    expect(telegram.sendMessage).toHaveBeenCalled();
+    const callArg = telegram.sendMessage.mock.calls[0][0];
+    // Should not contain bold markers since title is disabled
+    expect(callArg).not.toMatch(/^\*/);
+});
+
+test('sendMessage should post to telegram API and return data', async () => {
+    // Create a fresh Telegram instance to avoid interference from resetAllMocks
+    const tg = new Telegram();
+    tg.configuration = { ...configurationValid };
+    await tg.initTrigger();
+
+    // Set up mock after resetAllMocks has cleared it
+    axios.post.mockResolvedValue({ data: { ok: true } });
+
+    const result = await tg.sendMessage('Hello');
+    expect(axios.post).toHaveBeenCalledWith(
+        'https://api.telegram.org/bottoken/sendMessage',
+        {
+            chat_id: '123456789',
+            text: 'Hello',
+            parse_mode: 'MarkdownV2',
+        },
+    );
+    expect(result).toEqual({ ok: true });
+});
+
+test('getParseMode should return HTML when messageformat is HTML', () => {
+    telegram.configuration = { ...configurationValid, messageformat: 'HTML' };
+    expect(telegram.getParseMode()).toBe('HTML');
+});
+
+test('getParseMode should return MarkdownV2 when messageformat is Markdown', () => {
+    telegram.configuration = { ...configurationValid, messageformat: 'Markdown' };
+    expect(telegram.getParseMode()).toBe('MarkdownV2');
 });

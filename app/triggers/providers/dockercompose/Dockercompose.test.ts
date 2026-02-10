@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { EventEmitter } from 'node:events';
+import fs from 'node:fs/promises';
 import Docker from '../docker/Docker.js';
 import Dockercompose from './Dockercompose.js';
 import { getState } from '../../../registry/index.js';
@@ -7,6 +8,24 @@ import { getState } from '../../../registry/index.js';
 vi.mock('../../../registry', () => ({
     getState: vi.fn(),
 }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        default: {
+            ...actual.default,
+            access: vi.fn().mockResolvedValue(undefined),
+            copyFile: vi.fn().mockResolvedValue(undefined),
+            readFile: vi.fn().mockResolvedValue(Buffer.from('')),
+            writeFile: vi.fn().mockResolvedValue(undefined),
+        },
+        access: vi.fn().mockResolvedValue(undefined),
+        copyFile: vi.fn().mockResolvedValue(undefined),
+        readFile: vi.fn().mockResolvedValue(Buffer.from('')),
+        writeFile: vi.fn().mockResolvedValue(undefined),
+    };
+});
 
 describe('Dockercompose Trigger', () => {
     let trigger;
@@ -363,6 +382,680 @@ describe('Dockercompose Trigger', () => {
         expect(recreatedContainer.exec).toHaveBeenCalledWith(
             expect.objectContaining({
                 Cmd: ['sh', '-c', 'echo hello'],
+            }),
+        );
+    });
+
+    test('runServicePostStartHooks should skip when dryrun is true', async () => {
+        trigger.configuration.dryrun = true;
+        const container = { name: 'netbox', watcher: 'local' };
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: ['echo hello'],
+        });
+
+        expect(mockDockerApi.getContainer).not.toHaveBeenCalled();
+    });
+
+    test('runServicePostStartHooks should skip when service has no post_start', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {});
+
+        expect(mockDockerApi.getContainer).not.toHaveBeenCalled();
+    });
+
+    test('runServicePostStartHooks should skip when container is not running', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: false },
+            }),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: ['echo hello'],
+        });
+
+        expect(mockLog.info).toHaveBeenCalledWith(
+            expect.stringContaining('not running'),
+        );
+    });
+
+    test('runServicePostStartHooks should skip hook with no command', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn(),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: [{ user: 'root' }],
+        });
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('command is missing'),
+        );
+        expect(recreatedContainer.exec).not.toHaveBeenCalled();
+    });
+
+    test('runServicePostStartHooks should throw on non-zero exit code', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('end'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 1 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await expect(
+            trigger.runServicePostStartHooks(container, 'netbox', {
+                post_start: ['failing-command'],
+            }),
+        ).rejects.toThrow('exit code 1');
+    });
+
+    test('runServicePostStartHooks should handle exec stream error', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('error', new Error('stream failure')));
+                return startStream;
+            }),
+            inspect: vi.fn(),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await expect(
+            trigger.runServicePostStartHooks(container, 'netbox', {
+                post_start: ['echo hello'],
+            }),
+        ).rejects.toThrow('stream failure');
+    });
+
+    test('runServicePostStartHooks should handle stream without resume', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        // No resume method
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('close'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: ['echo hello'],
+        });
+
+        expect(mockExec.inspect).toHaveBeenCalled();
+    });
+
+    test('runServicePostStartHooks should handle stream without once', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const mockExec = {
+            start: vi.fn().mockResolvedValue({}),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: ['echo hello'],
+        });
+
+        expect(mockExec.inspect).toHaveBeenCalled();
+    });
+
+    test('runServicePostStartHooks should support array command form', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('close'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: [{ command: ['echo', 'hello'] }],
+        });
+
+        expect(recreatedContainer.exec).toHaveBeenCalledWith(
+            expect.objectContaining({
+                Cmd: ['echo', 'hello'],
+            }),
+        );
+    });
+
+    test('runServicePostStartHooks should support environment as array', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('close'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: [{ command: 'echo hello', environment: ['FOO=bar', 'BAZ=1'] }],
+        });
+
+        expect(recreatedContainer.exec).toHaveBeenCalledWith(
+            expect.objectContaining({
+                Env: ['FOO=bar', 'BAZ=1'],
+            }),
+        );
+    });
+
+    test('runServicePostStartHooks should normalize single post_start hook (not array)', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('close'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: { command: 'echo hello' },
+        });
+
+        expect(recreatedContainer.exec).toHaveBeenCalledWith(
+            expect.objectContaining({
+                Cmd: ['sh', '-c', 'echo hello'],
+            }),
+        );
+    });
+
+    test('backup should log warning on error', async () => {
+        fs.copyFile.mockRejectedValueOnce(new Error('copy failed'));
+
+        await trigger.backup('/tmp/compose.yml', '/tmp/compose.yml.back');
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('copy failed'),
+        );
+    });
+
+    test('mapCurrentVersionToUpdateVersion should return undefined when service not found', () => {
+        const compose = {
+            services: {
+                redis: { image: 'redis:7.0.0' },
+            },
+        };
+        const container = {
+            name: 'nginx',
+            image: {
+                name: 'nginx',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        const result = trigger.mapCurrentVersionToUpdateVersion(compose, container);
+
+        expect(result).toBeUndefined();
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('Could not find service'),
+        );
+    });
+
+    test('mapCurrentVersionToUpdateVersion should return undefined when service has no image', () => {
+        const compose = {
+            services: {
+                nginx: { build: './nginx' },
+            },
+        };
+        const container = {
+            name: 'nginx',
+            labels: { 'com.docker.compose.service': 'nginx' },
+            image: {
+                name: 'nginx',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        const result = trigger.mapCurrentVersionToUpdateVersion(compose, container);
+
+        expect(result).toBeUndefined();
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('image is missing'),
+        );
+    });
+
+    test('writeComposeFile should log error on write failure', async () => {
+        fs.writeFile.mockRejectedValueOnce(new Error('write failed'));
+
+        await trigger.writeComposeFile('/tmp/compose.yml', 'data');
+
+        expect(mockLog.error).toHaveBeenCalledWith(
+            expect.stringContaining('write failed'),
+        );
+    });
+
+    test('getComposeFileAsObject should throw on yaml parse error', async () => {
+        vi.spyOn(trigger, 'getComposeFile').mockResolvedValue(
+            Buffer.from('invalid: yaml: [[['),
+        );
+
+        await expect(
+            trigger.getComposeFileAsObject('/tmp/compose.yml'),
+        ).rejects.toThrow();
+
+        expect(mockLog.error).toHaveBeenCalledWith(
+            expect.stringContaining('Error when parsing'),
+        );
+    });
+
+    test('getComposeFile should use default configuration file when no argument', () => {
+        trigger.configuration.file = '/tmp/default-compose.yml';
+
+        trigger.getComposeFile();
+
+        expect(fs.readFile).toHaveBeenCalledWith('/tmp/default-compose.yml');
+    });
+
+    test('triggerBatch should skip containers not on local host', async () => {
+        const container = {
+            name: 'remote-container',
+            watcher: 'remote',
+        };
+
+        getState.mockReturnValue({
+            registry: {
+                hub: { getImageFullName: (image, tag) => `${image.name}:${tag}` },
+            },
+            watcher: {
+                'docker.remote': {
+                    dockerApi: {
+                        modem: { socketPath: '' },
+                    },
+                },
+            },
+        });
+
+        await trigger.triggerBatch([container]);
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('not running on local host'),
+        );
+    });
+
+    test('triggerBatch should skip containers with no compose file', async () => {
+        trigger.configuration.file = undefined;
+        const container = {
+            name: 'no-compose',
+            watcher: 'local',
+        };
+
+        await trigger.triggerBatch([container]);
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('No compose file found'),
+        );
+    });
+
+    test('triggerBatch should skip containers when compose file does not exist', async () => {
+        trigger.configuration.file = '/nonexistent/compose.yml';
+        fs.access.mockRejectedValueOnce(new Error('ENOENT'));
+
+        const container = {
+            name: 'test-container',
+            watcher: 'local',
+        };
+
+        await trigger.triggerBatch([container]);
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('does not exist'),
+        );
+    });
+
+    test('processComposeFile should warn when no containers belong to compose', async () => {
+        const container = {
+            name: 'unknown',
+            image: {
+                name: 'unknown-image',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue({
+            services: {
+                nginx: { image: 'nginx:1.0.0' },
+            },
+        });
+
+        await trigger.processComposeFile('/tmp/stack.yml', [container]);
+
+        expect(mockLog.warn).toHaveBeenCalledWith(
+            expect.stringContaining('No containers found'),
+        );
+    });
+
+    test('processComposeFile should backup and write when not in dryrun mode', async () => {
+        trigger.configuration.dryrun = false;
+        trigger.configuration.backup = true;
+
+        const container = {
+            name: 'nginx',
+            image: {
+                name: 'nginx',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue({
+            services: {
+                nginx: { image: 'nginx:1.0.0' },
+            },
+        });
+
+        const backupSpy = vi.spyOn(trigger, 'backup').mockResolvedValue();
+        vi.spyOn(trigger, 'getComposeFile').mockResolvedValue(
+            Buffer.from('image: nginx:1.0.0'),
+        );
+        const writeSpy = vi.spyOn(trigger, 'writeComposeFile').mockResolvedValue();
+        vi.spyOn(Docker.prototype, 'trigger').mockResolvedValue();
+        vi.spyOn(trigger, 'runServicePostStartHooks').mockResolvedValue();
+
+        await trigger.processComposeFile('/tmp/stack.yml', [container]);
+
+        expect(backupSpy).toHaveBeenCalledWith('/tmp/stack.yml', '/tmp/stack.yml.back');
+        expect(writeSpy).toHaveBeenCalledWith(
+            '/tmp/stack.yml',
+            'image: nginx:1.1.0',
+        );
+    });
+
+    test('processComposeFile should not backup when backup is false', async () => {
+        trigger.configuration.dryrun = false;
+        trigger.configuration.backup = false;
+
+        const container = {
+            name: 'nginx',
+            image: {
+                name: 'nginx',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue({
+            services: {
+                nginx: { image: 'nginx:1.0.0' },
+            },
+        });
+
+        const backupSpy = vi.spyOn(trigger, 'backup').mockResolvedValue();
+        vi.spyOn(trigger, 'getComposeFile').mockResolvedValue(
+            Buffer.from('image: nginx:1.0.0'),
+        );
+        vi.spyOn(trigger, 'writeComposeFile').mockResolvedValue();
+        vi.spyOn(Docker.prototype, 'trigger').mockResolvedValue();
+        vi.spyOn(trigger, 'runServicePostStartHooks').mockResolvedValue();
+
+        await trigger.processComposeFile('/tmp/stack.yml', [container]);
+
+        expect(backupSpy).not.toHaveBeenCalled();
+    });
+
+    test('getComposeFileForContainer should use label from container', () => {
+        const container = {
+            labels: { 'dd.compose.file': '/opt/compose.yml' },
+        };
+
+        const result = trigger.getComposeFileForContainer(container);
+
+        expect(result).toBe('/opt/compose.yml');
+    });
+
+    test('getComposeFileForContainer should use wud fallback label', () => {
+        const container = {
+            labels: { 'wud.compose.file': '/opt/wud-compose.yml' },
+        };
+
+        const result = trigger.getComposeFileForContainer(container);
+
+        expect(result).toBe('/opt/wud-compose.yml');
+    });
+
+    test('getComposeFileForContainer should resolve relative label paths', () => {
+        const container = {
+            labels: { 'dd.compose.file': 'relative/compose.yml' },
+        };
+
+        const result = trigger.getComposeFileForContainer(container);
+
+        expect(result).toMatch(/\/.*relative\/compose\.yml$/);
+        expect(result).not.toBe('relative/compose.yml');
+    });
+
+    test('getComposeFileForContainer should return null when no label and no default file', () => {
+        trigger.configuration.file = undefined;
+        const container = { labels: {} };
+
+        const result = trigger.getComposeFileForContainer(container);
+
+        expect(result).toBeNull();
+    });
+
+    test('getComposeFileForContainer should fall back to default config file', () => {
+        trigger.configuration.file = '/default/compose.yml';
+        const container = { labels: {} };
+
+        const result = trigger.getComposeFileForContainer(container);
+
+        expect(result).toBe('/default/compose.yml');
+    });
+
+    test('initTrigger should set mode to batch', async () => {
+        trigger.configuration.mode = 'simple';
+        trigger.configuration.file = undefined;
+
+        await trigger.initTrigger();
+
+        expect(trigger.configuration.mode).toBe('batch');
+    });
+
+    test('initTrigger should throw when configured file does not exist', async () => {
+        trigger.configuration.file = '/nonexistent/compose.yml';
+        fs.access.mockRejectedValueOnce(new Error('ENOENT'));
+
+        await expect(trigger.initTrigger()).rejects.toThrow('ENOENT');
+
+        expect(mockLog.error).toHaveBeenCalledWith(
+            expect.stringContaining('does not exist'),
+        );
+    });
+
+    test('trigger should delegate to triggerBatch with single container', async () => {
+        const container = { name: 'test' };
+        const spy = vi.spyOn(trigger, 'triggerBatch').mockResolvedValue();
+
+        await trigger.trigger(container);
+
+        expect(spy).toHaveBeenCalledWith([container]);
+    });
+
+    test('triggerBatch should group containers by compose file and process each', async () => {
+        trigger.configuration.file = '/tmp/compose.yml';
+        fs.access.mockResolvedValue(undefined);
+
+        const container1 = {
+            name: 'app1',
+            watcher: 'local',
+            labels: { 'dd.compose.file': '/tmp/a.yml' },
+        };
+        const container2 = {
+            name: 'app2',
+            watcher: 'local',
+            labels: { 'dd.compose.file': '/tmp/b.yml' },
+        };
+
+        const processComposeFileSpy = vi
+            .spyOn(trigger, 'processComposeFile')
+            .mockResolvedValue();
+
+        await trigger.triggerBatch([container1, container2]);
+
+        expect(processComposeFileSpy).toHaveBeenCalledTimes(2);
+        expect(processComposeFileSpy).toHaveBeenCalledWith('/tmp/a.yml', [container1]);
+        expect(processComposeFileSpy).toHaveBeenCalledWith('/tmp/b.yml', [container2]);
+    });
+
+    test('processComposeFile should run post-start hooks for updated services', async () => {
+        trigger.configuration.dryrun = false;
+        trigger.configuration.backup = false;
+
+        const container = {
+            name: 'nginx',
+            image: {
+                name: 'nginx',
+                registry: { name: 'hub' },
+                tag: { value: '1.0.0' },
+            },
+            updateKind: { kind: 'tag', remoteValue: '1.1.0' },
+        };
+
+        const serviceDefinition = {
+            image: 'nginx:1.0.0',
+            post_start: ['echo done'],
+        };
+
+        vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue({
+            services: {
+                nginx: serviceDefinition,
+            },
+        });
+
+        vi.spyOn(trigger, 'getComposeFile').mockResolvedValue(
+            Buffer.from('image: nginx:1.0.0'),
+        );
+        vi.spyOn(trigger, 'writeComposeFile').mockResolvedValue();
+        vi.spyOn(Docker.prototype, 'trigger').mockResolvedValue();
+
+        const hooksSpy = vi.spyOn(trigger, 'runServicePostStartHooks').mockResolvedValue();
+
+        await trigger.processComposeFile('/tmp/stack.yml', [container]);
+
+        expect(hooksSpy).toHaveBeenCalledWith(
+            container,
+            'nginx',
+            serviceDefinition,
+        );
+    });
+
+    test('runServicePostStartHooks should handle environment with null values', async () => {
+        trigger.configuration.dryrun = false;
+        const container = { name: 'netbox', watcher: 'local' };
+        const startStream = new EventEmitter();
+        startStream.resume = vi.fn();
+        const mockExec = {
+            start: vi.fn().mockImplementation(async () => {
+                setImmediate(() => startStream.emit('close'));
+                return startStream;
+            }),
+            inspect: vi.fn().mockResolvedValue({ ExitCode: 0 }),
+        };
+        const recreatedContainer = {
+            inspect: vi.fn().mockResolvedValue({
+                State: { Running: true },
+            }),
+            exec: vi.fn().mockResolvedValue(mockExec),
+        };
+        mockDockerApi.getContainer.mockReturnValue(recreatedContainer);
+
+        await trigger.runServicePostStartHooks(container, 'netbox', {
+            post_start: [{ command: 'echo hello', environment: { KEY: null } }],
+        });
+
+        expect(recreatedContainer.exec).toHaveBeenCalledWith(
+            expect.objectContaining({
+                Env: ['KEY='],
             }),
         );
     });

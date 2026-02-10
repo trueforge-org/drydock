@@ -95,10 +95,25 @@ test('normalizeImage should return the proper registry v2 endpoint', async () =>
     });
 });
 
-test('authenticate should call ecr auth endpoint', async () => {
+test('authenticate should call gcr auth endpoint', async () => {
     expect(gcr.authenticate({}, { headers: {} })).resolves.toEqual({
         headers: {
             Authorization: 'Bearer xxxxx',
         },
+    });
+});
+
+test('authenticate should return unchanged options when no clientemail configured', async () => {
+    const gcrAnon = new Gcr();
+    gcrAnon.configuration = {};
+    const result = await gcrAnon.authenticate({}, { headers: {} });
+    expect(result).toEqual({ headers: {} });
+});
+
+test('getAuthPull should return credentials', async () => {
+    const result = await gcr.getAuthPull();
+    expect(result).toEqual({
+        username: 'accesskeyid',
+        password: 'secretaccesskey',
     });
 });

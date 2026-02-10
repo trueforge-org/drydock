@@ -171,3 +171,38 @@ test('trigger should post message to kafka', async () => {
         topic: 'topic',
     });
 });
+
+test('triggerBatch should post multiple messages to kafka', async () => {
+    const sendMock = vi.fn((params) => params);
+    const connectMock = vi.fn();
+    const producer = () => ({
+        connect: connectMock,
+        send: sendMock,
+    });
+    kafka.kafka = {
+        producer,
+    };
+    kafka.configuration = {
+        topic: 'my-topic',
+    };
+    const containers = [
+        { name: 'container1' },
+        { name: 'container2' },
+    ];
+    const result = await kafka.triggerBatch(containers);
+    expect(connectMock).toHaveBeenCalled();
+    expect(sendMock).toHaveBeenCalledWith({
+        topic: 'my-topic',
+        messages: [
+            { value: '{"name":"container1"}' },
+            { value: '{"name":"container2"}' },
+        ],
+    });
+    expect(result).toStrictEqual({
+        topic: 'my-topic',
+        messages: [
+            { value: '{"name":"container1"}' },
+            { value: '{"name":"container2"}' },
+        ],
+    });
+});

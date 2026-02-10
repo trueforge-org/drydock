@@ -152,4 +152,56 @@ describe('Rocketchat Trigger', () => {
             },
         );
     });
+
+    test('buildMessageBody should include alias when configured', () => {
+        rocketchat.configuration = {
+            channel: '#general',
+            alias: 'Drydock Bot',
+        };
+        const body = rocketchat.buildMessageBody('Test');
+        expect(body).toEqual({
+            channel: '#general',
+            text: 'Test',
+            alias: 'Drydock Bot',
+        });
+    });
+
+    test('buildMessageBody should include avatar when configured', () => {
+        rocketchat.configuration = {
+            channel: '#general',
+            avatar: 'https://example.com/avatar.png',
+        };
+        const body = rocketchat.buildMessageBody('Test');
+        expect(body).toEqual({
+            channel: '#general',
+            text: 'Test',
+            avatar: 'https://example.com/avatar.png',
+        });
+    });
+
+    test('buildMessageBody should include emoji when configured', () => {
+        rocketchat.configuration = {
+            channel: '#general',
+            emoji: ':whale:',
+        };
+        const body = rocketchat.buildMessageBody('Test');
+        expect(body).toEqual({
+            channel: '#general',
+            text: 'Test',
+            emoji: ':whale:',
+        });
+    });
+
+    test('buildMessageBody should include parseUrls when parse.urls is set', () => {
+        rocketchat.configuration = {
+            channel: '#general',
+            parse: { urls: true },
+        };
+        const body = rocketchat.buildMessageBody('Test');
+        expect(body).toEqual({
+            channel: '#general',
+            text: 'Test',
+            parseUrls: true,
+        });
+    });
 });

@@ -5,7 +5,14 @@ import log from '../../../log/index.js';
 import { flatten } from '../../../model/container.js';
 
 vi.mock('mqtt');
+vi.mock('node:fs/promises', () => ({
+    default: {
+        readFile: vi.fn().mockResolvedValue(Buffer.from('file-content')),
+    },
+    readFile: vi.fn().mockResolvedValue(Buffer.from('file-content')),
+}));
 import Mqtt from './Mqtt.js';
+import fs from 'node:fs/promises';
 
 const mqtt = new Mqtt();
 mqtt.log = log;
@@ -172,3 +179,41 @@ test.each(containerData)(
         );
     },
 );
+
+test('initTrigger should read TLS files when configured', async () => {
+    // Re-set mock after vi.resetAllMocks() cleared it
+    fs.readFile.mockResolvedValue(Buffer.from('file-content'));
+    const spy = vi.spyOn(mqttClient, 'connectAsync');
+
+    mqtt.configuration = {
+        ...configurationValid,
+        clientid: 'wud',
+        tls: {
+            clientkey: '/path/to/key.pem',
+            clientcert: '/path/to/cert.pem',
+            cachain: '/path/to/ca.pem',
+            rejectunauthorized: false,
+        },
+        hass: { enabled: false },
+    };
+    await mqtt.initTrigger();
+
+    expect(fs.readFile).toHaveBeenCalledWith('/path/to/key.pem');
+    expect(fs.readFile).toHaveBeenCalledWith('/path/to/cert.pem');
+    expect(fs.readFile).toHaveBeenCalledWith('/path/to/ca.pem');
+    expect(spy).toHaveBeenCalledWith(
+        'mqtt://host:1883',
+        expect.objectContaining({
+            key: Buffer.from('file-content'),
+            cert: Buffer.from('file-content'),
+            ca: [Buffer.from('file-content')],
+            rejectUnauthorized: false,
+        }),
+    );
+});
+
+test('triggerBatch should throw error', async () => {
+    await expect(mqtt.triggerBatch()).rejects.toThrow(
+        'This trigger does not support "batch" mode',
+    );
+});
