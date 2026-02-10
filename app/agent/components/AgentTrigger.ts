@@ -1,6 +1,6 @@
 // @ts-nocheck
 import Trigger from '../../triggers/providers/Trigger.js';
-import { Container } from '../../model/container.js';
+import type { Container } from '../../model/container.js';
 import { getAgent } from '../manager.js';
 
 /**

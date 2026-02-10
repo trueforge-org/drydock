@@ -1,4 +1,4 @@
-import { AgentClient, AgentClientConfig } from './AgentClient.js';
+import { AgentClient, type AgentClientConfig } from './AgentClient.js';
 import log from '../log/index.js';
 import { getState } from '../registry/index.js';
 import { addAgent } from './manager.js';

@@ -5,10 +5,7 @@ on:
     branches: [main]
     tags: ['*']
 
-permissions:
-  contents: read
-  packages: write
-  id-token: write
+permissions: read-all
 
 env:
   DOCKER_PLATFORMS: linux/amd64,linux/arm64

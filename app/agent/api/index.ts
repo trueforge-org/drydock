@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import https from 'node:https';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
 import logger from '../../log/index.js';
 import { getServerConfiguration } from '../../configuration/index.js';

@@ -1,5 +1,5 @@
 import Component from '../../registry/Component.js';
-import { Strategy } from 'passport';
+import type { Strategy } from 'passport';
 
 class Authentication extends Component {
     /**

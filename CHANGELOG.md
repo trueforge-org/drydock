@@ -7,6 +7,31 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 
 ---
 
+## 1.0.0
+
+First semver release. Drydock adopts semantic versioning starting with this release, replacing the previous CalVer (YYYY.MM.PATCH) scheme.
+
+### Security
+
+- **ReDoS prevention** — Replaced vulnerable regexes in trigger template evaluation (`Trigger.ts`) with linear-time string parsing (`parseMethodCall`, `isValidPropertyPath`). Added `MAX_PATTERN_LENGTH` guards in tag transform (`tag/index.ts`) and Docker watcher (`Docker.ts`) to reject oversized user-supplied regex patterns.
+- **XSS prevention** — Added `escapeHtml()` sanitizer to Telegram trigger `bold()` method, preventing HTML injection via container names or tag values.
+- **Workflow hardening** — Set top-level `permissions: read-all` in `release.yml` and `codeql.yml`. Pinned all CodeQL action refs to commit hashes. Added CodeQL config to exclude `js/clear-text-logging` false positives.
+- **CVE-2026-24001** — Updated `diff` dependency in e2e tests (4.0.2 → 4.0.4).
+
+### Testing
+
+- **+285 UI tests** — 15 new spec files and 7 expanded existing specs covering configuration views, container components, trigger detail, services, router, and app shell. UI test count: 163 → 285.
+- **+59 app tests** — New edge-case tests for ReDoS guard branches, `parseMethodCall` parsing, and Docker watcher label resolution. App test count: 1,254 → 1,313.
+
+### Code Quality
+
+- **Complexity refactors** — Extracted helpers from high-complexity functions: `parseTriggerList`/`applyPolicyAction` (`container.ts`), `resolveLabelsFromContainer`/`mergeConfigWithImgset` (`Docker.ts`).
+- **Biome lint fixes** — `import type` corrections and unused variable cleanup across 17 files.
+- **Removed legacy `vue.config.js`** — Dead Vue CLI config file; project uses Vite.
+- **Fixed doc links** — Corrected broken fragment links in `docs/_coverpage.md`.
+
+---
+
 ## 2026.2.3
 
 ### Bug Fixes
