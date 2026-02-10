@@ -70,5 +70,5 @@ COPY --from=app-build /home/node/app/package.json ./package.json
 # Copy ui
 COPY --from=ui-build /home/node/ui/dist/ ./ui
 
-# Run as non-root
-USER node
+# WUD upstream runs as root (no USER directive) — required for docker.sock access.
+# See #25 for planned su-exec privilege-dropping entrypoint.
