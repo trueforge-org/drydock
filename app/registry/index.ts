@@ -204,6 +204,7 @@ export async function registerComponent(
           : componentFileLowercase;
     const componentModuleSpecifier =
         resolveComponentModuleSpecifier(componentFileBase);
+    log.debug(`Resolving ${kind}.${providerLowercase}.${nameLowercase} from ${componentFileBase}`);
     try {
         const componentModule = await import(componentModuleSpecifier);
         const ComponentClass = componentModule.default || componentModule;

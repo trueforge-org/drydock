@@ -7,6 +7,19 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 
 ---
 
+## 1.1.2
+
+### Bug Fixes
+
+- **Misleading docker-compose file error messages** — When a compose file had a permission error (EACCES), the log incorrectly reported "does not exist" instead of "permission denied". Now distinguishes between missing files and permission issues with actionable guidance. ([#42](https://github.com/CodesWhat/drydock/issues/42))
+- **Agent watcher registration fails on startup** — Agent component path resolved outside the runtime root (`../agent/components` instead of `agent/components`), causing "Unknown watcher provider: 'docker'" errors and preventing agent watchers/triggers from registering. ([#42](https://github.com/CodesWhat/drydock/issues/42))
+
+### Improvements
+
+- **Debug logging for component registration** — Added debug-level logging showing resolved module paths during component registration and agent component registration attempts, making path resolution issues easier to diagnose.
+
+---
+
 ## 1.1.1
 
 ### Bug Fixes

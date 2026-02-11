@@ -119,8 +119,11 @@ class Dockercompose extends Docker {
             try {
                 await fs.access(this.configuration.file);
             } catch (e) {
+                const reason = e.code === 'EACCES'
+                    ? `permission denied (run as root or adjust file permissions)`
+                    : `does not exist`;
                 this.log.error(
-                    `The default file ${this.configuration.file} does not exist`,
+                    `The default file ${this.configuration.file} ${reason}`,
                 );
                 throw e;
             }
@@ -191,8 +194,11 @@ class Dockercompose extends Docker {
             try {
                 await fs.access(composeFile);
             } catch (e) {
+                const reason = e.code === 'EACCES'
+                    ? `permission denied (run as root or adjust file permissions)`
+                    : `does not exist`;
                 this.log.warn(
-                    `Compose file ${composeFile} for container ${container.name} does not exist`,
+                    `Compose file ${composeFile} for container ${container.name} ${reason}`,
                 );
                 continue;
             }

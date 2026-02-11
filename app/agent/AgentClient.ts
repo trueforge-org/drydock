@@ -96,12 +96,15 @@ export class AgentClient {
         remoteComponents: any[],
     ) {
         for (const remoteComponent of remoteComponents) {
+            this.log.debug(
+                `Registering agent ${kind} ${remoteComponent.type}.${remoteComponent.name}`,
+            );
             await registry.registerComponent({
                 kind,
                 provider: remoteComponent.type,
                 name: remoteComponent.name,
                 configuration: remoteComponent.configuration,
-                componentPath: '../agent/components',
+                componentPath: 'agent/components',
                 agent: this.name,
             });
         }
