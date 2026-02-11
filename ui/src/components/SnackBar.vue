@@ -3,11 +3,11 @@
     v-model="showLocal"
     :timeout="timeout"
     color="primary"
-    variant="outlined"
+    variant="flat"
   >
     {{ message }}
     <template v-slot:actions>
-      <v-btn variant="text" @click="closeSnackbar">Close</v-btn>
+      <v-btn variant="text" color="white" @click="closeSnackbar">CLOSE</v-btn>
     </template>
   </v-snackbar>
 </template>
