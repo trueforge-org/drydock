@@ -27,45 +27,51 @@ export function addEntry(entry: LogEntry): void {
     }
 }
 
-export function getEntries(
-    options?: {
-        level?: string;
-        component?: string;
-        tail?: number;
-        since?: number;
-    },
-): LogEntry[] {
-    if (count === 0) {
-        return [];
-    }
+interface GetEntriesOptions {
+    level?: string;
+    component?: string;
+    tail?: number;
+    since?: number;
+}
 
+function drainBuffer(): LogEntry[] {
     const start = (head - count + MAX_SIZE) % MAX_SIZE;
-    let entries: LogEntry[] = [];
+    const entries: LogEntry[] = [];
     for (let i = 0; i < count; i++) {
         entries.push(buffer[(start + i) % MAX_SIZE]);
     }
+    return entries;
+}
+
+function applyFilters(entries: LogEntry[], options?: GetEntriesOptions): LogEntry[] {
+    let result = entries;
 
     const minLevel = options?.level ? (LEVEL_ORDER[options.level] ?? 0) : 0;
     if (minLevel > 0) {
-        entries = entries.filter(
-            (e) => (LEVEL_ORDER[e.level] ?? 0) >= minLevel,
-        );
+        result = result.filter((e) => (LEVEL_ORDER[e.level] ?? 0) >= minLevel);
     }
 
     if (options?.component) {
         const comp = options.component;
-        entries = entries.filter((e) => e.component.includes(comp));
+        result = result.filter((e) => e.component.includes(comp));
     }
 
     if (options?.since !== undefined) {
         const since = options.since;
-        entries = entries.filter((e) => e.timestamp >= since);
+        result = result.filter((e) => e.timestamp >= since);
     }
 
     const tail = options?.tail ?? 100;
-    if (entries.length > tail) {
-        entries = entries.slice(entries.length - tail);
+    if (result.length > tail) {
+        result = result.slice(result.length - tail);
     }
 
-    return entries;
+    return result;
+}
+
+export function getEntries(options?: GetEntriesOptions): LogEntry[] {
+    if (count === 0) {
+        return [];
+    }
+    return applyFilters(drainBuffer(), options);
 }

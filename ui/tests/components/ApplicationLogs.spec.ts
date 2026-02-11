@@ -302,7 +302,7 @@ describe('ApplicationLogs', () => {
       const wrapper = mount(ApplicationLogs);
       await flushPromises();
 
-      expect(wrapper.html()).not.toContain('mdi-information-outline');
+      expect(wrapper.find('.v-tooltip').exists()).toBe(false);
       wrapper.unmount();
     });
   });
