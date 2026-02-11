@@ -162,6 +162,7 @@ config.global.stubs = {
   'application-logs': { template: '<div class="application-logs"><slot /></div>' },
   'container-triggers': { template: '<div class="container-triggers"><slot /></div>' },
   'container-preview': { template: '<div class="container-preview"><slot /></div>' },
+  'container-rollback': { template: '<div class="container-rollback"><slot /></div>' },
   'v-pagination': { template: '<div class="v-pagination"></div>', props: ['modelValue', 'length'] },
   'IconRenderer': { template: '<div class="icon-renderer"><slot /></div>' }
 };

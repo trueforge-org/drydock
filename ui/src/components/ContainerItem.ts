@@ -6,6 +6,7 @@ import ContainerImage from '@/components/ContainerImage.vue';
 import ContainerLogs from '@/components/ContainerLogs.vue';
 import ContainerTriggers from '@/components/ContainerTriggers.vue';
 import ContainerPreview from '@/components/ContainerPreview.vue';
+import ContainerRollback from '@/components/ContainerRollback.vue';
 import ContainerUpdate from '@/components/ContainerUpdate.vue';
 import IconRenderer from '@/components/IconRenderer.vue';
 import {
@@ -28,6 +29,7 @@ export default defineComponent({
     ContainerImage,
     ContainerLogs,
     ContainerPreview,
+    ContainerRollback,
     ContainerTriggers,
     ContainerUpdate,
     IconRenderer,
@@ -60,6 +62,7 @@ export default defineComponent({
     return {
       showDetail: false,
       showPreview: false,
+      showRollback: false,
       dialogDelete: false,
       tab: 0,
       deleteEnabled: false,
@@ -315,6 +318,11 @@ export default defineComponent({
       } finally {
         this.isUpdatingContainer = false;
       }
+    },
+
+    async onRollbackSuccess() {
+      (this as any).$eventBus.emit('notify', 'Container rolled back successfully');
+      await this.refreshContainerNow(false);
     },
 
     copyToClipboard(kind: string, value: string) {

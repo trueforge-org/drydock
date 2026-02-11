@@ -78,10 +78,22 @@ async function rollbackContainer(req, res) {
         return;
     }
 
-    const backups = storeBackup.getBackups(id);
-    if (backups.length === 0) {
-        res.status(404).json({ error: 'No backups found for this container' });
-        return;
+    const { backupId } = req.body || {};
+
+    let backup;
+    if (backupId) {
+        backup = storeBackup.getBackup(backupId);
+        if (!backup || backup.containerId !== id) {
+            res.status(404).json({ error: 'Backup not found for this container' });
+            return;
+        }
+    } else {
+        const backups = storeBackup.getBackups(id);
+        if (backups.length === 0) {
+            res.status(404).json({ error: 'No backups found for this container' });
+            return;
+        }
+        backup = backups[0];
     }
 
     const trigger = findDockerTrigger(container);
@@ -90,7 +102,7 @@ async function rollbackContainer(req, res) {
         return;
     }
 
-    const latestBackup = backups[0];
+    const latestBackup = backup;
     const backupImage = `${latestBackup.imageName}:${latestBackup.imageTag}`;
 
     try {

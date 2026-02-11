@@ -164,10 +164,16 @@
                 </template>
               </v-tooltip>
 
-              <!-- Rollback (disabled placeholder) -->
+              <!-- Rollback -->
               <v-tooltip text="Rollback" location="top">
                 <template v-slot:activator="{ props }">
-                  <v-btn icon variant="text" size="small" v-bind="props" disabled>
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    v-bind="props"
+                    @click="showRollback = true"
+                  >
                     <v-icon>fas fa-rotate-left</v-icon>
                   </v-btn>
                 </template>
@@ -299,7 +305,7 @@
                     <template v-slot:prepend><v-icon>fas fa-rocket</v-icon></template>
                     <v-list-item-title>Update now</v-list-item-title>
                   </v-list-item>
-                  <v-list-item disabled>
+                  <v-list-item @click="showRollback = true">
                     <template v-slot:prepend><v-icon>fas fa-rotate-left</v-icon></template>
                     <v-list-item-title>Rollback</v-list-item-title>
                   </v-list-item>
@@ -431,6 +437,12 @@
         v-model="showPreview"
         :container-id="container.id"
         @update-confirmed="updateContainerNow"
+      />
+      <container-rollback
+        v-model="showRollback"
+        :container-id="container.id"
+        :container-name="container.displayName"
+        @rollback-success="onRollbackSuccess"
       />
     </v-card>
   </div>
