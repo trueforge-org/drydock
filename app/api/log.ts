@@ -25,8 +25,8 @@ function getLog(req, res) {
 function getLogEntries(req, res) {
     const level = req.query.level as string | undefined;
     const component = req.query.component as string | undefined;
-    const tail = req.query.tail ? parseInt(req.query.tail as string, 10) : undefined;
-    const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+    const tail = req.query.tail ? Number.parseInt(req.query.tail as string, 10) : undefined;
+    const since = req.query.since ? Number.parseInt(req.query.since as string, 10) : undefined;
     const entries = getEntries({ level, component, tail, since });
     res.status(200).json(entries);
 }

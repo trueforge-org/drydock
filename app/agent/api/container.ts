@@ -42,8 +42,8 @@ export async function getContainerLogs(req: Request, res: Response) {
         return;
     }
 
-    const tail = parseInt(req.query.tail as string, 10) || 100;
-    const since = parseInt(req.query.since as string, 10) || 0;
+    const tail = Number.parseInt(req.query.tail as string, 10) || 100;
+    const since = Number.parseInt(req.query.since as string, 10) || 0;
     const timestamps = req.query.timestamps !== 'false';
 
     const watcherId = `docker.${container.watcher}`;

@@ -25,8 +25,8 @@ async function getAgentLogEntries(req, res) {
     try {
         const level = req.query.level as string | undefined;
         const component = req.query.component as string | undefined;
-        const tail = req.query.tail ? parseInt(req.query.tail as string, 10) : undefined;
-        const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+        const tail = req.query.tail ? Number.parseInt(req.query.tail as string, 10) : undefined;
+        const since = req.query.since ? Number.parseInt(req.query.since as string, 10) : undefined;
         const entries = await agent.getLogEntries({ level, component, tail, since });
         res.json(entries);
     } catch (e: any) {

@@ -80,8 +80,8 @@ export async function init() {
     app.get('/api/log/entries', (req: Request, res: Response) => {
         const level = req.query.level as string | undefined;
         const component = req.query.component as string | undefined;
-        const tail = req.query.tail ? parseInt(req.query.tail as string, 10) : undefined;
-        const since = req.query.since ? parseInt(req.query.since as string, 10) : undefined;
+        const tail = req.query.tail ? Number.parseInt(req.query.tail as string, 10) : undefined;
+        const since = req.query.since ? Number.parseInt(req.query.since as string, 10) : undefined;
         res.status(200).json(getEntries({ level, component, tail, since }));
     });
     app.get('/api/containers', containerApi.getContainers);

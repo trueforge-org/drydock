@@ -473,8 +473,8 @@ async function getContainerLogs(req, res) {
         return;
     }
 
-    const tail = parseInt(req.query.tail, 10) || 100;
-    const since = parseInt(req.query.since, 10) || 0;
+    const tail = Number.parseInt(req.query.tail, 10) || 100;
+    const since = Number.parseInt(req.query.since, 10) || 0;
     const timestamps = req.query.timestamps !== 'false';
 
     if (container.agent) {

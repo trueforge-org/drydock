@@ -60,7 +60,7 @@
       v-else-if="entries.length"
       ref="logPre"
       class="app-logs__terminal ma-2"
-      role="log"
+      role="region"
       aria-label="Application log output"
       tabindex="0"
     ><span v-for="(entry, i) in entries" :key="i" :style="{ color: levelColor(entry.level) }">{{ new Date(entry.timestamp).toISOString() }} [{{ entry.level.toUpperCase().padEnd(5) }}] [{{ entry.component }}] {{ entry.msg }}
