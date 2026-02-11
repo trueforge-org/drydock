@@ -4,6 +4,7 @@ import {
   getCurrentInstance,
   inject,
   onMounted,
+  onUnmounted,
   onUpdated,
   ref,
   watch,
@@ -12,8 +13,10 @@ import { useRoute } from 'vue-router';
 import { useDisplay } from 'vuetify';
 import AppBar from '@/components/AppBar.vue';
 import NavigationDrawer from '@/components/NavigationDrawer.vue';
+import SelfUpdateOverlay from '@/components/SelfUpdateOverlay.vue';
 import SnackBar from '@/components/SnackBar.vue';
 import { getServer } from '@/services/server';
+import sseService from '@/services/sse';
 
 function setupAuthStateManagement(user: any, onAuthenticated: (userData: any) => void) {
   return async (newRoute: any) => {
@@ -63,6 +66,7 @@ export default defineComponent({
   components: {
     NavigationDrawer,
     AppBar,
+    SelfUpdateOverlay,
     SnackBar,
   },
   setup() {
@@ -109,6 +113,11 @@ export default defineComponent({
 
     onMounted(async () => {
       setupEventBusListeners(eventBus, onAuthenticated, notify, notifyClose);
+      sseService.connect(eventBus);
+    });
+
+    onUnmounted(() => {
+      sseService.disconnect();
     });
 
     watch(route, setupAuthStateManagement(user, onAuthenticated));

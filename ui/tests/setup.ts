@@ -133,7 +133,9 @@ config.global.stubs = {
   'v-window': { template: '<div class="v-window"><slot /></div>' },
   'v-window-item': { template: '<div class="v-window-item"><slot /></div>' },
   'v-dialog': { template: '<div class="v-dialog"><slot /></div>' },
+  'v-overlay': { template: '<div class="v-overlay"><slot /></div>' },
   'v-progress-circular': { template: '<div class="v-progress-circular"><slot /></div>' },
+  'v-progress-linear': { template: '<div class="v-progress-linear" />' },
   'v-alert': { template: '<div class="v-alert"><slot /></div>', props: ['type'] },
   'v-divider': { template: '<div class="v-divider"></div>' },
   'v-spacer': { template: '<div class="v-spacer"></div>' },
@@ -164,6 +166,7 @@ config.global.stubs = {
   'container-triggers': { template: '<div class="container-triggers"><slot /></div>' },
   'container-preview': { template: '<div class="container-preview"><slot /></div>' },
   'container-rollback': { template: '<div class="container-rollback"><slot /></div>' },
+  'self-update-overlay': { template: '<div class="self-update-overlay" />' },
   'v-pagination': { template: '<div class="v-pagination"></div>', props: ['modelValue', 'length'] },
   'IconRenderer': { template: '<div class="icon-renderer"><slot /></div>' }
 };

@@ -7,6 +7,10 @@ vi.mock('@/services/server', () => ({
   getServerIcon: vi.fn(() => 'fas fa-server'),
 }));
 
+vi.mock('@/services/sse', () => ({
+  default: { connect: vi.fn(), disconnect: vi.fn() },
+}));
+
 vi.mock('vue-router', () => ({
   useRoute: vi.fn(() => ({
     fullPath: '/containers',
@@ -45,6 +49,7 @@ describe('App.vue', () => {
             template: '<div class="snack-bar" :data-message="message" :data-show="show" :data-level="level" />',
             props: ['message', 'show', 'level'],
           },
+          'self-update-overlay': { template: '<div class="self-update-overlay" />' },
           'router-view': { template: '<div class="router-view" />' },
         },
       },

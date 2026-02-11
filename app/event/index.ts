@@ -206,6 +206,17 @@ export function registerWatcherStop(handler) {
   eventEmitter.on(DD_WATCHER_STOP, handler);
 }
 
+// Self-update event
+const DD_SELF_UPDATE_STARTING = 'dd:self-update-starting';
+
+export function emitSelfUpdateStarting() {
+  eventEmitter.emit(DD_SELF_UPDATE_STARTING);
+}
+
+export function registerSelfUpdateStarting(handler) {
+  eventEmitter.on(DD_SELF_UPDATE_STARTING, handler);
+}
+
 import { getAuditCounter } from '../prometheus/audit.js';
 // Audit log integration
 import * as auditStore from '../store/audit.js';

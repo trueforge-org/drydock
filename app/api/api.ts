@@ -17,6 +17,7 @@ import * as serverRouter from './server.js';
 import * as storeRouter from './store.js';
 import * as triggerRouter from './trigger.js';
 import * as watcherRouter from './watcher.js';
+import * as sseRouter from './sse.js';
 import * as webhookRouter from './webhook.js';
 
 /**
@@ -39,6 +40,9 @@ export function init() {
 
   // Mount webhook router (uses its own bearer token auth)
   router.use('/webhook', webhookRouter.init());
+
+  // Mount SSE events endpoint (before auth so connections persist through updates)
+  router.use('/events/ui', sseRouter.init());
 
   // Routes to protect after this line
   router.use(requireAuthentication);

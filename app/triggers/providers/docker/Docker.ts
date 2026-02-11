@@ -1,7 +1,11 @@
 // @ts-nocheck
 import crypto from 'node:crypto';
 import parse from 'parse-docker-image-name';
-import { emitContainerUpdateApplied, emitContainerUpdateFailed } from '../../../event/index.js';
+import {
+  emitContainerUpdateApplied,
+  emitContainerUpdateFailed,
+  emitSelfUpdateStarting,
+} from '../../../event/index.js';
 import { fullName } from '../../../model/container.js';
 import { getState } from '../../../registry/index.js';
 import * as backupStore from '../../../store/backup.js';
@@ -609,6 +613,16 @@ class Docker extends Trigger {
       }
 
       const currentContainerSpec = await this.inspectContainer(currentContainer, logContainer);
+
+      // Detect self-update: check if container image name is 'drydock' or ends with '/drydock'
+      const isSelfUpdate =
+        container.image.name === 'drydock' || container.image.name.endsWith('/drydock');
+      if (isSelfUpdate) {
+        logContainer.info('Self-update detected — notifying UI before proceeding');
+        emitSelfUpdateStarting();
+        // Brief delay to allow SSE to deliver the event to connected clients
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
 
       // Try to remove previous pulled images
       if (this.configuration.prune) {

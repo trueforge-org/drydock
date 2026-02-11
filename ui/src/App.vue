@@ -1,5 +1,7 @@
 <template>
   <v-app class="main-background">
+    <self-update-overlay />
+
     <snack-bar
       :message="snackbarMessage"
       :show="snackbarShow"
