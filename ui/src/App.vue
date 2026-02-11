@@ -6,9 +6,14 @@
       :level="snackbarLevel"
     />
 
-    <navigation-drawer v-if="authenticated" />
+    <navigation-drawer v-if="authenticated" v-model="drawerVisible" />
 
-    <app-bar v-if="authenticated" :user="user" />
+    <app-bar
+      v-if="authenticated"
+      :user="user"
+      :show-menu-toggle="smAndDown"
+      @toggle-drawer="toggleDrawer"
+    />
 
     <!-- Sizes your content based upon application components -->
     <v-main>

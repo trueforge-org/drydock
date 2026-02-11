@@ -1,5 +1,5 @@
 import { ref, onMounted, defineComponent } from "vue";
-import { useTheme } from "vuetify";
+import { useTheme, useDisplay } from "vuetify";
 import { getContainerIcon } from "@/services/container";
 import { getRegistryIcon } from "@/services/registry";
 import { getTriggerIcon } from "@/services/trigger";
@@ -11,11 +11,57 @@ import { getLogIcon } from "@/services/log";
 import logo from "@/assets/drydock.png";
 
 export default defineComponent({
-  setup() {
+  props: {
+    modelValue: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  emits: ["update:modelValue"],
+  setup(props, { emit }) {
     const theme = useTheme();
-    const mini = ref(true);
-    const darkMode = ref(localStorage.darkMode === "true");
-    
+    const { smAndDown } = useDisplay();
+    const mini = ref(false);
+
+    // Migrate legacy darkMode to themeMode
+    if (localStorage.darkMode !== undefined && localStorage.themeMode === undefined) {
+      localStorage.themeMode = localStorage.darkMode === "true" ? "dark" : "light";
+      localStorage.removeItem("darkMode");
+    }
+
+    const themeMode = ref<string>(localStorage.themeMode || "system");
+    const darkMode = ref(false);
+
+    const applyTheme = () => {
+      let isDark: boolean;
+      if (themeMode.value === "system") {
+        isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      } else {
+        isDark = themeMode.value === "dark";
+      }
+      darkMode.value = isDark;
+      theme.global.name.value = isDark ? "dark" : "light";
+    };
+
+    const onThemeModeChange = (value: string) => {
+      themeMode.value = value;
+      localStorage.themeMode = value;
+      applyTheme();
+    };
+
+    const monitoringItems = [
+      {
+        to: "/monitoring/history",
+        name: "history",
+        icon: "fas fa-clock-rotate-left",
+      },
+      {
+        to: "/configuration/logs",
+        name: "logs",
+        icon: getLogIcon(),
+      },
+    ];
+
     const configurationItems = [
       {
         to: "/configuration/agents",
@@ -33,6 +79,11 @@ export default defineComponent({
         icon: getRegistryIcon(),
       },
       {
+        to: "/configuration/server",
+        name: "server",
+        icon: getServerIcon(),
+      },
+      {
         to: "/configuration/triggers",
         name: "triggers",
         icon: getTriggerIcon(),
@@ -42,43 +93,42 @@ export default defineComponent({
         name: "watchers",
         icon: getWatcherIcon(),
       },
-      {
-        to: "/configuration/server",
-        name: "server",
-        icon: getServerIcon(),
-      },
-      {
-        to: "/configuration/logs",
-        name: "logs",
-        icon: getLogIcon(),
-      },
     ];
 
-    const toggleDarkMode = (value: boolean) => {
-      darkMode.value = value;
-      localStorage.darkMode = String(darkMode.value);
-      theme.global.name.value = darkMode.value ? "dark" : "light";
+    const toggleDrawer = () => {
+      if (smAndDown.value) {
+        emit("update:modelValue", !props.modelValue);
+      } else {
+        mini.value = !mini.value;
+      }
     };
 
     onMounted(() => {
-      theme.global.name.value = darkMode.value ? "dark" : "light";
+      applyTheme();
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (themeMode.value === "system") {
+          applyTheme();
+        }
+      });
     });
 
     return {
       logo,
       mini,
       darkMode,
+      themeMode,
+      smAndDown,
       containerIcon: getContainerIcon(),
+      monitoringItems,
+      monitoringItemsSorted: [...monitoringItems].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
       configurationItems,
-      toggleDarkMode,
+      configurationItemsSorted: [...configurationItems].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      ),
+      onThemeModeChange,
+      toggleDrawer,
     };
-  },
-
-  computed: {
-    configurationItemsSorted() {
-      return [...this.configurationItems].sort((item1, item2) =>
-        item1.name.localeCompare(item2.name),
-      );
-    },
   },
 });

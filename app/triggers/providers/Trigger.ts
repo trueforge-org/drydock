@@ -760,6 +760,15 @@ class Trigger extends Component {
     }
 
     /**
+     * Preview what an update would do without performing it.
+     * Can be overridden in trigger implementation class.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async preview(container: Container): Promise<Record<string, any>> {
+        return {};
+    }
+
+    /**
      * Trigger method. Must be overridden in trigger implementation class.
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

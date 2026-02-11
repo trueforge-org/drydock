@@ -8,7 +8,12 @@ export default defineComponent({
       type: Object,
       required: true,
     },
+    showMenuToggle: {
+      type: Boolean,
+      default: false,
+    },
   },
+  emits: ["toggle-drawer"],
   setup() {
     const route = useRoute();
     const router = useRouter();

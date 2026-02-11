@@ -656,6 +656,34 @@ class Docker extends Trigger {
     }
 
     /**
+     * Preview what an update would do without performing it.
+     * @param container the container
+     * @returns {Promise<object>} preview info
+     */
+    async preview(container) {
+        const logContainer = this.log.child({ container: fullName(container) });
+        const watcher = this.getWatcher(container);
+        const { dockerApi } = watcher;
+        const registry = getState().registry[container.image.registry.name];
+        const newImage = this.getNewImageFullName(registry, container);
+
+        const currentContainer = await this.getCurrentContainer(dockerApi, container);
+        if (!currentContainer) {
+            return { error: 'Container not found in Docker' };
+        }
+        const currentContainerSpec = await this.inspectContainer(currentContainer, logContainer);
+
+        return {
+            containerName: container.name,
+            currentImage: `${container.image.registry.name}/${container.image.name}:${container.image.tag.value}`,
+            newImage,
+            updateKind: container.updateKind,
+            isRunning: currentContainerSpec.State.Running,
+            networks: Object.keys(currentContainerSpec.NetworkSettings?.Networks || {}),
+        };
+    }
+
+    /**
      * Update the container.
      * @param container the container
      * @returns {Promise<void>}

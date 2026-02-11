@@ -8,6 +8,7 @@ import {
   watch,
   defineComponent,
 } from "vue";
+import { useDisplay } from "vuetify";
 import NavigationDrawer from "@/components/NavigationDrawer.vue";
 import AppBar from "@/components/AppBar.vue";
 import SnackBar from "@/components/SnackBar.vue";
@@ -71,11 +72,13 @@ export default defineComponent({
     const route = useRoute();
     const eventBus = inject("eventBus") as any;
     const instance = getCurrentInstance();
+    const { smAndDown } = useDisplay();
 
     const snackbarMessage = ref("");
     const snackbarShow = ref(false);
     const snackbarLevel = ref("info");
     const user = ref(undefined);
+    const drawerVisible = ref(false);
 
     const items = computed(() => {
       return route.fullPath
@@ -117,6 +120,10 @@ export default defineComponent({
       await loadServerConfig(authenticated, instance);
     });
 
+    const toggleDrawer = () => {
+      drawerVisible.value = !drawerVisible.value;
+    };
+
     return {
       snackbarMessage,
       snackbarShow,
@@ -124,6 +131,9 @@ export default defineComponent({
       user,
       items,
       authenticated,
+      smAndDown,
+      drawerVisible,
+      toggleDrawer,
     };
   },
 });

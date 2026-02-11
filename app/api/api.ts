@@ -13,6 +13,7 @@ import * as storeRouter from './store.js';
 import * as serverRouter from './server.js';
 import { requireAuthentication } from './auth.js';
 import * as agentRouter from './agent.js';
+import * as previewRouter from './preview.js';
 
 /**
  * Init the API router.
@@ -41,6 +42,9 @@ export function init() {
 
     // Mount container router
     router.use('/containers', containerRouter.init());
+
+    // Mount preview router (container preview/dry-run)
+    router.use('/containers', previewRouter.init());
 
     // Mount trigger router
     router.use('/triggers', triggerRouter.init());

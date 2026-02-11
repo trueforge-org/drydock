@@ -17,6 +17,7 @@ vi.mock('./log', mockInit);
 vi.mock('./store', mockInit);
 vi.mock('./server', mockInit);
 vi.mock('./agent', mockInit);
+vi.mock('./preview', mockInit);
 vi.mock('./auth', () => ({
     requireAuthentication: vi.fn((req, res, next) => next()),
 }));
@@ -46,6 +47,7 @@ describe('API Router', () => {
         const storeRouter = await import('./store.js');
         const serverRouter = await import('./server.js');
         const agentRouter = await import('./agent.js');
+        const previewRouter = await import('./preview.js');
 
         expect(appRouter.init).toHaveBeenCalled();
         expect(containerRouter.init).toHaveBeenCalled();
@@ -57,6 +59,7 @@ describe('API Router', () => {
         expect(storeRouter.init).toHaveBeenCalled();
         expect(serverRouter.init).toHaveBeenCalled();
         expect(agentRouter.init).toHaveBeenCalled();
+        expect(previewRouter.init).toHaveBeenCalled();
     });
 
     test('should use requireAuthentication middleware', async () => {

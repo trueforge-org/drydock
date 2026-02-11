@@ -53,6 +53,11 @@ const routes = [
     name: "logs",
     component: () => import("../views/ConfigurationLogsView.vue"),
   },
+  {
+    path: "/monitoring/history",
+    name: "history",
+    component: () => import("../views/MonitoringHistoryView.vue"),
+  },
 ];
 
 const router = createRouter({
