@@ -199,10 +199,10 @@
       </v-col>
     </v-row>
 
-    <!-- Row 3: Recent Activity + Maintenance Windows -->
+    <!-- Row 3: Recent Activity -->
     <v-row>
-      <v-col cols="12" md="6">
-        <v-card variant="outlined" rounded="lg" class="h-100">
+      <v-col cols="12">
+        <v-card variant="outlined" rounded="lg">
           <div class="d-flex align-center px-4 pt-3 pb-2">
             <v-icon size="small" class="mr-2">fas fa-clock-rotate-left</v-icon>
             <span class="text-subtitle-2 font-weight-medium">Recent Activity</span>
@@ -231,19 +231,6 @@
               </v-list-item-subtitle>
             </v-list-item>
           </v-list>
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="6">
-        <v-card variant="outlined" rounded="lg" class="h-100">
-          <div class="d-flex align-center px-4 pt-3 pb-2">
-            <v-icon size="small" class="mr-2">fas fa-calendar-check</v-icon>
-            <span class="text-subtitle-2 font-weight-medium">Maintenance Windows</span>
-          </div>
-          <v-divider />
-          <v-card-text class="text-center text-medium-emphasis py-8">
-            <v-icon size="36" color="grey">fas fa-calendar-check</v-icon>
-            <div class="mt-3 text-body-2">No maintenance windows configured</div>
-          </v-card-text>
         </v-card>
       </v-col>
     </v-row>

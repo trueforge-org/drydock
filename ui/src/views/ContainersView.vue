@@ -38,7 +38,6 @@
         @delete-container="deleteContainer(container)"
         @container-refreshed="onContainerRefreshed"
         @container-missing="removeContainerFromListById"
-        @container-deleted="removeContainerFromList(container)"
       />
     </div>
     <div v-if="containersFiltered.length === 0" class="text-center text-medium-emphasis py-8">

@@ -66,20 +66,6 @@ export default defineComponent({
           (c.updateKind?.kind === "tag" && c.updateKind?.semverDiff === "unknown"),
       );
     },
-    filteredUpdates(): any[] {
-      const tabs = [
-        this.containersWithUpdates,
-        this.majorUpdates,
-        this.minorUpdates,
-        this.patchUpdates,
-        this.digestUpdates,
-        this.unknownUpdates,
-      ];
-      return tabs[this.updateTab] || this.containersWithUpdates;
-    },
-    upToDateCount(): number {
-      return this.containersCount - this.containersWithUpdates.length;
-    },
   },
 
   methods: {

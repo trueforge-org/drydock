@@ -36,7 +36,6 @@ export default defineComponent({
     normalizedIcon() {
       if (!this.icon) return '';
       return this.icon
-        .replace('mdi:', 'mdi-')
         .replace(/^fa:/, 'fa-')
         .replace(/^fab:/, 'fab fa-')
         .replace(/^far:/, 'far fa-')

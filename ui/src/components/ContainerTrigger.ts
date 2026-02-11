@@ -43,7 +43,6 @@ export default defineComponent({
       } finally {
         this.isTriggering = false;
       }
-      this.isTriggering = false;
     },
   },
 });
