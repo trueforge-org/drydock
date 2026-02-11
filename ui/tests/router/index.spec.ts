@@ -89,5 +89,13 @@ describe('Router', () => {
       expect(router.resolve('/configuration/authentications').name).toBe('authentications');
       expect(router.resolve('/configuration/logs').name).toBe('logs');
     });
+
+    it('logs route has lazy component loader', async () => {
+      const routes = router.getRoutes();
+      const logsRoute = routes.find(r => r.name === 'logs');
+      // Exercise the lazy import function
+      const component = await logsRoute.components.default();
+      expect(component).toBeDefined();
+    });
   });
 });

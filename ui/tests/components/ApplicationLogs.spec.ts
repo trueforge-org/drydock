@@ -307,6 +307,35 @@ describe('ApplicationLogs', () => {
     });
   });
 
+  describe('v-select rendering', () => {
+    it('renders source selector when agents are present', async () => {
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+      mockGetAgents.mockResolvedValue([
+        { name: 'agent-1', connected: true },
+      ]);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      const selects = wrapper.findAll('.v-select');
+      // Should have 3 selects: source, level, tail
+      expect(selects.length).toBeGreaterThanOrEqual(3);
+      wrapper.unmount();
+    });
+
+    it('renders level and tail selects without agents', async () => {
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      const selects = wrapper.findAll('.v-select');
+      // Should have 2 selects: level, tail (no source when no agents)
+      expect(selects.length).toBeGreaterThanOrEqual(2);
+      wrapper.unmount();
+    });
+  });
+
   describe('scroll behavior', () => {
     it('scrolls log pre element to bottom after entries load', async () => {
       mockGetLogEntries.mockResolvedValue(mockEntries);
