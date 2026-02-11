@@ -158,6 +158,12 @@ Built-in /metrics endpoint with optional auth bypass for monitoring stacks
 Automatic pre-update image backup with configurable retention and one-click rollback
 </td>
 </tr>
+<tr>
+<td align="center" width="33%">
+<h3>Container Actions</h3>
+Start, stop, and restart containers from the UI or API with feature-flag control
+</td>
+</tr>
 </table>
 
 ---
@@ -196,6 +202,7 @@ Automatic pre-update image backup with configurable retention and one-click roll
 | **Image backup & rollback** | Automatic pre-update image backup with configurable retention and rollback API |
 | **Grafana dashboard** | Importable JSON template for Prometheus metrics overview |
 | **Font Awesome 6 icons** | Migrated from MDI to FA6 with support for `fab:`/`far:`/`fas:` prefix syntax |
+| **Container actions** | Start/stop/restart containers via API and UI, gated by `DD_SERVER_FEATURE_CONTAINERACTIONS` |
 
 ### Bug Fixes (not in WUD)
 

@@ -20,6 +20,7 @@ This changelog covers all changes in **drydock** since forking from [getwud/wud]
 - **Container action bar refactor** — Replaced 3-column text button layout with compact icon-button toolbar and tooltips (desktop) or overflow menu (mobile).
 - **Dashboard second row** — Added Recent Activity and stats cards as a second row on the dashboard.
 - **UI modernization** — Consistent `pa-4` padding, outlined/rounded cards, tonal chips, styled empty states, and Font Awesome icons across all views and components.
+- **Container actions (start/stop/restart)** — New API endpoints and UI buttons to start, stop, and restart Docker containers directly from the dashboard. Gated by `DD_SERVER_FEATURE_CONTAINERACTIONS` (default: enabled). Includes audit logging, Prometheus counter (`dd_container_actions_total`), desktop toolbar buttons with disabled-state awareness, and mobile overflow menu integration.
 
 ### Bug Fixes
 
