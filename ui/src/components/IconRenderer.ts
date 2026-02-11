@@ -22,7 +22,9 @@ export default defineComponent({
 
   setup() {
     const imgFailed = ref(false);
-    const onImgError = () => { imgFailed.value = true; };
+    const onImgError = () => {
+      imgFailed.value = true;
+    };
     return { imgFailed, onImgError };
   },
 

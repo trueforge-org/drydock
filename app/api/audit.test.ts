@@ -1,147 +1,147 @@
 // @ts-nocheck
-import { createMockResponse, createMockRequest } from '../test/helpers.js';
+import { createMockRequest, createMockResponse } from '../test/helpers.js';
 
 const { mockRouter, mockGetAuditEntries } = vi.hoisted(() => ({
-    mockRouter: { use: vi.fn(), get: vi.fn() },
-    mockGetAuditEntries: vi.fn(),
+  mockRouter: { use: vi.fn(), get: vi.fn() },
+  mockGetAuditEntries: vi.fn(),
 }));
 
 vi.mock('express', () => ({
-    default: { Router: vi.fn(() => mockRouter) },
+  default: { Router: vi.fn(() => mockRouter) },
 }));
 
 vi.mock('nocache', () => ({ default: vi.fn(() => 'nocache-middleware') }));
 
 vi.mock('../store/audit', () => ({
-    getAuditEntries: mockGetAuditEntries,
+  getAuditEntries: mockGetAuditEntries,
 }));
 
 import * as auditRouter from './audit.js';
 
 describe('Audit Router', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('should initialize router with nocache and route', () => {
+    const router = auditRouter.init();
+    expect(router.use).toHaveBeenCalledWith('nocache-middleware');
+    expect(router.get).toHaveBeenCalledWith('/', expect.any(Function));
+  });
+
+  test('should return audit entries with default pagination', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    const mockResult = {
+      entries: [{ id: '1', action: 'update-available', containerName: 'nginx' }],
+      total: 1,
+    };
+    mockGetAuditEntries.mockReturnValue(mockResult);
+
+    const req = createMockRequest({ query: {} });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
     });
-
-    test('should initialize router with nocache and route', () => {
-        const router = auditRouter.init();
-        expect(router.use).toHaveBeenCalledWith('nocache-middleware');
-        expect(router.get).toHaveBeenCalledWith('/', expect.any(Function));
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      entries: mockResult.entries,
+      total: 1,
+      page: 1,
+      limit: 50,
     });
+  });
 
-    test('should return audit entries with default pagination', () => {
-        auditRouter.init();
-        const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+  test('should pass query filters to store', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
 
-        const mockResult = {
-            entries: [{ id: '1', action: 'update-available', containerName: 'nginx' }],
-            total: 1,
-        };
-        mockGetAuditEntries.mockReturnValue(mockResult);
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
 
-        const req = createMockRequest({ query: {} });
-        const res = createMockResponse();
-
-        handler(req, res);
-
-        expect(mockGetAuditEntries).toHaveBeenCalledWith({
-            skip: 0,
-            limit: 50,
-        });
-        expect(res.status).toHaveBeenCalledWith(200);
-        expect(res.json).toHaveBeenCalledWith({
-            entries: mockResult.entries,
-            total: 1,
-            page: 1,
-            limit: 50,
-        });
+    const req = createMockRequest({
+      query: {
+        page: '2',
+        limit: '10',
+        action: 'update-applied',
+        container: 'redis',
+        from: '2024-01-01',
+        to: '2024-12-31',
+      },
     });
+    const res = createMockResponse();
 
-    test('should pass query filters to store', () => {
-        auditRouter.init();
-        const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+    handler(req, res);
 
-        mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
-
-        const req = createMockRequest({
-            query: {
-                page: '2',
-                limit: '10',
-                action: 'update-applied',
-                container: 'redis',
-                from: '2024-01-01',
-                to: '2024-12-31',
-            },
-        });
-        const res = createMockResponse();
-
-        handler(req, res);
-
-        expect(mockGetAuditEntries).toHaveBeenCalledWith({
-            skip: 10,
-            limit: 10,
-            action: 'update-applied',
-            container: 'redis',
-            from: '2024-01-01',
-            to: '2024-12-31',
-        });
-        expect(res.json).toHaveBeenCalledWith({
-            entries: [],
-            total: 0,
-            page: 2,
-            limit: 10,
-        });
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 10,
+      limit: 10,
+      action: 'update-applied',
+      container: 'redis',
+      from: '2024-01-01',
+      to: '2024-12-31',
     });
-
-    test('should clamp page to minimum of 1', () => {
-        auditRouter.init();
-        const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
-
-        mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
-
-        const req = createMockRequest({ query: { page: '-5' } });
-        const res = createMockResponse();
-
-        handler(req, res);
-
-        expect(mockGetAuditEntries).toHaveBeenCalledWith({
-            skip: 0,
-            limit: 50,
-        });
-        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+    expect(res.json).toHaveBeenCalledWith({
+      entries: [],
+      total: 0,
+      page: 2,
+      limit: 10,
     });
+  });
 
-    test('should clamp limit to maximum of 200', () => {
-        auditRouter.init();
-        const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+  test('should clamp page to minimum of 1', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
 
-        mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
 
-        const req = createMockRequest({ query: { limit: '500' } });
-        const res = createMockResponse();
+    const req = createMockRequest({ query: { page: '-5' } });
+    const res = createMockResponse();
 
-        handler(req, res);
+    handler(req, res);
 
-        expect(mockGetAuditEntries).toHaveBeenCalledWith({
-            skip: 0,
-            limit: 200,
-        });
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
     });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+  });
 
-    test('should clamp limit to minimum of 1', () => {
-        auditRouter.init();
-        const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+  test('should clamp limit to maximum of 200', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
 
-        mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
 
-        const req = createMockRequest({ query: { limit: '0' } });
-        const res = createMockResponse();
+    const req = createMockRequest({ query: { limit: '500' } });
+    const res = createMockResponse();
 
-        handler(req, res);
+    handler(req, res);
 
-        expect(mockGetAuditEntries).toHaveBeenCalledWith({
-            skip: 0,
-            limit: 1,
-        });
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 200,
     });
+  });
+
+  test('should clamp limit to minimum of 1', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({ query: { limit: '0' } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 1,
+    });
+  });
 });

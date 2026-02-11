@@ -1,66 +1,66 @@
-import { createRouter, createWebHistory } from "vue-router";
-import { getUser } from "@/services/auth";
-import { nextTick } from "vue";
+import { nextTick } from 'vue';
+import { createRouter, createWebHistory } from 'vue-router';
+import { getUser } from '@/services/auth';
 
 const routes = [
   {
-    path: "/",
-    name: "home",
-    component: () => import("../views/HomeView.vue"),
+    path: '/',
+    name: 'home',
+    component: () => import('../views/HomeView.vue'),
   },
   {
-    path: "/login",
-    name: "login",
-    component: () => import("../views/LoginView.vue"),
+    path: '/login',
+    name: 'login',
+    component: () => import('../views/LoginView.vue'),
   },
   {
-    path: "/containers",
-    name: "containers",
-    component: () => import("../views/ContainersView.vue"),
+    path: '/containers',
+    name: 'containers',
+    component: () => import('../views/ContainersView.vue'),
   },
   {
-    path: "/configuration/authentications",
-    name: "authentications",
-    component: () => import("../views/ConfigurationAuthenticationsView.vue"),
+    path: '/configuration/authentications',
+    name: 'authentications',
+    component: () => import('../views/ConfigurationAuthenticationsView.vue'),
   },
   {
-    path: "/configuration/registries",
-    name: "registries",
-    component: () => import("../views/ConfigurationRegistriesView.vue"),
+    path: '/configuration/registries',
+    name: 'registries',
+    component: () => import('../views/ConfigurationRegistriesView.vue'),
   },
   {
-    path: "/configuration/server",
-    name: "server",
-    component: () => import("../views/ConfigurationServerView.vue"),
+    path: '/configuration/server',
+    name: 'server',
+    component: () => import('../views/ConfigurationServerView.vue'),
   },
   {
-    path: "/configuration/triggers",
-    name: "triggers",
-    component: () => import("../views/ConfigurationTriggersView.vue"),
+    path: '/configuration/triggers',
+    name: 'triggers',
+    component: () => import('../views/ConfigurationTriggersView.vue'),
   },
   {
-    path: "/configuration/watchers",
-    name: "watchers",
-    component: () => import("../views/ConfigurationWatchersView.vue"),
+    path: '/configuration/watchers',
+    name: 'watchers',
+    component: () => import('../views/ConfigurationWatchersView.vue'),
   },
   {
-    path: "/configuration/agents",
-    name: "agents",
-    component: () => import("../views/ConfigurationAgentsView.vue"),
+    path: '/configuration/agents',
+    name: 'agents',
+    component: () => import('../views/ConfigurationAgentsView.vue'),
   },
   {
-    path: "/configuration/logs",
-    name: "logs",
-    component: () => import("../views/ConfigurationLogsView.vue"),
+    path: '/configuration/logs',
+    name: 'logs',
+    component: () => import('../views/ConfigurationLogsView.vue'),
   },
   {
-    path: "/monitoring/history",
-    name: "history",
-    component: () => import("../views/MonitoringHistoryView.vue"),
+    path: '/monitoring/history',
+    name: 'history',
+    component: () => import('../views/MonitoringHistoryView.vue'),
   },
   {
-    path: "/:pathMatch(.*)*",
-    redirect: "/",
+    path: '/:pathMatch(.*)*',
+    redirect: '/',
   },
 ];
 
@@ -89,7 +89,7 @@ function validateAndGetNextRoute(to): string | boolean {
  */
 function createLoginRedirect(to) {
   return {
-    name: "login",
+    name: 'login',
     query: {
       next: to.path,
     },
@@ -103,7 +103,7 @@ function createLoginRedirect(to) {
  * @returns {Promise<void>}
  */
 async function applyAuthNavigationGuard(to) {
-  if (to.name === "login") {
+  if (to.name === 'login') {
     return true;
   } else {
     // Get current user
@@ -114,7 +114,7 @@ async function applyAuthNavigationGuard(to) {
       // Emit authenticated event after navigation
       nextTick(() => {
         if ((router as any).app?.config?.globalProperties?.$eventBus) {
-          (router as any).app.config.globalProperties.$eventBus.emit("authenticated", user);
+          (router as any).app.config.globalProperties.$eventBus.emit('authenticated', user);
         }
       });
 
@@ -132,7 +132,5 @@ async function applyAuthNavigationGuard(to) {
 router.beforeEach(async (to) => {
   return await applyAuthNavigationGuard(to);
 });
-
-
 
 export default router;

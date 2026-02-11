@@ -1,7 +1,7 @@
-import { ref, computed, inject, onMounted, defineComponent } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useTheme } from "vuetify";
-import { logout } from "@/services/auth";
+import { computed, defineComponent, inject, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useTheme } from 'vuetify';
+import { logout } from '@/services/auth';
 
 export default defineComponent({
   props: {
@@ -14,11 +14,11 @@ export default defineComponent({
       default: false,
     },
   },
-  emits: ["toggle-drawer"],
+  emits: ['toggle-drawer'],
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const eventBus = inject("eventBus") as any;
+    const eventBus = inject('eventBus') as any;
     const theme = useTheme();
 
     const viewName = computed(() => {
@@ -27,20 +27,20 @@ export default defineComponent({
 
     // Theme management (moved from NavigationDrawer)
     if (localStorage.darkMode !== undefined && localStorage.themeMode === undefined) {
-      localStorage.themeMode = localStorage.darkMode === "true" ? "dark" : "light";
-      localStorage.removeItem("darkMode");
+      localStorage.themeMode = localStorage.darkMode === 'true' ? 'dark' : 'light';
+      localStorage.removeItem('darkMode');
     }
 
-    const themeMode = ref<string>(localStorage.themeMode || "system");
+    const themeMode = ref<string>(localStorage.themeMode || 'system');
 
     const applyTheme = () => {
       let isDark: boolean;
-      if (themeMode.value === "system") {
-        isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (themeMode.value === 'system') {
+        isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       } else {
-        isDark = themeMode.value === "dark";
+        isDark = themeMode.value === 'dark';
       }
-      theme.global.name.value = isDark ? "dark" : "light";
+      theme.global.name.value = isDark ? 'dark' : 'light';
     };
 
     const onThemeModeChange = (value: string) => {
@@ -51,30 +51,36 @@ export default defineComponent({
 
     const themeIcon = computed(() => {
       switch (themeMode.value) {
-        case "light": return "fas fa-sun";
-        case "dark": return "fas fa-moon";
-        default: return "fas fa-circle-half-stroke";
+        case 'light':
+          return 'fas fa-sun';
+        case 'dark':
+          return 'fas fa-moon';
+        default:
+          return 'fas fa-circle-half-stroke';
       }
     });
 
     const cycleTheme = () => {
-      const modes = ["light", "system", "dark"];
+      const modes = ['light', 'system', 'dark'];
       const idx = modes.indexOf(themeMode.value);
       onThemeModeChange(modes[(idx + 1) % modes.length]);
     };
 
     const themeLabel = computed(() => {
       switch (themeMode.value) {
-        case "light": return "Light";
-        case "dark": return "Dark";
-        default: return "System";
+        case 'light':
+          return 'Light';
+        case 'dark':
+          return 'Dark';
+        default:
+          return 'System';
       }
     });
 
     onMounted(() => {
       applyTheme();
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-        if (themeMode.value === "system") {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (themeMode.value === 'system') {
           applyTheme();
         }
       });
@@ -87,15 +93,11 @@ export default defineComponent({
           window.location = logoutResult.logoutUrl;
         } else {
           await router.push({
-            name: "login",
+            name: 'login',
           });
         }
       } catch (e: any) {
-        eventBus.emit(
-          "notify",
-          `Error when trying to logout (${e.message})`,
-          "error",
-        );
+        eventBus.emit('notify', `Error when trying to logout (${e.message})`, 'error');
       }
     };
 

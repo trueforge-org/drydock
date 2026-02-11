@@ -1,5 +1,5 @@
-import { getRegistryProviderIcon } from "@/services/registry";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import { getRegistryProviderIcon } from '@/services/registry';
 
 export default defineComponent({
   props: {
@@ -17,13 +17,13 @@ export default defineComponent({
     },
 
     osIcon() {
-      let icon = "fas fa-circle-question";
+      let icon = 'fas fa-circle-question';
       switch (this.image.os) {
-        case "linux":
-          icon = "fab fa-linux";
+        case 'linux':
+          icon = 'fab fa-linux';
           break;
-        case "windows":
-          icon = "fab fa-windows";
+        case 'windows':
+          icon = 'fab fa-windows';
           break;
       }
       return icon;
@@ -33,7 +33,7 @@ export default defineComponent({
   methods: {
     copyToClipboard(kind: string, value: string) {
       navigator.clipboard.writeText(value);
-      (this as any).$eventBus.emit("notify", `${kind} copied to clipboard`);
+      (this as any).$eventBus.emit('notify', `${kind} copied to clipboard`);
     },
   },
 });

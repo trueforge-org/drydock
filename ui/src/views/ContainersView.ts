@@ -1,14 +1,14 @@
-import ContainerItem from '@/components/ContainerItem.vue';
-import ContainerFilter from '@/components/ContainerFilter.vue';
-import { deleteContainer, getAllContainers } from '@/services/container';
-import agentService from '@/services/agent';
 import { defineComponent } from 'vue';
+import ContainerFilter from '@/components/ContainerFilter.vue';
+import ContainerItem from '@/components/ContainerItem.vue';
+import agentService from '@/services/agent';
+import { deleteContainer, getAllContainers } from '@/services/container';
 
 function parseQueryParams(query: any) {
   return {
-    registrySelected: query['registry'],
-    agentSelected: query['agent'],
-    watcherSelected: query['watcher'],
+    registrySelected: query.registry,
+    agentSelected: query.agent,
+    watcherSelected: query.watcher,
     updateKindSelected: query['update-kind'],
     updateAvailableSelected: query['update-available']?.toLowerCase() === 'true',
     oldestFirst: query['oldest-first']?.toLowerCase() === 'true',
@@ -48,9 +48,7 @@ export default defineComponent({
   watch: {},
   computed: {
     allContainerLabels() {
-      const allLabels = this.containers.reduce((acc, container) => {
-        return [...acc, ...Object.keys(container.labels ?? {})];
-      }, []);
+      const allLabels = this.containers.flatMap((container) => Object.keys(container.labels ?? {}));
       return [...new Set(allLabels)].sort();
     },
     registries() {
@@ -157,13 +155,13 @@ export default defineComponent({
     updateQueryParams() {
       const query: any = {};
       if (this.registrySelected) {
-        query['registry'] = this.registrySelected;
+        query.registry = this.registrySelected;
       }
       if (this.agentSelected) {
-        query['agent'] = this.agentSelected;
+        query.agent = this.agentSelected;
       }
       if (this.watcherSelected) {
-        query['watcher'] = this.watcherSelected;
+        query.watcher = this.watcherSelected;
       }
       if (this.updateKindSelected) {
         query['update-kind'] = this.updateKindSelected;

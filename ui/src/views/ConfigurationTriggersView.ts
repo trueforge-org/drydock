@@ -1,6 +1,6 @@
-import TriggerDetail from "@/components/TriggerDetail.vue";
-import { getAllTriggers } from "@/services/trigger";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import TriggerDetail from '@/components/TriggerDetail.vue';
+import { getAllTriggers } from '@/services/trigger';
 
 export default defineComponent({
   data() {
@@ -19,9 +19,9 @@ export default defineComponent({
     } catch (e: any) {
       next((vm: any) => {
         vm.$eventBus.emit(
-          "notify",
+          'notify',
           `Error when trying to load the triggers (${e.message})`,
-          "error",
+          'error',
         );
       });
     }

@@ -1,6 +1,6 @@
-import ConfigurationItem from "@/components/ConfigurationItem.vue";
-import { getAllRegistries, getRegistryProviderIcon } from "@/services/registry";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import ConfigurationItem from '@/components/ConfigurationItem.vue';
+import { getAllRegistries, getRegistryProviderIcon } from '@/services/registry';
 
 export default defineComponent({
   data() {
@@ -25,9 +25,9 @@ export default defineComponent({
     } catch (e: any) {
       next((vm: any) => {
         vm.$eventBus.emit(
-          "notify",
+          'notify',
           `Error when trying to load the registries (${e.message})`,
-          "error",
+          'error',
         );
       });
     }

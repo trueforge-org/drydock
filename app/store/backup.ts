@@ -10,7 +10,7 @@ let backupCollection;
  * @param db
  */
 export function createCollections(db) {
-    backupCollection = initCollection(db, 'backups');
+  backupCollection = initCollection(db, 'backups');
 }
 
 /**
@@ -18,15 +18,15 @@ export function createCollections(db) {
  * @param backup
  */
 export function insertBackup(backup: ImageBackup): ImageBackup {
-    const backupToSave: ImageBackup = {
-        ...backup,
-        id: backup.id || crypto.randomUUID(),
-        timestamp: backup.timestamp || new Date().toISOString(),
-    };
-    if (backupCollection) {
-        backupCollection.insert({ data: backupToSave });
-    }
-    return backupToSave;
+  const backupToSave: ImageBackup = {
+    ...backup,
+    id: backup.id || crypto.randomUUID(),
+    timestamp: backup.timestamp || new Date().toISOString(),
+  };
+  if (backupCollection) {
+    backupCollection.insert({ data: backupToSave });
+  }
+  return backupToSave;
 }
 
 /**
@@ -34,27 +34,27 @@ export function insertBackup(backup: ImageBackup): ImageBackup {
  * @param containerId
  */
 export function getBackups(containerId: string): ImageBackup[] {
-    if (!backupCollection) {
-        return [];
-    }
-    return backupCollection
-        .find()
-        .map((item) => item.data as ImageBackup)
-        .filter((b) => b.containerId === containerId)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  if (!backupCollection) {
+    return [];
+  }
+  return backupCollection
+    .find()
+    .map((item) => item.data as ImageBackup)
+    .filter((b) => b.containerId === containerId)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 /**
  * Get all backups across all containers.
  */
 export function getAllBackups(): ImageBackup[] {
-    if (!backupCollection) {
-        return [];
-    }
-    return backupCollection
-        .find()
-        .map((item) => item.data as ImageBackup)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  if (!backupCollection) {
+    return [];
+  }
+  return backupCollection
+    .find()
+    .map((item) => item.data as ImageBackup)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 /**
@@ -62,11 +62,11 @@ export function getAllBackups(): ImageBackup[] {
  * @param id
  */
 export function getBackup(id: string): ImageBackup | undefined {
-    if (!backupCollection) {
-        return undefined;
-    }
-    const doc = backupCollection.find().find((item) => item.data.id === id);
-    return doc ? (doc.data as ImageBackup) : undefined;
+  if (!backupCollection) {
+    return undefined;
+  }
+  const doc = backupCollection.find().find((item) => item.data.id === id);
+  return doc ? (doc.data as ImageBackup) : undefined;
 }
 
 /**
@@ -74,15 +74,15 @@ export function getBackup(id: string): ImageBackup | undefined {
  * @param id
  */
 export function deleteBackup(id: string): boolean {
-    if (!backupCollection) {
-        return false;
-    }
-    const doc = backupCollection.find().find((item) => item.data.id === id);
-    if (doc) {
-        backupCollection.remove(doc);
-        return true;
-    }
+  if (!backupCollection) {
     return false;
+  }
+  const doc = backupCollection.find().find((item) => item.data.id === id);
+  if (doc) {
+    backupCollection.remove(doc);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -91,12 +91,12 @@ export function deleteBackup(id: string): boolean {
  * @param maxCount
  */
 export function pruneOldBackups(containerId: string, maxCount: number): number {
-    if (!backupCollection) {
-        return 0;
-    }
-    const docs = backupCollection.find().filter((item) => item.data.containerId === containerId);
-    docs.sort((a, b) => new Date(b.data.timestamp).getTime() - new Date(a.data.timestamp).getTime());
-    const toRemove = docs.slice(maxCount);
-    toRemove.forEach((doc) => backupCollection.remove(doc));
-    return toRemove.length;
+  if (!backupCollection) {
+    return 0;
+  }
+  const docs = backupCollection.find().filter((item) => item.data.containerId === containerId);
+  docs.sort((a, b) => new Date(b.data.timestamp).getTime() - new Date(a.data.timestamp).getTime());
+  const toRemove = docs.slice(maxCount);
+  toRemove.forEach((doc) => backupCollection.remove(doc));
+  return toRemove.length;
 }

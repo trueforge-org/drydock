@@ -138,7 +138,7 @@ const IMAGE_TO_ICON: Record<string, string> = {
   jenkins: 'jenkins',
   drone: 'drone',
   woodpecker: 'woodpecker-ci',
-  'n8n': 'n8n',
+  n8n: 'n8n',
   registry: 'docker',
   sonarqube: 'sonarqube',
   harbor: 'harbor',

@@ -1,8 +1,8 @@
-import { inject, defineComponent } from "vue";
-import { getOidcRedirection, getStrategies } from "@/services/auth";
-import LoginBasic from "@/components/LoginBasic.vue";
-import LoginOidc from "@/components/LoginOidc.vue";
-import logo from "@/assets/drydock.png";
+import { defineComponent, inject } from 'vue';
+import logo from '@/assets/drydock.png';
+import LoginBasic from '@/components/LoginBasic.vue';
+import LoginOidc from '@/components/LoginOidc.vue';
+import { getOidcRedirection, getStrategies } from '@/services/auth';
 
 export default defineComponent({
   components: {
@@ -10,7 +10,7 @@ export default defineComponent({
     LoginOidc,
   },
   setup() {
-    const eventBus = inject("eventBus") as any;
+    const eventBus = inject('eventBus') as any;
     return {
       eventBus,
     };
@@ -32,9 +32,9 @@ export default defineComponent({
      */
     isSupportedStrategy(strategy: any) {
       switch (strategy.type) {
-        case "basic":
+        case 'basic':
           return true;
-        case "oidc":
+        case 'oidc':
           return true;
         default:
           return false;
@@ -45,7 +45,7 @@ export default defineComponent({
      * Handle authentication success.
      */
     onAuthenticationSuccess() {
-      this.$router.push((this.$route.query.next as string) || "/");
+      this.$router.push((this.$route.query.next as string) || '/');
     },
   },
 
@@ -61,13 +61,13 @@ export default defineComponent({
       const strategies = await getStrategies();
 
       // If anonymous auth is enabled then no need to login => go home
-      if (strategies.find((strategy) => strategy.type === "anonymous")) {
-        next("/");
+      if (strategies.find((strategy) => strategy.type === 'anonymous')) {
+        next('/');
       }
 
       // If oidc strategy supporting redirect
       const oidcWithRedirect = strategies.find(
-        (strategy) => strategy.type === "oidc" && strategy.redirect,
+        (strategy) => strategy.type === 'oidc' && strategy.redirect,
       );
       if (oidcWithRedirect) {
         const redirection = await getOidcRedirection(oidcWithRedirect.name);
@@ -83,9 +83,9 @@ export default defineComponent({
       next((vm: any) => {
         if (vm.eventBus) {
           vm.eventBus.emit(
-            "notify",
+            'notify',
             `Error when trying to get the authentication strategies (${e.message})`,
-            "error",
+            'error',
           );
         } else {
           console.error(`Error when trying to get the authentication strategies (${e.message})`);

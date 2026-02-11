@@ -130,6 +130,41 @@
 
             <!-- Desktop action buttons -->
             <div v-if="smAndUp" class="d-flex align-center flex-shrink-0 px-2" style="gap: 2px;">
+              <!-- Container Actions -->
+              <template v-if="containerActionsEnabled">
+                <v-tooltip text="Start container" location="top">
+                  <template v-slot:activator="{ props }">
+                    <v-btn icon variant="text" size="small" color="success" v-bind="props"
+                      :disabled="container.status === 'running'" :loading="isStarting"
+                      @click="startContainerAction">
+                      <v-icon>fas fa-play</v-icon>
+                    </v-btn>
+                  </template>
+                </v-tooltip>
+
+                <v-tooltip text="Stop container" location="top">
+                  <template v-slot:activator="{ props }">
+                    <v-btn icon variant="text" size="small" color="error" v-bind="props"
+                      :disabled="container.status !== 'running'" :loading="isStopping"
+                      @click="stopContainerAction">
+                      <v-icon>fas fa-stop</v-icon>
+                    </v-btn>
+                  </template>
+                </v-tooltip>
+
+                <v-tooltip text="Restart container" location="top">
+                  <template v-slot:activator="{ props }">
+                    <v-btn icon variant="text" size="small" v-bind="props"
+                      :loading="isRestarting"
+                      @click="restartContainerAction">
+                      <v-icon>fas fa-arrows-rotate</v-icon>
+                    </v-btn>
+                  </template>
+                </v-tooltip>
+
+                <v-divider vertical class="mx-1" />
+              </template>
+
               <!-- Preview -->
               <v-tooltip text="Preview update" location="top">
                 <template v-slot:activator="{ props }">
@@ -290,6 +325,21 @@
                   </v-btn>
                 </template>
                 <v-list density="compact">
+                  <template v-if="containerActionsEnabled">
+                    <v-list-item :disabled="container.status === 'running'" @click="startContainerAction">
+                      <template v-slot:prepend><v-icon color="success">fas fa-play</v-icon></template>
+                      <v-list-item-title>Start</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item :disabled="container.status !== 'running'" @click="stopContainerAction">
+                      <template v-slot:prepend><v-icon color="error">fas fa-stop</v-icon></template>
+                      <v-list-item-title>Stop</v-list-item-title>
+                    </v-list-item>
+                    <v-list-item @click="restartContainerAction">
+                      <template v-slot:prepend><v-icon>fas fa-arrows-rotate</v-icon></template>
+                      <v-list-item-title>Restart</v-list-item-title>
+                    </v-list-item>
+                    <v-divider />
+                  </template>
                   <v-list-item
                     :disabled="!container.updateAvailable"
                     @click="showPreview = true"

@@ -1,24 +1,65 @@
 # Roadmap
 
-Last updated: 2026-02-09
+Last updated: 2026-02-11
 
 ## Current State
 
-`main` is stable. ESM migration complete, all tests on Vitest, recent fixes shipped.
+`feature/v1.2.0` in progress. `main` stable at 1.1.1.
 
-## Planned / Open
+v1.2.0 adds: audit log, dry-run preview, image backup & rollback, Grafana dashboard, Font Awesome 6 migration, UI modernization, container action bar, and dashboard enhancements.
 
-No open items — all tracked issues resolved.
+---
+
+## Feature Wishlist (Competitive Analysis)
+
+Based on analysis of Watchtower, Diun, Dozzle, Portainer, Yacht, Shepherd, and Renovate.
+
+### Tier 1 -- High-value, builds on existing strengths
+
+| Feature | Competitor(s) | Complexity | Notes |
+|---------|---------------|------------|-------|
+| Lifecycle hooks (pre/post-update) | Watchtower | Medium | Labels like `dd.lifecycle.pre-update` to run commands before/after updates (e.g. DB backup before Postgres update) |
+| Dependency-aware update ordering | Watchtower | Medium | Detect `depends_on` / network links, topological sort, update dependencies first |
+| Automatic rollback on failure | Shepherd | Medium | Health check after update (HTTP probe, TCP, exec), auto-rollback to backup if unhealthy |
+| Container actions (start/stop/restart) | Dozzle, Portainer | Small | Opt-in via env var, respect OIDC roles |
+| HTTP API for on-demand triggers | Watchtower | Small | `POST /api/update` endpoint for CI/CD webhook integration |
+
+### Tier 2 -- Strategic differentiators
+
+| Feature | Competitor(s) | Complexity | Notes |
+|---------|---------------|------------|-------|
+| Image vulnerability / CVE scanning | Renovate, Portainer | Medium | Trivy integration, severity badges in UI, prioritize security updates in notifications |
+| Tag regex include/exclude filters | Diun | Small | `dd.tag.include` / `dd.tag.exclude` with regex, `watch_repo` mode |
+| Container grouping / stack views | Dozzle | Small-Medium | Auto-group by Compose project, collapsible groups, per-stack actions |
+| Changelog / release notes in notifications | Renovate | Medium | Map images to source repos, fetch GitHub/GitLab release notes for new tags |
+
+### Tier 3 -- Platform expansion
+
+| Feature | Competitor(s) | Complexity | Notes |
+|---------|---------------|------------|-------|
+| Kubernetes provider | Diun, Portainer, Dozzle | Large | Watch pods/deployments, check images, biggest addressable market gap |
+| Docker Swarm service provider | Shepherd, Diun | Medium | Detect services, `docker service update --image` |
+| Watch non-running / static images | Diun | Small-Medium | File provider for YAML image lists, Dockerfile extraction |
+| Web terminal / container shell | Dozzle, Portainer | Medium | xterm.js WebSocket terminal, opt-in |
+| Digest pinning advisory | Renovate | Small | Warn on `:latest` usage, offer one-click pin to current digest |
+
+---
 
 ## Completed
 
 | Item | Notes |
 | --- | --- |
+| v1.2.0 Audit log | Event-based audit trail with LokiJS, REST API, Prometheus counter |
+| v1.2.0 Dry-run preview | Preview container update without performing it |
+| v1.2.0 Image backup & rollback | Pre-update backup with configurable retention, rollback UI with version picker |
+| v1.2.0 Grafana dashboard | Importable JSON template for Prometheus metrics |
+| v1.2.0 Font Awesome 6 migration | Replaced MDI with FA6 across entire UI |
+| v1.2.0 UI modernization | Consistent styling, icon toolbar, dashboard cards, dark theme fixes |
 | #891 Auth for remote Docker/Podman host API (Phase 2) | OIDC device-flow (RFC 8628) with auto-detection, polling, backoff, and refresh token rotation |
-| #794 Per-image config presets (imgset) | Feature complete — added `watchDigest` and `inspectTagPath` imgset properties |
-| #909 Custom `dd.display.icon` | Already complete — URL-based icons, Homarr Labs, Selfh.st, Simple Icons, and MDI support |
+| #794 Per-image config presets (imgset) | Feature complete -- added `watchDigest` and `inspectTagPath` imgset properties |
+| #909 Custom `dd.display.icon` | URL-based icons, Homarr Labs, Selfh.st, Simple Icons, and MDI support |
 | #906 Hybrid Triggers | Trigger group defaults and name-only include/exclude for multi-provider trigger management |
-| #851 Status text overflows container box | Already complete — compact `v-chip` badges with absolute positioning |
+| #851 Status text overflows container box | Compact `v-chip` badges with absolute positioning |
 | #843 Advise tag-change if include-filter doesn't match | Added non-semver to semver tag advice when `includeTags` filter is set |
 | #870 Lower semver detected as update | Numeric segment matching prevents cross-version-depth comparisons |
 | #866 Old semver tag considered for update | Same fix as #870; prefix + segment filtering prevents year-based tags |

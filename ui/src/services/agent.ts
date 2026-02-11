@@ -5,7 +5,7 @@ export function getAgentIcon() {
 }
 
 export async function getAgents() {
-  const response = await fetch(BASE_URL, { credentials: "include" });
+  const response = await fetch(BASE_URL, { credentials: 'include' });
   if (!response.ok) {
     throw new Error(`Failed to get agents: ${response.statusText}`);
   }

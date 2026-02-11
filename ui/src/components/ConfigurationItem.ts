@@ -1,6 +1,6 @@
-import IconRenderer from "@/components/IconRenderer.vue";
-import { defineComponent } from "vue";
-import { useDisplay } from "vuetify";
+import { defineComponent } from 'vue';
+import { useDisplay } from 'vuetify';
+import IconRenderer from '@/components/IconRenderer.vue';
 
 export default defineComponent({
   setup() {
@@ -28,13 +28,11 @@ export default defineComponent({
   },
   computed: {
     agentStatusColor() {
-      const agent = (this.agents as any[]).find(
-        (a) => a.name === this.item.agent,
-      );
+      const agent = (this.agents as any[]).find((a) => a.name === this.item.agent);
       if (agent) {
-        return agent.connected ? "success" : "error";
+        return agent.connected ? 'success' : 'error';
       }
-      return "info";
+      return 'info';
     },
 
     configurationItems() {
@@ -47,17 +45,13 @@ export default defineComponent({
     },
 
     displayName() {
-      if (
-        this.item.name &&
-        this.item.type &&
-        this.item.name !== this.item.type
-      ) {
+      if (this.item.name && this.item.type && this.item.name !== this.item.type) {
         return `${this.item.name} (${this.item.type})`;
       }
       if (this.item.name) {
         return this.item.name;
       }
-      return "Unknown";
+      return 'Unknown';
     },
   },
 
@@ -66,8 +60,8 @@ export default defineComponent({
       this.showDetail = !this.showDetail;
     },
     formatValue(value: any) {
-      if (value === undefined || value === null || value === "") {
-        return "<empty>";
+      if (value === undefined || value === null || value === '') {
+        return '<empty>';
       }
       return value;
     },

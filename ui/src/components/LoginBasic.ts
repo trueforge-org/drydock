@@ -1,13 +1,13 @@
-import { loginBasic } from "@/services/auth";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import { loginBasic } from '@/services/auth';
 
 export default defineComponent({
   data() {
     return {
-      username: "",
-      password: "",
+      username: '',
+      password: '',
       rules: {
-        required: (value: any) => !!value || "Required",
+        required: (value: any) => !!value || 'Required',
       },
     };
   },
@@ -18,7 +18,7 @@ export default defineComponent({
      * @returns {boolean}
      */
     valid() {
-      return this.username !== "" && this.password !== "";
+      return this.username !== '' && this.password !== '';
     },
   },
 
@@ -31,9 +31,9 @@ export default defineComponent({
       if (this.valid) {
         try {
           await loginBasic(this.username, this.password);
-          this.$emit("authentication-success");
+          this.$emit('authentication-success');
         } catch (e) {
-          (this as any).$eventBus.emit("notify", "Username or password error", "error");
+          (this as any).$eventBus.emit('notify', 'Username or password error', 'error');
         }
       }
     },

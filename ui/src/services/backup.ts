@@ -1,6 +1,6 @@
 async function getBackups(containerId: string) {
   const response = await fetch(`/api/containers/${containerId}/backups`, {
-    credentials: "include",
+    credentials: 'include',
   });
   if (!response.ok) {
     throw new Error(`Failed to get backups for container ${containerId}: ${response.statusText}`);
@@ -10,25 +10,23 @@ async function getBackups(containerId: string) {
 
 async function rollback(containerId: string, backupId?: string) {
   const options: RequestInit = {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
   };
   if (backupId) {
     options.body = JSON.stringify({ backupId });
   }
   const response = await fetch(`/api/containers/${containerId}/rollback`, options);
   if (!response.ok) {
-    let details = "";
+    let details = '';
     try {
       const body = await response.json();
-      details = body?.error ? ` (${body.error})` : "";
+      details = body?.error ? ` (${body.error})` : '';
     } catch (e) {
       // Ignore parsing error and fallback to status text.
     }
-    throw new Error(
-      `Rollback failed: ${response.statusText}${details}`,
-    );
+    throw new Error(`Rollback failed: ${response.statusText}${details}`);
   }
   return response.json();
 }

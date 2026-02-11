@@ -1,12 +1,12 @@
+import { defineComponent } from 'vue';
 import { useDisplay } from 'vuetify';
-import { getRegistryProviderIcon } from '@/services/registry';
 import ContainerDetail from '@/components/ContainerDetail.vue';
 import ContainerError from '@/components/ContainerError.vue';
 import ContainerImage from '@/components/ContainerImage.vue';
 import ContainerLogs from '@/components/ContainerLogs.vue';
-import ContainerTriggers from '@/components/ContainerTriggers.vue';
 import ContainerPreview from '@/components/ContainerPreview.vue';
 import ContainerRollback from '@/components/ContainerRollback.vue';
+import ContainerTriggers from '@/components/ContainerTriggers.vue';
 import ContainerUpdate from '@/components/ContainerUpdate.vue';
 import IconRenderer from '@/components/IconRenderer.vue';
 import {
@@ -15,8 +15,9 @@ import {
   runTrigger,
   updateContainerPolicy,
 } from '@/services/container';
+import { restartContainer, startContainer, stopContainer } from '@/services/container-actions';
 import { getEffectiveDisplayIcon } from '@/services/image-icon';
-import { defineComponent } from 'vue';
+import { getRegistryProviderIcon } from '@/services/registry';
 
 export default defineComponent({
   setup() {
@@ -68,17 +69,19 @@ export default defineComponent({
       deleteEnabled: false,
       isRefreshingContainer: false,
       isUpdatingContainer: false,
+      isStarting: false,
+      isStopping: false,
+      isRestarting: false,
+      containerActionsEnabled: false,
     };
   },
   computed: {
     agentStatusColor() {
-      const agent = (this.agents as any[]).find(
-        (a) => a.name === this.container.agent,
-      );
+      const agent = (this.agents as any[]).find((a) => a.name === this.container.agent);
       if (agent) {
-        return agent.connected ? "success" : "error";
+        return agent.connected ? 'success' : 'error';
       }
-      return "info";
+      return 'info';
     },
 
     effectiveDisplayIcon() {
@@ -208,7 +211,11 @@ export default defineComponent({
   },
 
   methods: {
-    async applyContainerUpdatePolicy(action: string, payload = {}, successMessage = 'Update policy saved') {
+    async applyContainerUpdatePolicy(
+      action: string,
+      payload = {},
+      successMessage = 'Update policy saved',
+    ) {
       try {
         const containerUpdated = await updateContainerPolicy(this.container.id, action, payload);
         this.$emit('container-refreshed', containerUpdated);
@@ -223,11 +230,7 @@ export default defineComponent({
     },
 
     async skipCurrentUpdate() {
-      await this.applyContainerUpdatePolicy(
-        'skip-current',
-        {},
-        'Current update skipped',
-      );
+      await this.applyContainerUpdatePolicy('skip-current', {}, 'Current update skipped');
     },
 
     async snoozeUpdates(days: number) {
@@ -325,6 +328,49 @@ export default defineComponent({
       await this.refreshContainerNow(false);
     },
 
+    async startContainerAction() {
+      this.isStarting = true;
+      try {
+        await startContainer(this.container.id);
+        (this as any).$eventBus.emit('notify', 'Container started');
+        await this.refreshContainerNow(false);
+      } catch (e: any) {
+        (this as any).$eventBus.emit('notify', `Error starting container (${e.message})`, 'error');
+      } finally {
+        this.isStarting = false;
+      }
+    },
+
+    async stopContainerAction() {
+      this.isStopping = true;
+      try {
+        await stopContainer(this.container.id);
+        (this as any).$eventBus.emit('notify', 'Container stopped');
+        await this.refreshContainerNow(false);
+      } catch (e: any) {
+        (this as any).$eventBus.emit('notify', `Error stopping container (${e.message})`, 'error');
+      } finally {
+        this.isStopping = false;
+      }
+    },
+
+    async restartContainerAction() {
+      this.isRestarting = true;
+      try {
+        await restartContainer(this.container.id);
+        (this as any).$eventBus.emit('notify', 'Container restarted');
+        await this.refreshContainerNow(false);
+      } catch (e: any) {
+        (this as any).$eventBus.emit(
+          'notify',
+          `Error restarting container (${e.message})`,
+          'error',
+        );
+      } finally {
+        this.isRestarting = false;
+      }
+    },
+
     copyToClipboard(kind: string, value: string) {
       navigator.clipboard.writeText(value);
       (this as any).$eventBus.emit('notify', `${kind} copied to clipboard`);
@@ -349,5 +395,6 @@ export default defineComponent({
 
   mounted() {
     this.deleteEnabled = (this as any).$serverConfig?.feature?.delete || false;
+    this.containerActionsEnabled = (this as any).$serverConfig?.feature?.containeractions ?? true;
   },
 });

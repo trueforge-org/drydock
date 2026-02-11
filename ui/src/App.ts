@@ -1,19 +1,19 @@
 import {
-  ref,
   computed,
+  defineComponent,
+  getCurrentInstance,
+  inject,
   onMounted,
   onUpdated,
-  inject,
-  getCurrentInstance,
+  ref,
   watch,
-  defineComponent,
-} from "vue";
-import { useDisplay } from "vuetify";
-import NavigationDrawer from "@/components/NavigationDrawer.vue";
-import AppBar from "@/components/AppBar.vue";
-import SnackBar from "@/components/SnackBar.vue";
-import { getServer } from "@/services/server";
-import { useRoute } from "vue-router";
+} from 'vue';
+import { useRoute } from 'vue-router';
+import { useDisplay } from 'vuetify';
+import AppBar from '@/components/AppBar.vue';
+import NavigationDrawer from '@/components/NavigationDrawer.vue';
+import SnackBar from '@/components/SnackBar.vue';
+import { getServer } from '@/services/server';
 
 function setupAuthStateManagement(user: any, onAuthenticated: (userData: any) => void) {
   return async (newRoute: any) => {
@@ -21,8 +21,8 @@ function setupAuthStateManagement(user: any, onAuthenticated: (userData: any) =>
       user.value = undefined;
     } else if (!user.value) {
       try {
-        const response = await fetch("/auth/user", {
-          credentials: "include",
+        const response = await fetch('/auth/user', {
+          credentials: 'include',
         });
         if (response.ok) {
           const currentUser = await response.json();
@@ -31,7 +31,7 @@ function setupAuthStateManagement(user: any, onAuthenticated: (userData: any) =>
           }
         }
       } catch (e) {
-        console.log("Fallback auth check failed:", e);
+        console.log('Fallback auth check failed:', e);
       }
     }
   };
@@ -41,11 +41,11 @@ function setupEventBusListeners(
   eventBus: any,
   onAuthenticated: (userData: any) => void,
   notify: (message: string, level?: string) => void,
-  notifyClose: () => void
+  notifyClose: () => void,
 ) {
-  eventBus.on("authenticated", onAuthenticated);
-  eventBus.on("notify", notify);
-  eventBus.on("notify:close", notifyClose);
+  eventBus.on('authenticated', onAuthenticated);
+  eventBus.on('notify', notify);
+  eventBus.on('notify:close', notifyClose);
 }
 
 async function loadServerConfig(authenticated: any, instance: any) {
@@ -55,8 +55,7 @@ async function loadServerConfig(authenticated: any, instance: any) {
     !instance.appContext.config.globalProperties.$serverConfig
   ) {
     const server = await getServer();
-    instance.appContext.config.globalProperties.$serverConfig =
-      server.configuration;
+    instance.appContext.config.globalProperties.$serverConfig = server.configuration;
   }
 }
 
@@ -68,24 +67,24 @@ export default defineComponent({
   },
   setup() {
     const route = useRoute();
-    const eventBus = inject("eventBus") as any;
+    const eventBus = inject('eventBus') as any;
     const instance = getCurrentInstance();
     const { smAndDown } = useDisplay();
 
-    const snackbarMessage = ref("");
+    const snackbarMessage = ref('');
     const snackbarShow = ref(false);
-    const snackbarLevel = ref("info");
+    const snackbarLevel = ref('info');
     const user = ref(undefined);
     const drawerVisible = ref(false);
 
     const items = computed(() => {
       return route.fullPath
-        .replace("/", "")
-        .split("/")
+        .replace('/', '')
+        .split('/')
         .map((item) => ({
-          text: item ? item : "Home",
+          text: item ? item : 'Home',
           disabled: false,
-          href: "",
+          href: '',
         }));
     });
 
@@ -97,14 +96,14 @@ export default defineComponent({
       user.value = userData;
     };
 
-    const notify = (message: string, level = "info") => {
+    const notify = (message: string, level = 'info') => {
       snackbarMessage.value = message;
       snackbarShow.value = true;
       snackbarLevel.value = level;
     };
 
     const notifyClose = () => {
-      snackbarMessage.value = "";
+      snackbarMessage.value = '';
       snackbarShow.value = false;
     };
 

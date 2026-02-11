@@ -1,6 +1,6 @@
-import ConfigurationItem from "@/components/ConfigurationItem.vue";
-import { getAllWatchers } from "@/services/watcher";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import ConfigurationItem from '@/components/ConfigurationItem.vue';
+import { getAllWatchers } from '@/services/watcher';
 
 export default defineComponent({
   data() {
@@ -20,9 +20,9 @@ export default defineComponent({
     } catch (e: any) {
       next((vm: any) => {
         vm.$eventBus.emit(
-          "notify",
+          'notify',
           `Error when trying to load the watchers (${e.message})`,
-          "error",
+          'error',
         );
       });
     }

@@ -1,5 +1,5 @@
-import { getOidcRedirection } from "@/services/auth";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import { getOidcRedirection } from '@/services/auth';
 
 export default defineComponent({
   props: {

@@ -3,7 +3,7 @@
  * @returns {string}
  */
 function getRegistryIcon() {
-  return "fas fa-database";
+  return 'fas fa-database';
 }
 
 /**
@@ -12,43 +12,43 @@ function getRegistryIcon() {
  * @returns {string}
  */
 function getRegistryProviderIcon(provider) {
-  let icon = "si-linuxcontainers";
-  switch (provider.split(".")[0]) {
-    case "acr":
-      icon = "si-microsoftazure";
+  let icon = 'si-linuxcontainers';
+  switch (provider.split('.')[0]) {
+    case 'acr':
+      icon = 'si-microsoftazure';
       break;
-    case "custom":
-      icon = "si-opencontainersinitiative";
+    case 'custom':
+      icon = 'si-opencontainersinitiative';
       break;
-    case "ecr":
-      icon = "si-amazonaws";
+    case 'ecr':
+      icon = 'si-amazonaws';
       break;
-    case "forgejo":
-      icon = "si-forgejo";
+    case 'forgejo':
+      icon = 'si-forgejo';
       break;
-    case "gcr":
-      icon = "si-googlecloud";
+    case 'gcr':
+      icon = 'si-googlecloud';
       break;
-    case "ghcr":
-      icon = "si-github";
+    case 'ghcr':
+      icon = 'si-github';
       break;
-    case "gitea":
-      icon = "si-gitea";
+    case 'gitea':
+      icon = 'si-gitea';
       break;
-    case "gitlab":
-      icon = "si-gitlab";
+    case 'gitlab':
+      icon = 'si-gitlab';
       break;
-    case "hub":
-      icon = "si-docker";
+    case 'hub':
+      icon = 'si-docker';
       break;
-    case "quay":
-      icon = "si-redhat";
+    case 'quay':
+      icon = 'si-redhat';
       break;
-    case "lscr":
-      icon = "si-linuxserver";
+    case 'lscr':
+      icon = 'si-linuxserver';
       break;
-    case "trueforge":
-      icon = "si-linuxcontainers";
+    case 'trueforge':
+      icon = 'si-linuxcontainers';
       break;
   }
   return icon;
@@ -59,7 +59,7 @@ function getRegistryProviderIcon(provider) {
  * @returns {Promise<any>}
  */
 async function getAllRegistries() {
-  const response = await fetch("/api/registries", { credentials: "include" });
+  const response = await fetch('/api/registries', { credentials: 'include' });
   return response.json();
 }
 

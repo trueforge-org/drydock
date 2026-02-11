@@ -1,5 +1,5 @@
-import { refreshAllContainers } from "@/services/container";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import { refreshAllContainers } from '@/services/container';
 
 export default defineComponent({
   props: {
@@ -57,10 +57,10 @@ export default defineComponent({
     return {
       isRefreshing: false,
       showFilters: false,
-      registrySelected: "",
-      agentSelected: "",
-      watcherSelected: "",
-      updateKindSelected: "",
+      registrySelected: '',
+      agentSelected: '',
+      watcherSelected: '',
+      updateKindSelected: '',
       updateAvailableLocal: this.updateAvailable,
       oldestFirstLocal: this.oldestFirst,
       groupByLabelLocal: this.groupByLabel,
@@ -80,19 +80,54 @@ export default defineComponent({
     activeFilters(): Array<{ label: string; value: string; clear: () => void }> {
       const filters: Array<{ label: string; value: string; clear: () => void }> = [];
       if (this.agentSelected) {
-        filters.push({ label: "Agent", value: this.agentSelected, clear: () => { this.agentSelected = ""; this.emitAgentChanged(); } });
+        filters.push({
+          label: 'Agent',
+          value: this.agentSelected,
+          clear: () => {
+            this.agentSelected = '';
+            this.emitAgentChanged();
+          },
+        });
       }
       if (this.watcherSelected) {
-        filters.push({ label: "Watcher", value: this.watcherSelected, clear: () => { this.watcherSelected = ""; this.emitWatcherChanged(); } });
+        filters.push({
+          label: 'Watcher',
+          value: this.watcherSelected,
+          clear: () => {
+            this.watcherSelected = '';
+            this.emitWatcherChanged();
+          },
+        });
       }
       if (this.registrySelected) {
-        filters.push({ label: "Registry", value: this.registrySelected, clear: () => { this.registrySelected = ""; this.emitRegistryChanged(); } });
+        filters.push({
+          label: 'Registry',
+          value: this.registrySelected,
+          clear: () => {
+            this.registrySelected = '';
+            this.emitRegistryChanged();
+          },
+        });
       }
       if (this.updateKindSelected) {
-        filters.push({ label: "Kind", value: this.updateKindSelected, clear: () => { this.updateKindSelected = ""; this.emitUpdateKindChanged(); } });
+        filters.push({
+          label: 'Kind',
+          value: this.updateKindSelected,
+          clear: () => {
+            this.updateKindSelected = '';
+            this.emitUpdateKindChanged();
+          },
+        });
       }
       if (this.groupByLabelLocal) {
-        filters.push({ label: "Group", value: this.groupByLabelLocal, clear: () => { this.groupByLabelLocal = ""; this.emitGroupByLabelChanged(""); } });
+        filters.push({
+          label: 'Group',
+          value: this.groupByLabelLocal,
+          clear: () => {
+            this.groupByLabelLocal = '';
+            this.emitGroupByLabelChanged('');
+          },
+        });
       }
       return filters;
     },
@@ -100,37 +135,37 @@ export default defineComponent({
 
   methods: {
     emitRegistryChanged() {
-      this.$emit("registry-changed", this.registrySelected ?? "");
+      this.$emit('registry-changed', this.registrySelected ?? '');
     },
     emitWatcherChanged() {
-      this.$emit("watcher-changed", this.watcherSelected ?? "");
+      this.$emit('watcher-changed', this.watcherSelected ?? '');
     },
     emitAgentChanged() {
-      this.$emit("agent-changed", this.agentSelected ?? "");
+      this.$emit('agent-changed', this.agentSelected ?? '');
     },
     emitUpdateKindChanged() {
-      this.$emit("update-kind-changed", this.updateKindSelected ?? "");
+      this.$emit('update-kind-changed', this.updateKindSelected ?? '');
     },
     emitUpdateAvailableChanged() {
-      this.$emit("update-available-changed");
+      this.$emit('update-available-changed');
     },
     emitOldestFirstChanged() {
-      this.$emit("oldest-first-changed");
+      this.$emit('oldest-first-changed');
     },
     emitGroupByLabelChanged(newLabel: string) {
-      this.$emit("group-by-label-changed", newLabel ?? "");
+      this.$emit('group-by-label-changed', newLabel ?? '');
     },
     async refreshAllContainers() {
       this.isRefreshing = true;
       try {
         const body = await refreshAllContainers();
-        (this as any).$eventBus.emit("notify", "All containers refreshed");
-        this.$emit("refresh-all-containers", body);
+        (this as any).$eventBus.emit('notify', 'All containers refreshed');
+        this.$emit('refresh-all-containers', body);
       } catch (e: any) {
         (this as any).$eventBus.emit(
-          "notify",
+          'notify',
           `Error when trying to refresh all containers (${e.message})`,
-          "error",
+          'error',
         );
       } finally {
         this.isRefreshing = false;

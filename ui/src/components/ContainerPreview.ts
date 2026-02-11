@@ -34,10 +34,14 @@ export default defineComponent({
       if (!updateKind) return 'info';
       if (updateKind.kind === 'digest') return 'info';
       switch (updateKind.semverDiff) {
-        case 'major': return 'error';
-        case 'minor': return 'warning';
-        case 'patch': return 'success';
-        default: return 'info';
+        case 'major':
+          return 'error';
+        case 'minor':
+          return 'warning';
+        case 'patch':
+          return 'success';
+        default:
+          return 'info';
       }
     },
   },

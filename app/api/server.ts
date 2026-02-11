@@ -11,9 +11,9 @@ const router = express.Router();
  * @param res
  */
 function getServer(req, res) {
-    res.status(200).json({
-        configuration: getServerConfiguration(),
-    });
+  res.status(200).json({
+    configuration: getServerConfiguration(),
+  });
 }
 
 /**
@@ -21,7 +21,7 @@ function getServer(req, res) {
  * @returns {*}
  */
 export function init() {
-    router.use(nocache());
-    router.get('/', getServer);
-    return router;
+  router.use(nocache());
+  router.get('/', getServer);
+  return router;
 }

@@ -10,7 +10,7 @@ let auditCollection;
  * @param db
  */
 export function createCollections(db) {
-    auditCollection = initCollection(db, 'audit');
+  auditCollection = initCollection(db, 'audit');
 }
 
 /**
@@ -18,59 +18,61 @@ export function createCollections(db) {
  * @param entry
  */
 export function insertAudit(entry: AuditEntry): AuditEntry {
-    const entryToSave: AuditEntry = {
-        ...entry,
-        id: entry.id || crypto.randomUUID(),
-        timestamp: entry.timestamp || new Date().toISOString(),
-    };
-    if (auditCollection) {
-        auditCollection.insert({ data: entryToSave });
-    }
-    return entryToSave;
+  const entryToSave: AuditEntry = {
+    ...entry,
+    id: entry.id || crypto.randomUUID(),
+    timestamp: entry.timestamp || new Date().toISOString(),
+  };
+  if (auditCollection) {
+    auditCollection.insert({ data: entryToSave });
+  }
+  return entryToSave;
 }
 
 /**
  * Get audit entries with optional filtering and pagination.
  * @param query
  */
-export function getAuditEntries(query: {
+export function getAuditEntries(
+  query: {
     action?: string;
     container?: string;
     from?: string;
     to?: string;
     skip?: number;
     limit?: number;
-} = {}): { entries: AuditEntry[]; total: number } {
-    if (!auditCollection) {
-        return { entries: [], total: 0 };
-    }
+  } = {},
+): { entries: AuditEntry[]; total: number } {
+  if (!auditCollection) {
+    return { entries: [], total: 0 };
+  }
 
-    let results = auditCollection.find().map((item) => item.data as AuditEntry);
+  let results = auditCollection.find().map((item) => item.data as AuditEntry);
 
-    if (query.action) {
-        results = results.filter((e) => e.action === query.action);
-    }
-    if (query.container) {
-        results = results.filter((e) => e.containerName === query.container);
-    }
-    if (query.from) {
-        const fromDate = new Date(query.from).getTime();
-        results = results.filter((e) => new Date(e.timestamp).getTime() >= fromDate);
-    }
-    if (query.to) {
-        const toDate = new Date(query.to).getTime();
-        results = results.filter((e) => new Date(e.timestamp).getTime() <= toDate);
-    }
+  if (query.action) {
+    results = results.filter((e) => e.action === query.action);
+  }
+  if (query.container) {
+    results = results.filter((e) => e.containerName === query.container);
+  }
+  if (query.from) {
+    const fromDate = new Date(query.from).getTime();
+    results = results.filter((e) => new Date(e.timestamp).getTime() >= fromDate);
+  }
+  if (query.to) {
+    const toDate = new Date(query.to).getTime();
+    results = results.filter((e) => new Date(e.timestamp).getTime() <= toDate);
+  }
 
-    // Sort newest first
-    results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  // Sort newest first
+  results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-    const total = results.length;
-    const skip = query.skip || 0;
-    const limit = query.limit || 50;
-    const entries = results.slice(skip, skip + limit);
+  const total = results.length;
+  const skip = query.skip || 0;
+  const limit = query.limit || 50;
+  const entries = results.slice(skip, skip + limit);
 
-    return { entries, total };
+  return { entries, total };
 }
 
 /**
@@ -78,7 +80,7 @@ export function getAuditEntries(query: {
  * @param limit
  */
 export function getRecentEntries(limit: number): AuditEntry[] {
-    return getAuditEntries({ limit }).entries;
+  return getAuditEntries({ limit }).entries;
 }
 
 /**
@@ -86,14 +88,12 @@ export function getRecentEntries(limit: number): AuditEntry[] {
  * @param days
  */
 export function pruneOldEntries(days: number): number {
-    if (!auditCollection) {
-        return 0;
-    }
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-    const toRemove = auditCollection
-        .find()
-        .filter((item) => item.data.timestamp < cutoff);
-    const count = toRemove.length;
-    toRemove.forEach((item) => auditCollection.remove(item));
-    return count;
+  if (!auditCollection) {
+    return 0;
+  }
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const toRemove = auditCollection.find().filter((item) => item.data.timestamp < cutoff);
+  const count = toRemove.length;
+  toRemove.forEach((item) => auditCollection.remove(item));
+  return count;
 }

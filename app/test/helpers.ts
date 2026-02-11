@@ -12,56 +12,56 @@ import { vi } from 'vitest';
  * Mock HTTP response object for API handler tests.
  */
 export function createMockResponse() {
-    return {
-        status: vi.fn().mockReturnThis(),
-        json: vi.fn(),
-        sendStatus: vi.fn(),
-        send: vi.fn(),
-    };
+  return {
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn(),
+    sendStatus: vi.fn(),
+    send: vi.fn(),
+  };
 }
 
 /**
  * Mock HTTP request object for API handler tests.
  */
 export function createMockRequest(overrides: Record<string, unknown> = {}) {
-    return {
-        params: {},
-        query: {},
-        body: undefined,
-        ...overrides,
-    };
+  return {
+    params: {},
+    query: {},
+    body: undefined,
+    ...overrides,
+  };
 }
 
 /**
  * Standard container fixture used in store tests.
  */
 export function createContainerFixture(overrides: Record<string, unknown> = {}) {
-    return {
-        id: 'container-123456789',
-        name: 'test',
-        watcher: 'test',
-        image: {
-            id: 'image-123456789',
-            registry: {
-                name: 'registry',
-                url: 'https://hub',
-            },
-            name: 'organization/image',
-            tag: {
-                value: 'version',
-                semver: false,
-            },
-            digest: {
-                watch: false,
-                repo: undefined,
-            },
-            architecture: 'arch',
-            os: 'os',
-            created: '2021-06-12T05:33:38.440Z',
-        },
-        result: {
-            tag: 'version',
-        },
-        ...overrides,
-    };
+  return {
+    id: 'container-123456789',
+    name: 'test',
+    watcher: 'test',
+    image: {
+      id: 'image-123456789',
+      registry: {
+        name: 'registry',
+        url: 'https://hub',
+      },
+      name: 'organization/image',
+      tag: {
+        value: 'version',
+        semver: false,
+      },
+      digest: {
+        watch: false,
+        repo: undefined,
+      },
+      architecture: 'arch',
+      os: 'os',
+      created: '2021-06-12T05:33:38.440Z',
+    },
+    result: {
+      tag: 'version',
+    },
+    ...overrides,
+  };
 }

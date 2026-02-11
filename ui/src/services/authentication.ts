@@ -1,9 +1,9 @@
 function getAuthenticationIcon() {
-  return "fas fa-lock";
+  return 'fas fa-lock';
 }
 
 async function getAllAuthentications() {
-  const response = await fetch("/api/authentications", { credentials: "include" });
+  const response = await fetch('/api/authentications', { credentials: 'include' });
   return response.json();
 }
 

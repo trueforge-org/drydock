@@ -1,8 +1,8 @@
-import ConfigurationItem from "@/components/ConfigurationItem.vue";
-import { getServer } from "@/services/server";
-import { getLog } from "@/services/log";
-import { getStore } from "@/services/store";
-import { defineComponent } from "vue";
+import { defineComponent } from 'vue';
+import ConfigurationItem from '@/components/ConfigurationItem.vue';
+import { getLog } from '@/services/log';
+import { getServer } from '@/services/server';
+import { getStore } from '@/services/store';
 
 export default defineComponent({
   components: {
@@ -18,25 +18,25 @@ export default defineComponent({
   computed: {
     serverConfiguration() {
       return {
-        type: "server",
-        name: "configuration",
-        icon: "fas fa-server",
+        type: 'server',
+        name: 'configuration',
+        icon: 'fas fa-server',
         configuration: this.server.configuration,
       };
     },
     logConfiguration() {
       return {
-        type: "logs",
-        name: "configuration",
-        icon: "fas fa-terminal",
+        type: 'logs',
+        name: 'configuration',
+        icon: 'fas fa-terminal',
         configuration: this.log,
       };
     },
     storeConfiguration() {
       return {
-        type: "store",
-        name: "configuration",
-        icon: "fas fa-copy",
+        type: 'store',
+        name: 'configuration',
+        icon: 'fas fa-copy',
         configuration: this.store.configuration,
       };
     },
@@ -56,9 +56,9 @@ export default defineComponent({
     } catch (e: any) {
       next((vm: any) => {
         vm.$eventBus.emit(
-          "notify",
+          'notify',
           `Error when trying to load the state configuration (${e.message})`,
-          "error",
+          'error',
         );
       });
     }

@@ -1,6 +1,6 @@
+import { defineComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { getAuditLog } from '@/services/audit';
-import { defineComponent } from 'vue';
 
 export default defineComponent({
   setup() {
@@ -77,8 +77,8 @@ export default defineComponent({
         'update-failed': 'error',
         'container-added': 'primary',
         'container-removed': 'warning',
-        'rollback': 'warning',
-        'preview': 'secondary',
+        rollback: 'warning',
+        preview: 'secondary',
       };
       return map[action] || 'default';
     },
