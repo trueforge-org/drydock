@@ -245,7 +245,7 @@ services:
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_IMAGE=ghcr.io/home-assistant/home-assistant
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_TAG_INCLUDE=^\\d+\\.\\d+\\.\\d+$$
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_DISPLAY_NAME=Home Assistant
-      - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_DISPLAY_ICON=mdi-home-assistant
+      - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_DISPLAY_ICON=hl-home-assistant
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_LINK_TEMPLATE=https://www.home-assistant.io/changelogs/core-$${major}$${minor}$${patch}
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_TRIGGER_INCLUDE=ntfy.default:major
 ```
@@ -256,7 +256,7 @@ To fine-tune the behaviour of drydock _per container_, you can add labels on the
 
 | Label                 |    Required    | Description                                        | Supported values                                                                                                                                                            | Default value when missing                                                            |
 |-----------------------|:--------------:|----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| `dd.display.icon`    | :white_circle: | Custom display icon for the container              | Valid [Material Design Icon](https://materialdesignicons.com/), [Fontawesome Icon](https://fontawesome.com/) or [Simple icon](https://simpleicons.org/) (see details below) | `mdi:docker`                                                                          |
+| `dd.display.icon`    | :white_circle: | Custom display icon for the container              | Valid [Fontawesome Icon](https://fontawesome.com/), [Homarr Labs Icon](https://dashboardicons.com/), [Selfh.st Icon](https://selfh.st/icons/), or [Simple Icon](https://simpleicons.org/) (see details below). `mdi:` icons are auto-resolved but not recommended. | `fab fa-docker`                                                                       |
 | `dd.display.name`    | :white_circle: | Custom display name for the container              | Valid String                                                                                                                                                                | Container name                                                                        |
 | `dd.inspect.tag.path`| :white_circle: | Docker inspect path used to derive a local semver tag | Slash-separated path in `docker inspect` output                                                                                                                             |                                                                                       |
 | `dd.registry.lookup.image` | :white_circle: | Alternative image reference used for update lookups | Full image path (for example `library/traefik` or `ghcr.io/traefik/traefik`)                                                                                               |                                                                                       |
@@ -510,7 +510,7 @@ Icons must be prefixed with:
 - `far:` or `far-` for [Fontawesome regular icons](https://fontawesome.com/) (`far:heart`, `far-house`...)
 - `fas:` or `fas-` for [Fontawesome solid icons](https://fontawesome.com/) (`fas:heart`, `fas-house`...)
 - `hl:` or `hl-` for [Homarr Labs icons](https://dashboardicons.com/) (`hl:plex`, `hl-authelia`...)
-- `mdi:` or `mdi-` for [Material Design icons](https://materialdesignicons.com/) (`mdi:database`, `mdi-server`...)
+- `mdi:` or `mdi-` icons are auto-resolved to Dashboard Icons but are **not recommended**; prefer `hl:` or `fa` prefixes instead
 - `sh:` or `sh-` for [Selfh.st](https://selfh.st/icons/) (`sh:authentik`, `sh-authelia-light`...) (only works for logo available as `png`)
 - `si:` or `si-` for [Simple icons](https://simpleicons.org/) (`si:mysql`, `si-plex`...)
 
@@ -530,7 +530,7 @@ services:
 
 #### **Docker (Display Name & Icon)**
 ```bash
-docker run -d --name mariadb --label 'dd.display.name=Maria DB' --label 'dd.display.icon=mdi-database' mariadb:10.6.4
+docker run -d --name mariadb --label 'dd.display.name=Maria DB' --label 'dd.display.icon=si:mariadb' mariadb:10.6.4
 ```
 <!-- tabs:end -->
 
