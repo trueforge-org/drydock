@@ -56,15 +56,13 @@
       {{ error }}
     </v-alert>
 
-    <pre
+    <section
       v-else-if="entries.length"
       ref="logPre"
       class="app-logs__terminal ma-2"
-      role="region"
       aria-label="Application log output"
-      tabindex="0"
-    ><span v-for="(entry, i) in entries" :key="i" :style="{ color: levelColor(entry.level) }">{{ new Date(entry.timestamp).toISOString() }} [{{ entry.level.toUpperCase().padEnd(5) }}] [{{ entry.component }}] {{ entry.msg }}
-</span></pre>
+    ><pre><span v-for="(entry, i) in entries" :key="i" :style="{ color: levelColor(entry.level) }">{{ new Date(entry.timestamp).toISOString() }} [{{ entry.level.toUpperCase().padEnd(5) }}] [{{ entry.component }}] {{ entry.msg }}
+</span></pre></section>
 
     <div v-else class="app-logs__empty text-center pa-6 text-medium-emphasis">
       <v-icon size="32" class="mb-2" color="grey">mdi-text-box-remove-outline</v-icon>
@@ -85,18 +83,18 @@
   color: #d4d4d4;
   max-height: 500px;
   overflow-y: auto;
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
-  font-size: 0.8rem;
-  line-height: 1.5;
   border-radius: 6px;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
   padding: 12px;
 }
 
-.app-logs__terminal:focus {
-  outline: 2px solid rgb(var(--v-theme-primary));
-  outline-offset: -2px;
+.app-logs__terminal pre {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  margin: 0;
+  color: inherit;
 }
 
 .app-logs__empty {

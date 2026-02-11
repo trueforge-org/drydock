@@ -46,9 +46,9 @@ describe('ApplicationLogs', () => {
 
     await flushPromises();
 
-    expect(wrapper.find('pre').exists()).toBe(true);
-    expect(wrapper.find('pre').text()).toContain('Server started');
-    expect(wrapper.find('pre').text()).toContain('Connection failed');
+    expect(wrapper.find('section').exists()).toBe(true);
+    expect(wrapper.find('section').text()).toContain('Server started');
+    expect(wrapper.find('section').text()).toContain('Connection failed');
     wrapper.unmount();
   });
 
@@ -71,7 +71,7 @@ describe('ApplicationLogs', () => {
 
     await flushPromises();
 
-    expect(wrapper.find('pre').exists()).toBe(false);
+    expect(wrapper.find('section').exists()).toBe(false);
     expect(wrapper.text()).toContain('No log entries');
     wrapper.unmount();
   });
@@ -344,7 +344,7 @@ describe('ApplicationLogs', () => {
       await flushPromises();
       await wrapper.vm.$nextTick();
 
-      const pre = wrapper.find('pre');
+      const pre = wrapper.find('section');
       expect(pre.exists()).toBe(true);
       // The scrollTop assignment happens in $nextTick callback
       // Verify the pre element has the ref
