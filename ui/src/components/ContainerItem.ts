@@ -5,6 +5,7 @@ import ContainerError from '@/components/ContainerError.vue';
 import ContainerImage from '@/components/ContainerImage.vue';
 import ContainerLogs from '@/components/ContainerLogs.vue';
 import ContainerTriggers from '@/components/ContainerTriggers.vue';
+import ContainerPreview from '@/components/ContainerPreview.vue';
 import ContainerUpdate from '@/components/ContainerUpdate.vue';
 import IconRenderer from '@/components/IconRenderer.vue';
 import {
@@ -25,6 +26,7 @@ export default defineComponent({
     ContainerError,
     ContainerImage,
     ContainerLogs,
+    ContainerPreview,
     ContainerTriggers,
     ContainerUpdate,
     IconRenderer,
@@ -56,6 +58,7 @@ export default defineComponent({
   data() {
     return {
       showDetail: false,
+      showPreview: false,
       dialogDelete: false,
       tab: 0,
       deleteEnabled: false,

@@ -96,7 +96,7 @@ config.global.stubs = {
   'v-card-actions': { template: '<div class="v-card-actions"><slot /></div>' },
   'v-btn': { 
     template: '<button class="v-btn" :to="to" :disabled="disabled" :type="type" @click="$emit(\'click\')"><slot /></button>', 
-    props: ['disabled', 'type', 'to', 'color'],
+    props: ['disabled', 'type', 'to', 'color', 'variant'],
     emits: ['click'],
     name: 'v-btn'
   },
@@ -122,10 +122,11 @@ config.global.stubs = {
     props: ['type', 'autocomplete', 'modelValue'],
     emits: ['update:modelValue']
   },
-  'v-snackbar': { 
-    template: '<div class="v-snackbar" v-if="modelValue"><slot />{{ text }}<button v-if="$slots.action || closable" data-testid="close-button" @click="$emit(\'update:modelValue\', false)">Close</button></div>', 
-    props: ['modelValue', 'timeout', 'color', 'text', 'closable'],
-    emits: ['update:modelValue']
+  'v-snackbar': {
+    template: '<div class="v-snackbar" v-if="modelValue"><slot />{{ text }}<slot name="actions" /><button v-if="$slots.action || closable" data-testid="close-button" @click="$emit(\'update:modelValue\', false)">Close</button></div>',
+    props: ['modelValue', 'timeout', 'color', 'text', 'closable', 'variant'],
+    emits: ['update:modelValue'],
+    name: 'v-snackbar'
   },
   'v-tabs': { template: '<div class="v-tabs"><slot /></div>' },
   'v-tab': { template: '<button class="v-tab"><slot /></button>' },
@@ -160,6 +161,8 @@ config.global.stubs = {
   'container-logs': { template: '<div class="container-logs"><slot /></div>' },
   'application-logs': { template: '<div class="application-logs"><slot /></div>' },
   'container-triggers': { template: '<div class="container-triggers"><slot /></div>' },
+  'container-preview': { template: '<div class="container-preview"><slot /></div>' },
+  'v-pagination': { template: '<div class="v-pagination"></div>', props: ['modelValue', 'length'] },
   'IconRenderer': { template: '<div class="icon-renderer"><slot /></div>' }
 };
 

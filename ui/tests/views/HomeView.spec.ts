@@ -21,6 +21,14 @@ vi.mock('@/services/watcher', () => ({
   getWatcherIcon: vi.fn(() => 'fas fa-arrows-rotate'),
   getAllWatchers: vi.fn(() => Promise.resolve([{}, {}]))
 }));
+vi.mock('@/services/audit', () => ({
+  getAuditLog: vi.fn(() => Promise.resolve({
+    entries: [
+      { id: '1', timestamp: '2025-01-15T10:30:00Z', action: 'update-applied', containerName: 'nginx', status: 'success' },
+    ],
+    total: 1,
+  })),
+}));
 
 describe('HomeView', () => {
   let wrapper;
@@ -80,6 +88,38 @@ describe('HomeView', () => {
     expect(wrapper.text()).toContain('up to date');
   });
   
+  it('shows recent activity when entries exist', async () => {
+    await wrapper.setData({
+      recentActivity: [
+        { id: '1', timestamp: '2025-01-15T10:30:00Z', action: 'update-applied', containerName: 'nginx', status: 'success' },
+      ],
+    });
+    expect(wrapper.text()).toContain('nginx');
+    expect(wrapper.text()).toContain('update-applied');
+  });
+
+  it('shows empty state when no recent activity', async () => {
+    await wrapper.setData({ recentActivity: [] });
+    expect(wrapper.text()).toContain('No activity recorded yet');
+  });
+
+  it('returns correct action icons', () => {
+    expect(wrapper.vm.actionIcon('update-applied')).toBe('fas fa-circle-check');
+    expect(wrapper.vm.actionIcon('update-failed')).toBe('fas fa-circle-xmark');
+    expect(wrapper.vm.actionIcon('unknown')).toBe('fas fa-circle-question');
+  });
+
+  it('returns correct action colors', () => {
+    expect(wrapper.vm.actionColor('update-applied')).toBe('success');
+    expect(wrapper.vm.actionColor('update-failed')).toBe('error');
+    expect(wrapper.vm.actionColor('unknown')).toBe('default');
+  });
+
+  it('formats time correctly', () => {
+    expect(wrapper.vm.formatTime('2025-01-15T10:30:00Z')).toBeTruthy();
+    expect(wrapper.vm.formatTime('')).toBe('');
+  });
+
   it('navigates to correct routes', () => {
       const links = wrapper.findAll('.v-btn-stub, .v-chip-stub');
 
@@ -111,12 +151,14 @@ describe('HomeView Route Hook', () => {
             triggersCount: 0,
             watchersCount: 0,
             registriesCount: 0,
-            containersToUpdateCount: 0
+            containersToUpdateCount: 0,
+            recentActivity: []
         };
         const callback = next.mock.calls[0][0];
         callback(vm);
-        
+
         expect(vm.containersCount).toBe(2);
         expect(vm.registriesCount).toBe(3);
+        expect(vm.recentActivity).toHaveLength(1);
     });
 });

@@ -1,0 +1,97 @@
+import { useDisplay } from 'vuetify';
+import { getAuditLog } from '@/services/audit';
+import { defineComponent } from 'vue';
+
+export default defineComponent({
+  setup() {
+    const { mdAndUp } = useDisplay();
+    return { mdAndUp };
+  },
+  data() {
+    return {
+      loading: false,
+      error: '',
+      entries: [] as any[],
+      total: 0,
+      currentPage: 1,
+      pageSize: 20,
+      filterAction: null as string | null,
+      filterContainer: '',
+      actionOptions: [
+        { title: 'Update Available', value: 'update-available' },
+        { title: 'Update Applied', value: 'update-applied' },
+        { title: 'Update Failed', value: 'update-failed' },
+        { title: 'Container Added', value: 'container-added' },
+        { title: 'Container Removed', value: 'container-removed' },
+        { title: 'Rollback', value: 'rollback' },
+        { title: 'Preview', value: 'preview' },
+      ],
+    };
+  },
+  computed: {
+    totalPages(): number {
+      return Math.max(1, Math.ceil(this.total / this.pageSize));
+    },
+  },
+  watch: {
+    currentPage() {
+      this.fetchEntries();
+    },
+    filterAction() {
+      this.currentPage = 1;
+      this.fetchEntries();
+    },
+    filterContainer() {
+      this.currentPage = 1;
+      this.fetchEntries();
+    },
+  },
+  methods: {
+    async fetchEntries() {
+      this.loading = true;
+      this.error = '';
+      try {
+        const params: any = {
+          page: this.currentPage,
+          limit: this.pageSize,
+        };
+        if (this.filterAction) params.action = this.filterAction;
+        if (this.filterContainer) params.container = this.filterContainer;
+        const result = await getAuditLog(params);
+        this.entries = result.entries || [];
+        this.total = result.total || 0;
+      } catch (e: any) {
+        this.error = e.message || 'Failed to fetch audit log';
+      } finally {
+        this.loading = false;
+      }
+    },
+    formatTimestamp(ts: string): string {
+      if (!ts) return '-';
+      return new Date(ts).toLocaleString();
+    },
+    actionColor(action: string): string {
+      const map: Record<string, string> = {
+        'update-available': 'info',
+        'update-applied': 'success',
+        'update-failed': 'error',
+        'container-added': 'primary',
+        'container-removed': 'warning',
+        'rollback': 'warning',
+        'preview': 'secondary',
+      };
+      return map[action] || 'default';
+    },
+    statusColor(status: string): string {
+      const map: Record<string, string> = {
+        success: 'success',
+        error: 'error',
+        info: 'info',
+      };
+      return map[status] || 'default';
+    },
+  },
+  mounted() {
+    this.fetchEntries();
+  },
+});

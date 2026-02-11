@@ -188,10 +188,17 @@
           <v-card-actions>
             <!-- Desktop: icon-button toolbar -->
             <div v-if="smAndUp" class="d-flex justify-center align-center w-100" style="gap: 4px;">
-              <!-- Preview (disabled placeholder) -->
+              <!-- Preview -->
               <v-tooltip text="Preview update" location="top">
                 <template v-slot:activator="{ props }">
-                  <v-btn icon variant="text" size="small" v-bind="props" disabled>
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    v-bind="props"
+                    :disabled="!container.updateAvailable"
+                    @click="showPreview = true"
+                  >
                     <v-icon>fas fa-eye</v-icon>
                   </v-btn>
                 </template>
@@ -335,7 +342,10 @@
                   </v-btn>
                 </template>
                 <v-list density="compact">
-                  <v-list-item disabled>
+                  <v-list-item
+                    :disabled="!container.updateAvailable"
+                    @click="showPreview = true"
+                  >
                     <template v-slot:prepend><v-icon>fas fa-eye</v-icon></template>
                     <v-list-item-title>Preview</v-list-item-title>
                   </v-list-item>
@@ -448,6 +458,11 @@
           </v-card-actions>
         </div>
       </transition>
+      <container-preview
+        v-model="showPreview"
+        :container-id="container.id"
+        @update-confirmed="updateContainerNow"
+      />
     </v-card>
   </div>
 </template>

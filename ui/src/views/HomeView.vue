@@ -55,10 +55,29 @@
             <v-icon class="mr-2" color="secondary">fas fa-clock-rotate-left</v-icon>
             Recent Activity
           </v-card-title>
-          <v-card-text class="text-center text-medium-emphasis py-8">
+          <v-card-text v-if="recentActivity.length === 0" class="text-center text-medium-emphasis py-8">
             <v-icon size="48" color="grey">fas fa-clock-rotate-left</v-icon>
             <div class="mt-4">No activity recorded yet</div>
           </v-card-text>
+          <v-list v-else density="compact">
+            <v-list-item
+              v-for="entry in recentActivity"
+              :key="entry.id"
+            >
+              <template v-slot:prepend>
+                <v-icon :color="actionColor(entry.action)" size="small">{{ actionIcon(entry.action) }}</v-icon>
+              </template>
+              <v-list-item-title class="text-body-2">
+                {{ entry.containerName }}
+                <v-chip :color="actionColor(entry.action)" size="x-small" label class="ml-1">
+                  {{ entry.action }}
+                </v-chip>
+              </v-list-item-title>
+              <v-list-item-subtitle class="text-caption">
+                {{ formatTime(entry.timestamp) }}
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
         </v-card>
       </v-col>
       <v-col cols="12" md="6">

@@ -130,6 +130,10 @@ describe('ContainerItem', () => {
     expect(wrapper.vm.osIcon).toBe('fab fa-windows');
   });
 
+  it('has showPreview data property defaulting to false', () => {
+    expect(wrapper.vm.showPreview).toBe(false);
+  });
+
   it('formats digest version correctly', async () => {
     await wrapper.setProps({
       container: {
