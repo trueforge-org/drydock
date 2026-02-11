@@ -6,7 +6,7 @@ describe('Watcher Service', () => {
   });
 
   it('should return watcher icon', () => {
-    expect(getWatcherIcon()).toBe('fas fa-arrows-rotate');
+    expect(getWatcherIcon()).toBe('fas fa-eye');
   });
 
   it('should get all watchers', async () => {

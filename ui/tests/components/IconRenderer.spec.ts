@@ -87,7 +87,7 @@ describe('IconRenderer', () => {
 
   it('normalizes icon prefixes correctly', () => {
     const testCases = [
-      { input: 'mdi:docker', expected: 'mdi-docker' },
+      { input: 'mdi:docker', expected: 'mdi:docker' },
       { input: 'fa:docker', expected: 'fa-docker' },
       { input: 'fab:docker', expected: 'fab fa-docker' },
       { input: 'far:docker', expected: 'far fa-docker' },

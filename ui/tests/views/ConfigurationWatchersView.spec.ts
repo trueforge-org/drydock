@@ -26,7 +26,7 @@ describe('ConfigurationWatchersView', () => {
   });
 
   it('renders a row for each watcher', () => {
-    const rows = wrapper.findAll('.v-row');
+    const rows = wrapper.findAll('.mb-2');
     expect(rows).toHaveLength(2);
   });
 

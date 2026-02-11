@@ -35,7 +35,7 @@ describe('ConfigurationTriggersView', () => {
   });
 
   it('renders a row for each trigger', () => {
-    const rows = wrapper.findAll('.v-row');
+    const rows = wrapper.findAll('.mb-2');
     expect(rows).toHaveLength(2);
   });
 

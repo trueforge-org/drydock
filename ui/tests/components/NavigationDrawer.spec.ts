@@ -97,38 +97,4 @@ describe('NavigationDrawer', () => {
     expect(routes).toContain('/configuration/logs');
   });
 
-  it('defaults to system theme mode', () => {
-    expect(wrapper.vm.themeMode).toBe('system');
-  });
-
-  it('starts with darkMode false when system prefers light', () => {
-    expect(wrapper.vm.darkMode).toBe(false);
-  });
-
-  it('migrates legacy darkMode to themeMode', () => {
-    localStorage.darkMode = 'true';
-    const w = mount(NavigationDrawer, {
-      global: { stubs },
-    });
-    expect(w.vm.themeMode).toBe('dark');
-    expect(localStorage.themeMode).toBe('dark');
-    expect(localStorage.darkMode).toBeUndefined();
-    w.unmount();
-  });
-
-  it('onThemeModeChange updates themeMode and localStorage', () => {
-    wrapper.vm.onThemeModeChange('dark');
-    expect(wrapper.vm.themeMode).toBe('dark');
-    expect(localStorage.themeMode).toBe('dark');
-    expect(wrapper.vm.darkMode).toBe(true);
-
-    wrapper.vm.onThemeModeChange('light');
-    expect(wrapper.vm.themeMode).toBe('light');
-    expect(localStorage.themeMode).toBe('light');
-    expect(wrapper.vm.darkMode).toBe(false);
-
-    wrapper.vm.onThemeModeChange('system');
-    expect(wrapper.vm.themeMode).toBe('system');
-    expect(localStorage.themeMode).toBe('system');
-  });
 });

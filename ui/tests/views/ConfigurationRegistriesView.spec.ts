@@ -30,7 +30,7 @@ describe('ConfigurationRegistriesView', () => {
   });
 
   it('renders a row for each registry', () => {
-    const rows = wrapper.findAll('.v-row');
+    const rows = wrapper.findAll('.mb-2');
     expect(rows).toHaveLength(2);
   });
 

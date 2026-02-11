@@ -45,7 +45,6 @@ describe('App.vue', () => {
             template: '<div class="snack-bar" :data-message="message" :data-show="show" :data-level="level" />',
             props: ['message', 'show', 'level'],
           },
-          'app-footer': { template: '<div class="app-footer" />' },
           'router-view': { template: '<div class="router-view" />' },
         },
       },
@@ -80,7 +79,6 @@ describe('App.vue', () => {
   it('does not render nav/bar/footer when unauthenticated', () => {
     expect(wrapper.find('.nav-drawer').exists()).toBe(false);
     expect(wrapper.find('.app-bar').exists()).toBe(false);
-    expect(wrapper.find('.app-footer').exists()).toBe(false);
   });
 
   it('shows snackbar when notify is called', async () => {
@@ -141,6 +139,5 @@ describe('App.vue', () => {
 
     expect(wrapper.find('.nav-drawer').exists()).toBe(true);
     expect(wrapper.find('.app-bar').exists()).toBe(true);
-    expect(wrapper.find('.app-footer').exists()).toBe(true);
   });
 });

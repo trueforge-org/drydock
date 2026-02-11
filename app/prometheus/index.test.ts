@@ -30,6 +30,10 @@ vi.mock('./registry', () => ({
     init: vi.fn(),
 }));
 
+vi.mock('./audit', () => ({
+    init: vi.fn(),
+}));
+
 vi.mock('../log', () => ({ default: { child: vi.fn(() => ({ info: vi.fn() })) } }));
 
 describe('Prometheus Module', () => {
@@ -45,6 +49,7 @@ describe('Prometheus Module', () => {
         const trigger = await import('./trigger.js');
         const watcher = await import('./watcher.js');
         const registry = await import('./registry.js');
+        const audit = await import('./audit.js');
 
         prometheus.init();
 
@@ -53,6 +58,7 @@ describe('Prometheus Module', () => {
         expect(registry.init).toHaveBeenCalled();
         expect(trigger.init).toHaveBeenCalled();
         expect(watcher.init).toHaveBeenCalled();
+        expect(audit.init).toHaveBeenCalled();
     });
 
     test('should NOT initialize metrics when disabled', async () => {
@@ -64,6 +70,7 @@ describe('Prometheus Module', () => {
         const trigger = await import('./trigger.js');
         const watcher = await import('./watcher.js');
         const registry = await import('./registry.js');
+        const audit = await import('./audit.js');
 
         prometheus.init();
 
@@ -72,6 +79,7 @@ describe('Prometheus Module', () => {
         expect(registry.init).not.toHaveBeenCalled();
         expect(trigger.init).not.toHaveBeenCalled();
         expect(watcher.init).not.toHaveBeenCalled();
+        expect(audit.init).not.toHaveBeenCalled();
     });
 
     test('should return metrics output', async () => {

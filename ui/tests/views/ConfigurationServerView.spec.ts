@@ -34,7 +34,7 @@ describe('ConfigurationServerView', () => {
   });
 
   it('renders three configuration items', () => {
-    const rows = wrapper.findAll('.v-row');
+    const rows = wrapper.findAll('.mb-2');
     expect(rows).toHaveLength(3);
   });
 

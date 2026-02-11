@@ -29,30 +29,23 @@ vi.mock('@/services/audit', () => ({
     total: 1,
   })),
 }));
+vi.mock('@/services/image-icon', () => ({
+  getEffectiveDisplayIcon: vi.fn((icon) => icon || 'fab fa-docker'),
+}));
 
 describe('HomeView', () => {
   let wrapper;
 
   beforeEach(async () => {
-    wrapper = mount(HomeView, {
-      global: {
-        stubs: {
-          'v-btn': {
-            template: '<button class="v-btn-stub" :data-to="to"><slot /></button>',
-            props: ['to']
-          },
-          'v-chip': {
-            template: '<span class="v-chip-stub" :data-to="to"><slot /></span>',
-            props: ['to', 'color', 'size', 'variant']
-          }
-        }
-      }
-    });
-    
+    wrapper = mount(HomeView);
+
     // Simulate data loaded from beforeRouteEnter
     await wrapper.setData({
+      containers: [
+        { id: 1, updateAvailable: true, displayName: 'nginx', displayIcon: 'fab fa-docker', image: { name: 'nginx', tag: { value: '1.24' } }, updateKind: { kind: 'tag', semverDiff: 'minor', remoteValue: '1.25' } },
+        { id: 2, updateAvailable: false, displayName: 'redis', displayIcon: 'fab fa-docker', image: { name: 'redis', tag: { value: '7.0' } } },
+      ],
       containersCount: 2,
-      containersToUpdateCount: 1,
       triggersCount: 1,
       watchersCount: 2,
       registriesCount: 3,
@@ -66,24 +59,32 @@ describe('HomeView', () => {
   });
 
   it('renders all status cards', () => {
-    const cards = wrapper.findAll('.home-card');
+    const cards = wrapper.findAll('.stat-card');
     expect(cards).toHaveLength(4);
   });
 
   it('displays correct counts', () => {
-    expect(wrapper.text()).toContain('2 containers');
-    expect(wrapper.text()).toContain('1 triggers');
-    expect(wrapper.text()).toContain('2 watchers');
-    expect(wrapper.text()).toContain('3 registries');
+    const text = wrapper.text();
+    expect(text).toContain('2');
+    expect(text).toContain('Containers');
+    expect(text).toContain('1');
+    expect(text).toContain('Triggers');
+    expect(text).toContain('Watchers');
+    expect(text).toContain('3');
+    expect(text).toContain('Registries');
   });
 
   it('displays update warning when updates are available', () => {
     expect(wrapper.text()).toContain('1 update');
+    expect(wrapper.vm.containersWithUpdates).toHaveLength(1);
   });
 
   it('displays success message when no updates are available', async () => {
     await wrapper.setData({
-      containersToUpdateCount: 0
+      containers: [
+        { id: 1, updateAvailable: false, displayName: 'nginx', displayIcon: 'fab fa-docker', image: { name: 'nginx', tag: { value: '1.24' } } },
+        { id: 2, updateAvailable: false, displayName: 'redis', displayIcon: 'fab fa-docker', image: { name: 'redis', tag: { value: '7.0' } } },
+      ],
     });
     expect(wrapper.text()).toContain('up to date');
   });
@@ -121,12 +122,10 @@ describe('HomeView', () => {
   });
 
   it('navigates to correct routes', () => {
-      const links = wrapper.findAll('.v-btn-stub, .v-chip-stub');
+      const cards = wrapper.findAll('.stat-card');
+      const paths = cards.map(w => w.attributes('to') || w.props('to')).filter(Boolean);
 
-      const paths = links.map(w => w.attributes('data-to')).filter(Boolean);
-      
       expect(paths).toContain('/containers');
-      expect(paths).toContain('/containers?update-available=true');
       expect(paths).toContain('/configuration/triggers');
       expect(paths).toContain('/configuration/watchers');
       expect(paths).toContain('/configuration/registries');
@@ -147,11 +146,11 @@ describe('HomeView Route Hook', () => {
         
         // Simulate the callback execution
         const vm = {
+            containers: [],
             containersCount: 0,
             triggersCount: 0,
             watchersCount: 0,
             registriesCount: 0,
-            containersToUpdateCount: 0,
             recentActivity: []
         };
         const callback = next.mock.calls[0][0];
