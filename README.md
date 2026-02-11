@@ -9,7 +9,7 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/CodesWhat/drydock/releases"><img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version"></a>
+  <a href="https://github.com/CodesWhat/drydock/releases"><img src="https://img.shields.io/badge/version-1.2.0-blue" alt="Version"></a>
   <a href="https://github.com/orgs/CodesWhat/packages/container/package/drydock"><img src="https://img.shields.io/badge/GHCR-image-2ea44f?logo=docker&logoColor=white" alt="GHCR package"></a>
   <a href="https://github.com/orgs/CodesWhat/packages/container/package/drydock"><img src="https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-informational?logo=linux&logoColor=white" alt="Multi-arch"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-C9A227" alt="License MIT"></a>
@@ -140,8 +140,8 @@ Auto-pull and recreate services via docker-compose with multi-network support
 Monitor remote Docker hosts with SSE-based agent architecture
 </td>
 <td align="center">
-<h3>Update Policies</h3>
-Skip, snooze, or threshold-filter updates per container or globally
+<h3>Audit Log</h3>
+Event-based audit trail with persistent storage, REST API, and Prometheus counter
 </td>
 </tr>
 <tr>
@@ -154,8 +154,8 @@ Authelia, Auth0, Authentik — secure your dashboard with OpenID Connect
 Built-in /metrics endpoint with optional auth bypass for monitoring stacks
 </td>
 <td align="center" width="33%">
-<h3>In-App Log Viewer</h3>
-Browse container and application logs in the web UI with level filtering, agent source selection, and tail control
+<h3>Image Backup & Rollback</h3>
+Automatic pre-update image backup with configurable retention and one-click rollback
 </td>
 </tr>
 </table>
@@ -191,6 +191,11 @@ Browse container and application logs in the web UI with level filtering, agent 
 | **In-app log viewer** | View container stdout/stderr logs and application runtime logs with level filtering and agent source selection |
 | **Semver tag recovery** | Recover mismatched semver tags from include filters |
 | **Per-image config presets** | `imgset` defaults for per-image configuration |
+| **Audit log** | Event-based audit trail with LokiJS storage, REST API, and Prometheus counter |
+| **Dry-run preview** | Preview what a container update would do without performing it |
+| **Image backup & rollback** | Automatic pre-update image backup with configurable retention and rollback API |
+| **Grafana dashboard** | Importable JSON template for Prometheus metrics overview |
+| **Font Awesome 6 icons** | Migrated from MDI to FA6 with support for `fab:`/`far:`/`fas:` prefix syntax |
 
 ### Bug Fixes (not in WUD)
 
