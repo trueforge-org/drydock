@@ -186,126 +186,265 @@
           </v-window>
 
           <v-card-actions>
-            <v-row>
-              <v-col class="text-center">
-                <v-btn
-                  small
-                  color="secondary"
-                  variant="outlined"
-                  :loading="isUpdatingContainer"
-                  :disabled="!container.updateAvailable"
-                  @click="updateContainerNow"
-                >
-                  Update now
-                  <v-icon right>fas fa-rocket</v-icon>
-                </v-btn>
-              </v-col>
-              <v-col class="text-center">
-                <v-menu location="top">
-                  <template v-slot:activator="{ props }">
-                    <v-btn
-                      small
-                      color="info"
-                      variant="outlined"
-                      v-bind="props"
-                    >
-                      Policy
-                      <v-icon right>fas fa-sliders</v-icon>
-                    </v-btn>
-                  </template>
-                  <v-list density="compact">
-                    <v-list-item
-                      :disabled="!container.updateKind || container.updateKind.kind === 'unknown'"
-                      @click="skipCurrentUpdate"
-                    >
-                      <v-list-item-title>Skip current update</v-list-item-title>
-                    </v-list-item>
-                    <v-list-item @click="snoozeUpdates(1)">
-                      <v-list-item-title>Snooze 1 day</v-list-item-title>
-                    </v-list-item>
-                    <v-list-item @click="snoozeUpdates(7)">
-                      <v-list-item-title>Snooze 7 days</v-list-item-title>
-                    </v-list-item>
-                    <v-list-item @click="snoozeUpdates(30)">
-                      <v-list-item-title>Snooze 30 days</v-list-item-title>
-                    </v-list-item>
-                    <v-divider />
-                    <v-list-item
-                      :disabled="!container.updatePolicy || !container.updatePolicy.snoozeUntil"
-                      @click="clearSnooze"
-                    >
-                      <v-list-item-title>Clear snooze</v-list-item-title>
-                    </v-list-item>
-                    <v-list-item
-                      :disabled="!hasAnyUpdatePolicy"
-                      @click="clearUpdatePolicy"
-                    >
-                      <v-list-item-title>Clear all policy</v-list-item-title>
-                    </v-list-item>
-                  </v-list>
-                </v-menu>
-              </v-col>
-              <v-col class="text-center">
-                <v-dialog
-                  v-model="dialogDelete"
-                  width="500"
-                  v-if="deleteEnabled"
-                >
-                  <template v-slot:activator="{ props }">
-                    <v-btn
-                      small
-                      color="error"
-                      variant="outlined"
-                      v-bind="props"
-                    >
-                      Delete
-                      <v-icon right>fas fa-trash</v-icon>
-                    </v-btn>
-                  </template>
+            <!-- Desktop: icon-button toolbar -->
+            <div v-if="smAndUp" class="d-flex justify-center align-center w-100" style="gap: 4px;">
+              <!-- Preview (disabled placeholder) -->
+              <v-tooltip text="Preview update" location="top">
+                <template v-slot:activator="{ props }">
+                  <v-btn icon variant="text" size="small" v-bind="props" disabled>
+                    <v-icon>fas fa-eye</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
 
-                  <v-card class="text-center">
-                    <v-app-bar color="error" dark flat dense>
-                      <v-toolbar-title class="text-body-1">
-                        Delete the container?
-                      </v-toolbar-title>
-                    </v-app-bar>
-                    <v-card-subtitle class="text-body-2">
-                      <v-row class="mt-2" no-gutters>
-                        <v-col>
+              <!-- Update now -->
+              <v-tooltip text="Update now" location="top">
+                <template v-slot:activator="{ props }">
+                  <v-btn
+                    icon
+                    variant="text"
+                    size="small"
+                    color="secondary"
+                    v-bind="props"
+                    :loading="isUpdatingContainer"
+                    :disabled="!container.updateAvailable"
+                    @click="updateContainerNow"
+                  >
+                    <v-icon>fas fa-rocket</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+
+              <!-- Rollback (disabled placeholder) -->
+              <v-tooltip text="Rollback" location="top">
+                <template v-slot:activator="{ props }">
+                  <v-btn icon variant="text" size="small" v-bind="props" disabled>
+                    <v-icon>fas fa-rotate-left</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
+
+              <!-- Policy menu -->
+              <v-menu location="top">
+                <template v-slot:activator="{ props: menuProps }">
+                  <v-tooltip text="Update policy" location="top">
+                    <template v-slot:activator="{ props: tooltipProps }">
+                      <v-btn icon variant="text" size="small" color="info" v-bind="{ ...menuProps, ...tooltipProps }">
+                        <v-icon>fas fa-sliders</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                </template>
+                <v-list density="compact">
+                  <v-list-item
+                    :disabled="!container.updateKind || container.updateKind.kind === 'unknown'"
+                    @click="skipCurrentUpdate"
+                  >
+                    <v-list-item-title>Skip current update</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(1)">
+                    <v-list-item-title>Snooze 1 day</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(7)">
+                    <v-list-item-title>Snooze 7 days</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(30)">
+                    <v-list-item-title>Snooze 30 days</v-list-item-title>
+                  </v-list-item>
+                  <v-divider />
+                  <v-list-item
+                    :disabled="!container.updatePolicy || !container.updatePolicy.snoozeUntil"
+                    @click="clearSnooze"
+                  >
+                    <v-list-item-title>Clear snooze</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item
+                    :disabled="!hasAnyUpdatePolicy"
+                    @click="clearUpdatePolicy"
+                  >
+                    <v-list-item-title>Clear all policy</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+
+              <!-- Delete -->
+              <v-dialog
+                v-model="dialogDelete"
+                width="500"
+                v-if="deleteEnabled"
+              >
+                <template v-slot:activator="{ props: dialogProps }">
+                  <v-tooltip text="Delete" location="top">
+                    <template v-slot:activator="{ props: tooltipProps }">
+                      <v-btn icon variant="text" size="small" color="error" v-bind="{ ...dialogProps, ...tooltipProps }">
+                        <v-icon>fas fa-trash</v-icon>
+                      </v-btn>
+                    </template>
+                  </v-tooltip>
+                </template>
+
+                <v-card class="text-center">
+                  <v-app-bar color="error" dark flat dense>
+                    <v-toolbar-title class="text-body-1">
+                      Delete the container?
+                    </v-toolbar-title>
+                  </v-app-bar>
+                  <v-card-subtitle class="text-body-2">
+                    <v-row class="mt-2" no-gutters>
+                      <v-col>
+                        Delete
+                        <span class="font-weight-bold error--text">{{
+                          container.name
+                        }}</span>
+                        from the list?
+                        <br />
+                        <span class="font-italic"
+                          >(The real container won't be deleted)</span
+                        >
+                      </v-col>
+                    </v-row>
+                    <v-row>
+                      <v-col class="text-center">
+                        <v-btn variant="outlined" @click="dialogDelete = false" small>
+                          Cancel
+                        </v-btn>
+                        &nbsp;
+                        <v-btn
+                          color="error"
+                          small
+                          @click="
+                            dialogDelete = false;
+                            deleteContainer();
+                          "
+                        >
                           Delete
-                          <span class="font-weight-bold error--text">{{
-                            container.name
-                          }}</span>
-                          from the list?
-                          <br />
-                          <span class="font-italic"
-                            >(The real container won't be deleted)</span
-                          >
-                        </v-col>
-                      </v-row>
-                      <v-row>
-                        <v-col class="text-center">
-                          <v-btn variant="outlined" @click="dialogDelete = false" small>
-                            Cancel
-                          </v-btn>
-                          &nbsp;
-                          <v-btn
-                            color="error"
-                            small
-                            @click="
-                              dialogDelete = false;
-                              deleteContainer();
-                            "
-                          >
-                            Delete
-                          </v-btn>
-                        </v-col>
-                      </v-row>
-                    </v-card-subtitle>
-                  </v-card>
-                </v-dialog>
-              </v-col>
-            </v-row>
+                        </v-btn>
+                      </v-col>
+                    </v-row>
+                  </v-card-subtitle>
+                </v-card>
+              </v-dialog>
+            </div>
+
+            <!-- Mobile: overflow menu -->
+            <div v-else class="d-flex justify-center w-100">
+              <v-menu location="top">
+                <template v-slot:activator="{ props }">
+                  <v-btn icon variant="text" v-bind="props">
+                    <v-icon>fas fa-ellipsis-vertical</v-icon>
+                  </v-btn>
+                </template>
+                <v-list density="compact">
+                  <v-list-item disabled>
+                    <template v-slot:prepend><v-icon>fas fa-eye</v-icon></template>
+                    <v-list-item-title>Preview</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item
+                    :disabled="!container.updateAvailable"
+                    :loading="isUpdatingContainer"
+                    @click="updateContainerNow"
+                  >
+                    <template v-slot:prepend><v-icon>fas fa-rocket</v-icon></template>
+                    <v-list-item-title>Update now</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item disabled>
+                    <template v-slot:prepend><v-icon>fas fa-rotate-left</v-icon></template>
+                    <v-list-item-title>Rollback</v-list-item-title>
+                  </v-list-item>
+                  <v-divider />
+                  <v-list-item
+                    :disabled="!container.updateKind || container.updateKind.kind === 'unknown'"
+                    @click="skipCurrentUpdate"
+                  >
+                    <template v-slot:prepend><v-icon>fas fa-sliders</v-icon></template>
+                    <v-list-item-title>Skip current update</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(1)">
+                    <template v-slot:prepend><v-icon>fas fa-clock</v-icon></template>
+                    <v-list-item-title>Snooze 1 day</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(7)">
+                    <template v-slot:prepend><v-icon>fas fa-clock</v-icon></template>
+                    <v-list-item-title>Snooze 7 days</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="snoozeUpdates(30)">
+                    <template v-slot:prepend><v-icon>fas fa-clock</v-icon></template>
+                    <v-list-item-title>Snooze 30 days</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item
+                    :disabled="!container.updatePolicy || !container.updatePolicy.snoozeUntil"
+                    @click="clearSnooze"
+                  >
+                    <template v-slot:prepend><v-icon>fas fa-bell</v-icon></template>
+                    <v-list-item-title>Clear snooze</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item
+                    :disabled="!hasAnyUpdatePolicy"
+                    @click="clearUpdatePolicy"
+                  >
+                    <template v-slot:prepend><v-icon>fas fa-eraser</v-icon></template>
+                    <v-list-item-title>Clear all policy</v-list-item-title>
+                  </v-list-item>
+                  <v-divider />
+                  <v-list-item
+                    v-if="deleteEnabled"
+                    class="text-error"
+                    @click="dialogDelete = true"
+                  >
+                    <template v-slot:prepend><v-icon color="error">fas fa-trash</v-icon></template>
+                    <v-list-item-title>Delete</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+
+              <!-- Delete dialog for mobile (triggered by list item) -->
+              <v-dialog
+                v-model="dialogDelete"
+                width="500"
+                v-if="deleteEnabled"
+              >
+                <v-card class="text-center">
+                  <v-app-bar color="error" dark flat dense>
+                    <v-toolbar-title class="text-body-1">
+                      Delete the container?
+                    </v-toolbar-title>
+                  </v-app-bar>
+                  <v-card-subtitle class="text-body-2">
+                    <v-row class="mt-2" no-gutters>
+                      <v-col>
+                        Delete
+                        <span class="font-weight-bold error--text">{{
+                          container.name
+                        }}</span>
+                        from the list?
+                        <br />
+                        <span class="font-italic"
+                          >(The real container won't be deleted)</span
+                        >
+                      </v-col>
+                    </v-row>
+                    <v-row>
+                      <v-col class="text-center">
+                        <v-btn variant="outlined" @click="dialogDelete = false" small>
+                          Cancel
+                        </v-btn>
+                        &nbsp;
+                        <v-btn
+                          color="error"
+                          small
+                          @click="
+                            dialogDelete = false;
+                            deleteContainer();
+                          "
+                        >
+                          Delete
+                        </v-btn>
+                      </v-col>
+                    </v-row>
+                  </v-card-subtitle>
+                </v-card>
+              </v-dialog>
+            </div>
           </v-card-actions>
         </div>
       </transition>
