@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { addEntry } from './buffer.js';
 
 vi.mock('../configuration', () => ({

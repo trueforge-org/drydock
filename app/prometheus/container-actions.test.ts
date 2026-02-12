@@ -1,14 +1,14 @@
-// @ts-nocheck
+import { expect, test, vi } from 'vitest';
 import * as containerActions from './container-actions.js';
 
-test('container actions counter should be properly configured', async () => {
+test('container actions counter should be properly configured', () => {
   containerActions.init();
   const counter = containerActions.getContainerActionsCounter();
   expect(counter.name).toStrictEqual('dd_container_actions_total');
   expect(counter.labelNames).toStrictEqual(['action']);
 });
 
-test('container actions init should replace existing counter when called twice', async () => {
+test('container actions init should replace existing counter when called twice', () => {
   containerActions.init();
   const first = containerActions.getContainerActionsCounter();
   containerActions.init();

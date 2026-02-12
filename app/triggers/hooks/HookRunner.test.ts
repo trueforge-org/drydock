@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { describe, expect, test, vi } from 'vitest';
 import { runHook } from './HookRunner.js';
 
 vi.mock('../../log/index.js', () => ({

@@ -1,15 +1,22 @@
+type SseBusEvent = 'sse:connected' | 'self-update' | 'connection-lost';
+
+interface SseEventBus {
+  emit: (event: SseBusEvent) => void;
+}
+
 class SseService {
-  private eventSource: EventSource | null = null;
-  private eventBus: any = null;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private eventSource: EventSource | undefined;
+  private eventBus: SseEventBus | undefined;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private selfUpdateMode = false;
 
-  connect(eventBus: any) {
+  connect(eventBus: SseEventBus): void {
     this.eventBus = eventBus;
     this.doConnect();
+    return;
   }
 
-  private doConnect() {
+  private doConnect(): void {
     if (this.eventSource) {
       this.eventSource.close();
     }
@@ -29,30 +36,35 @@ class SseService {
       // Keep-alive, no action needed
     });
 
-    this.eventSource.onerror = () => {
+    this.eventSource.onerror = (): void => {
       if (this.selfUpdateMode) {
         this.eventBus?.emit('connection-lost');
       } else {
         this.scheduleReconnect();
       }
+      return;
     };
+    return;
   }
 
-  private scheduleReconnect(delayMs = 5000) {
+  private scheduleReconnect(delayMs = 5000): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => this.doConnect(), delayMs);
+    return;
   }
 
-  disconnect() {
+  disconnect(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
+      this.reconnectTimer = undefined;
     }
     if (this.eventSource) {
       this.eventSource.close();
-      this.eventSource = null;
+      this.eventSource = undefined;
     }
+    this.eventBus = undefined;
     this.selfUpdateMode = false;
+    return;
   }
 }
 

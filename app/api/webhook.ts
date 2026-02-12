@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { Buffer } from 'node:buffer';
 import { timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import rateLimit from 'express-rate-limit';

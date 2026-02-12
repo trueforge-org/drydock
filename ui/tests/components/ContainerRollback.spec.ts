@@ -171,6 +171,6 @@ describe('ContainerRollback', () => {
     await wrapper.setProps({ modelValue: false });
     expect(wrapper.vm.backups).toEqual([]);
     expect(wrapper.vm.error).toBe('');
-    expect(wrapper.vm.selectedBackupId).toBeNull();
+    expect(wrapper.vm.selectedBackupId).toBe('');
   });
 });

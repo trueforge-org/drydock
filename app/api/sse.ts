@@ -1,13 +1,13 @@
-// @ts-nocheck
 import express from 'express';
+import type { Request, Response } from 'express';
 import { registerSelfUpdateStarting } from '../event/index.js';
 import log from '../log/index.js';
 
 const router = express.Router();
 
-const clients = new Set();
+const clients = new Set<Response>();
 
-function eventsHandler(req, res) {
+function eventsHandler(req: Request, res: Response): void {
   const logger = log.child({ component: 'sse' });
 
   res.writeHead(200, {
@@ -23,21 +23,24 @@ function eventsHandler(req, res) {
   logger.debug(`SSE client connected (${clients.size} total)`);
 
   // Heartbeat every 15s
-  const heartbeatInterval = setInterval(() => {
+  const heartbeatInterval = globalThis.setInterval(() => {
     res.write('event: dd:heartbeat\ndata: {}\n\n');
   }, 15000);
 
   req.on('close', () => {
-    clearInterval(heartbeatInterval);
+    globalThis.clearInterval(heartbeatInterval);
     clients.delete(res);
     logger.debug(`SSE client disconnected (${clients.size} total)`);
   });
+
+  return;
 }
 
-function broadcastSelfUpdate() {
+function broadcastSelfUpdate(): void {
   for (const client of clients) {
     client.write('event: dd:self-update\ndata: {}\n\n');
   }
+  return;
 }
 
 export function init() {

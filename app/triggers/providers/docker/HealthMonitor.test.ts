@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { startHealthMonitor } from './HealthMonitor.js';
 
 const mockInsertAudit = vi.hoisted(() => vi.fn());

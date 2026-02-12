@@ -1,14 +1,14 @@
-// @ts-nocheck
+import { expect, test, vi } from 'vitest';
 import * as webhook from './webhook.js';
 
-test('webhook counter should be properly configured', async () => {
+test('webhook counter should be properly configured', () => {
   webhook.init();
   const counter = webhook.getWebhookCounter();
   expect(counter.name).toStrictEqual('dd_webhook_total');
   expect(counter.labelNames).toStrictEqual(['action']);
 });
 
-test('webhook init should replace existing counter when called twice', async () => {
+test('webhook init should replace existing counter when called twice', () => {
   webhook.init();
   const first = webhook.getWebhookCounter();
   webhook.init();

@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { mockInsertAudit, mockInc, mockGetAuditCounter } = vi.hoisted(() => ({
   mockInsertAudit: vi.fn(),

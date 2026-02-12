@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { createMockRequest, createMockResponse } from '../test/helpers.js';
 
 const { mockRouter, mockGetAuditEntries } = vi.hoisted(() => ({

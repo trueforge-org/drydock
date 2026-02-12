@@ -1,4 +1,5 @@
-// @ts-nocheck
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+
 vi.mock('../log/index.js', () => ({
   default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));

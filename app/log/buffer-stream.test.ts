@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { getEntries } from './buffer.js';
 
 vi.mock('../configuration', () => ({
@@ -24,7 +24,7 @@ describe('Logger bufferStream integration', () => {
     logger.info({ component: 'test-comp' }, marker);
 
     // pino writes asynchronously via the stream; give it a tick
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => globalThis.setTimeout(r, 50));
 
     const entries = getEntries({ tail: 1000 });
     const found = entries.find((e) => e.msg === marker);
@@ -37,7 +37,7 @@ describe('Logger bufferStream integration', () => {
     const marker = `no-comp-${Date.now()}`;
     logger.warn(marker);
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => globalThis.setTimeout(r, 50));
 
     const entries = getEntries({ tail: 1000 });
     const found = entries.find((e) => e.msg === marker);
@@ -50,7 +50,7 @@ describe('Logger bufferStream integration', () => {
     const marker = `level-test-${Date.now()}`;
     logger.error(marker);
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => globalThis.setTimeout(r, 50));
 
     const entries = getEntries({ tail: 1000 });
     const found = entries.find((e) => e.msg === marker);
@@ -62,7 +62,7 @@ describe('Logger bufferStream integration', () => {
     // Logging with only metadata, no message string
     logger.info({ component: 'empty-msg' }, '');
 
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => globalThis.setTimeout(r, 50));
 
     const entries = getEntries({ tail: 1000 });
     const found = entries.find((e) => e.component === 'empty-msg');
