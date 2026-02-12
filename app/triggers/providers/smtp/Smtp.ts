@@ -6,6 +6,63 @@ import Trigger from '../Trigger.js';
  * SMTP Trigger implementation
  */
 class Smtp extends Trigger {
+  normalizeFromAddress(value, allowCustomTld) {
+    if (value.includes('\n') || value.includes('\r')) {
+      return null;
+    }
+
+    let displayName;
+    let emailAddress = value;
+
+    const displayNameSeparatorIndex = value.lastIndexOf(' <');
+    if (displayNameSeparatorIndex !== -1) {
+      displayName = value.slice(0, displayNameSeparatorIndex);
+      emailAddress = value.slice(displayNameSeparatorIndex + 2);
+    }
+
+    if (emailAddress.endsWith('>')) {
+      emailAddress = emailAddress.slice(0, -1);
+    }
+
+    if (
+      !emailAddress ||
+      emailAddress.includes(' ') ||
+      emailAddress.includes('<') ||
+      emailAddress.includes('>')
+    ) {
+      return null;
+    }
+
+    const emailValidationResult = this.joi
+      .string()
+      .email({ tlds: { allow: !allowCustomTld } })
+      .validate(emailAddress);
+    if (emailValidationResult.error) {
+      return null;
+    }
+
+    if (!displayName) {
+      return emailAddress;
+    }
+
+    if (displayName.startsWith('"')) {
+      displayName = displayName.slice(1);
+    }
+    if (displayName.endsWith('"')) {
+      displayName = displayName.slice(0, -1);
+    }
+
+    if (!displayName) {
+      return emailAddress;
+    }
+
+    if (displayName.includes('"')) {
+      return null;
+    }
+
+    return `"${displayName}" <${emailAddress}>`;
+  }
+
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -21,32 +78,13 @@ class Smtp extends Trigger {
         .string()
         .required()
         .custom((value, helpers) => {
-          const match = /^("?(?<displayName>[^"]*)"? <)?(?<emailAddress>[^ <]+@[^ >]+)>?$/.exec(
-            value,
-          );
-          if (!match?.groups?.emailAddress) {
-            return helpers.error('string.email');
-          }
-
-          const emailAddress = match.groups.emailAddress;
           const allowCustomTld = !!helpers.state.ancestors[0].allowcustomtld;
-          const emailValidationResult = this.joi
-            .string()
-            .email({ tlds: { allow: !allowCustomTld } })
-            .validate(emailAddress);
-          if (emailValidationResult.error) {
+          const normalizedFromAddress = this.normalizeFromAddress(value, allowCustomTld);
+          if (!normalizedFromAddress) {
             return helpers.error('string.email');
           }
 
-          const displayName = match.groups.displayName;
-          if (!displayName) {
-            return emailAddress;
-          }
-          if (displayName.includes('\n') || displayName.includes('\r')) {
-            return helpers.error('string.email');
-          }
-
-          return `"${displayName}" <${emailAddress}>`;
+          return normalizedFromAddress;
         }),
       to: this.joi
         .string()
