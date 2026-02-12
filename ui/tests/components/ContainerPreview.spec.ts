@@ -76,6 +76,53 @@ describe('ContainerPreview', () => {
     expect(wrapper.vm.preview).toBeNull();
   });
 
+  it('uses default error message when failure has no message', async () => {
+    (previewContainer as any).mockRejectedValue({});
+    wrapper = createWrapper({ modelValue: false });
+
+    await wrapper.setProps({ modelValue: true });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(wrapper.vm.error).toBe('Failed to load preview');
+    expect(wrapper.vm.loading).toBe(false);
+  });
+
+  it('computes update kind color for all supported update kinds', async () => {
+    wrapper = createWrapper({ modelValue: false });
+
+    expect(wrapper.vm.updateKindColor).toBe('info');
+
+    wrapper.vm.preview = {
+      updateKind: { kind: 'digest' },
+    };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.updateKindColor).toBe('info');
+
+    wrapper.vm.preview = {
+      updateKind: { kind: 'semver', semverDiff: 'major' },
+    };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.updateKindColor).toBe('error');
+
+    wrapper.vm.preview = {
+      updateKind: { kind: 'semver', semverDiff: 'minor' },
+    };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.updateKindColor).toBe('warning');
+
+    wrapper.vm.preview = {
+      updateKind: { kind: 'semver', semverDiff: 'patch' },
+    };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.updateKindColor).toBe('success');
+
+    wrapper.vm.preview = {
+      updateKind: { kind: 'semver', semverDiff: 'prerelease' },
+    };
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.updateKindColor).toBe('info');
+  });
+
   it('emits update:modelValue false when close is called', () => {
     wrapper = createWrapper({ modelValue: true });
     wrapper.vm.close();
