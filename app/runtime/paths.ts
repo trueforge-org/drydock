@@ -13,7 +13,7 @@ let cachedRuntimeRoot: string | undefined;
 
 function normalizeConfiguredPathValue(candidate: string, label: string) {
   if (typeof candidate !== 'string') {
-    throw new Error(`${label} must be a string`);
+    throw new TypeError(`${label} must be a string`);
   }
   const normalized = candidate.trim();
   if (!normalized) {
