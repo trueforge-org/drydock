@@ -1,8 +1,10 @@
 // @ts-nocheck
 
 import fs from 'node:fs';
+import path from 'node:path';
 import joi from 'joi';
 import Loki from 'lokijs';
+import { resolveConfiguredPath, resolveConfiguredPathWithinBase } from '../runtime/paths.js';
 import logger from '../log/index.js';
 
 const log = logger.child({ component: 'store' });
@@ -61,7 +63,17 @@ async function loadDb(err, resolve, reject) {
  */
 export async function init(options = {}) {
   const isMemory = options.memory || false;
-  db = new Loki(`${configuration.path}/${configuration.file}`, {
+  const storeDirectory = resolveConfiguredPath(configuration.path, {
+    label: 'DD_STORE_PATH',
+  });
+  const storePath = resolveConfiguredPathWithinBase(storeDirectory, configuration.file, {
+    label: 'DD_STORE_FILE',
+  });
+  if (storePath === storeDirectory) {
+    throw new Error('DD_STORE_FILE must reference a file path, not a directory');
+  }
+
+  db = new Loki(storePath, {
     autosave: !isMemory,
   });
 
@@ -72,17 +84,16 @@ export async function init(options = {}) {
   }
 
   // Migrate from wud.json if dd.json doesn't exist yet
-  const storePath = `${configuration.path}/${configuration.file}`;
-  const legacyPath = `${configuration.path}/wud.json`;
+  const legacyPath = path.resolve(storeDirectory, 'wud.json');
   if (!fs.existsSync(storePath) && fs.existsSync(legacyPath)) {
     log.info(`Migrating store from ${legacyPath} to ${storePath}`);
     fs.renameSync(legacyPath, storePath);
   }
 
   log.info(`Load store from (${storePath})`);
-  if (!fs.existsSync(configuration.path)) {
-    log.info(`Create folder ${configuration.path}`);
-    fs.mkdirSync(configuration.path);
+  if (!fs.existsSync(storeDirectory)) {
+    log.info(`Create folder ${storeDirectory}`);
+    fs.mkdirSync(storeDirectory);
   }
   return new Promise((resolve, reject) => {
     db.loadDatabase({}, (err) => loadDb(err, resolve, reject));

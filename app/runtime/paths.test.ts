@@ -114,4 +114,26 @@ describe('runtime/paths', () => {
     const result = resolveUiDirectory();
     expect(result).toBe(path.resolve(runtimeRoot, 'ui'));
   });
+
+  test('resolveConfiguredPath should resolve relative paths from cwd', async () => {
+    const { resolveConfiguredPath } = await import('./paths.js');
+    const resolved = resolveConfiguredPath('./certs/client.pem');
+    expect(resolved).toBe(path.resolve(process.cwd(), './certs/client.pem'));
+  });
+
+  test('resolveConfiguredPath should reject empty values and null bytes', async () => {
+    const { resolveConfiguredPath } = await import('./paths.js');
+    expect(() => resolveConfiguredPath('')).toThrow('cannot be empty');
+    expect(() => resolveConfiguredPath('\0bad')).toThrow('contains invalid null byte');
+  });
+
+  test('resolveConfiguredPathWithinBase should keep paths inside base directory', async () => {
+    const { resolveConfiguredPathWithinBase } = await import('./paths.js');
+    const baseDir = path.resolve(process.cwd(), 'store');
+    const resolved = resolveConfiguredPathWithinBase(baseDir, 'dd.json');
+    expect(resolved).toBe(path.resolve(baseDir, 'dd.json'));
+    expect(() => resolveConfiguredPathWithinBase(baseDir, '../outside.json')).toThrow(
+      'must stay inside',
+    );
+  });
 });

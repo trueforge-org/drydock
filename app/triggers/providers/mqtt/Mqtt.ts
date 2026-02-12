@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import mqtt from 'mqtt';
 import { registerContainerAdded, registerContainerUpdated } from '../../../event/index.js';
 import { flatten } from '../../../model/container.js';
+import { resolveConfiguredPath } from '../../../runtime/paths.js';
 import Trigger from '../Trigger.js';
 import Hass from './Hass.js';
 
@@ -101,13 +102,27 @@ class Mqtt extends Trigger {
       options.password = this.configuration.password;
     }
     if (this.configuration.tls.clientkey) {
-      options.key = await fs.readFile(this.configuration.tls.clientkey);
+      options.key = await fs.readFile(
+        resolveConfiguredPath(this.configuration.tls.clientkey, {
+          label: 'MQTT client key path',
+        }),
+      );
     }
     if (this.configuration.tls.clientcert) {
-      options.cert = await fs.readFile(this.configuration.tls.clientcert);
+      options.cert = await fs.readFile(
+        resolveConfiguredPath(this.configuration.tls.clientcert, {
+          label: 'MQTT client certificate path',
+        }),
+      );
     }
     if (this.configuration.tls.cachain) {
-      options.ca = [await fs.readFile(this.configuration.tls.cachain)];
+      options.ca = [
+        await fs.readFile(
+          resolveConfiguredPath(this.configuration.tls.cachain, {
+            label: 'MQTT CA chain path',
+          }),
+        ),
+      ];
     }
     options.rejectUnauthorized = this.configuration.tls.rejectunauthorized;
 

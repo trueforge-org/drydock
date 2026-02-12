@@ -24,6 +24,7 @@ import {
 import { getMaintenanceSkipCounter, getWatchContainerGauge } from '../../../prometheus/watcher.js';
 import type { ComponentConfiguration } from '../../../registry/Component.js';
 import * as registry from '../../../registry/index.js';
+import { resolveConfiguredPath } from '../../../runtime/paths.js';
 import * as storeContainer from '../../../store/container.js';
 import {
   isGreater as isGreaterSemver,
@@ -1101,13 +1102,25 @@ class Docker extends Watcher {
         options.protocol = this.configuration.protocol;
       }
       if (this.configuration.cafile) {
-        options.ca = fs.readFileSync(this.configuration.cafile);
+        options.ca = fs.readFileSync(
+          resolveConfiguredPath(this.configuration.cafile, {
+            label: `watcher ${this.name} CA file path`,
+          }),
+        );
       }
       if (this.configuration.certfile) {
-        options.cert = fs.readFileSync(this.configuration.certfile);
+        options.cert = fs.readFileSync(
+          resolveConfiguredPath(this.configuration.certfile, {
+            label: `watcher ${this.name} certificate file path`,
+          }),
+        );
       }
       if (this.configuration.keyfile) {
-        options.key = fs.readFileSync(this.configuration.keyfile);
+        options.key = fs.readFileSync(
+          resolveConfiguredPath(this.configuration.keyfile, {
+            label: `watcher ${this.name} key file path`,
+          }),
+        );
       }
       this.applyRemoteAuthHeaders(options);
     } else {
