@@ -33,14 +33,12 @@ function eventsHandler(req: Request, res: Response): void {
     logger.debug(`SSE client disconnected (${clients.size} total)`);
   });
 
-  return;
 }
 
 function broadcastSelfUpdate(): void {
   for (const client of clients) {
     client.write('event: dd:self-update\ndata: {}\n\n');
   }
-  return;
 }
 
 export function init() {
