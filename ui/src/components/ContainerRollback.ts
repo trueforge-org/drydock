@@ -68,7 +68,6 @@ export default defineComponent({
       },
       set(this: RollbackComponentThis, value: boolean): void {
         this.$emit('update:modelValue', value);
-        return;
       },
     },
   },
@@ -79,19 +78,16 @@ export default defineComponent({
         return;
       }
       this.handleDialogClosed();
-      return;
     },
   },
   methods: {
     handleDialogOpened(this: RollbackComponentThis): void {
       void this.fetchBackups();
-      return;
     },
     handleDialogClosed(this: RollbackComponentThis): void {
       this.backups = [];
       this.error = '';
       this.selectedBackupId = '';
-      return;
     },
     async fetchBackups(this: RollbackComponentThis): Promise<void> {
       this.loading = true;
@@ -106,11 +102,9 @@ export default defineComponent({
       } finally {
         this.loading = false;
       }
-      return;
     },
     selectBackup(this: RollbackComponentThis, id: string): void {
       this.selectedBackupId = id;
-      return;
     },
     async confirmRollback(this: RollbackComponentThis): Promise<void> {
       if (this.selectedBackupId === '') {
@@ -127,11 +121,9 @@ export default defineComponent({
       } finally {
         this.rolling = false;
       }
-      return;
     },
     close(this: RollbackComponentThis): void {
       this.isOpen = false;
-      return;
     },
     formatDate(this: RollbackComponentThis, dateStr: string): string {
       return this.$filters.dateTime(dateStr);
