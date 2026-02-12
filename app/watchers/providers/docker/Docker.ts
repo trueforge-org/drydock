@@ -242,12 +242,22 @@ function applyIncludeExcludeFilters(
  */
 function filterByCurrentPrefix(tags: string[], container: Container, logContainer: any): string[] {
   const currentTag = container.image.tag.value;
-  const match = /^(.*?)(\d+.*)$/.exec(currentTag);
-  const currentPrefix = match ? match[1] : '';
+  let firstDigitIndex = -1;
+  for (let i = 0; i < currentTag.length; i += 1) {
+    const charCode = currentTag.charCodeAt(i);
+    if (charCode >= 48 && charCode <= 57) {
+      firstDigitIndex = i;
+      break;
+    }
+  }
+  const currentPrefix = firstDigitIndex >= 0 ? currentTag.slice(0, firstDigitIndex) : '';
 
   const filtered = currentPrefix
     ? tags.filter((tag) => tag.startsWith(currentPrefix))
-    : tags.filter((tag) => /^\d/.test(tag));
+    : tags.filter((tag) => {
+        const firstCharCode = tag.charCodeAt(0);
+        return firstCharCode >= 48 && firstCharCode <= 57;
+      });
 
   if (filtered.length === 0) {
     const msg = currentPrefix
