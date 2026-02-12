@@ -1,10 +1,10 @@
 # Roadmap
 
-Last updated: 2026-02-11
+Last updated: 2026-02-12
 
 ## Current State
 
-`feature/v1.2.0` in progress. `main` stable at 1.1.1.
+`feature/v1.2.0` in progress. `main` stable at 1.1.3, with 1.1.x patch work staged via PR branches.
 
 v1.2.0 adds: audit log, dry-run preview, image backup & rollback, Grafana dashboard, Font Awesome 6 migration, UI modernization, container action bar, and dashboard enhancements.
 

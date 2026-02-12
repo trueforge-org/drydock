@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **False downgrade suggestion for multi-segment tags** — Fixed semver parsing/comparison for numeric tags like `25.04.2.1.1` so newer major tags are no longer suggested as downgrades. ([#47](https://github.com/CodesWhat/drydock/issues/47))
+- **Configured path hardening for filesystem reads** — Added validated path resolution helpers and applied them to store paths, watcher TLS files, and MQTT TLS files before filesystem access.
+
+### Documentation
+
+- **Popular imgset presets** — Added a curated preset guide at `docs/configuration/watchers/popular-imgsets.md` and linked it from watcher docs.
+
 ## 1.1.3
 
 ### Bug Fixes
@@ -31,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## 1.1.0
+## 1.2.0
 
 ### Added
 

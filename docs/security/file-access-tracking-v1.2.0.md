@@ -1,7 +1,7 @@
 # File Access Findings Tracking (v1.2.0)
 
 Scope: Critical "Security / File Access" findings provided on 2026-02-12.
-Branch: `codex/security-file-access-v120`
+Branch: `feature/v1.2.0`
 
 ## Status Legend
 - `Mitigated`: Code hardened with path validation/normalization before file access.
