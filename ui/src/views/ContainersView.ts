@@ -7,8 +7,24 @@ import { deleteContainer, getAllContainers } from '@/services/container';
 
 const stringCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+function toComparableString(value: unknown): string {
+  if (value == null) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value);
+  }
+
+  return '';
+}
+
 function compareStringLikeValues(a: unknown, b: unknown) {
-  return stringCollator.compare(String(a ?? ''), String(b ?? ''));
+  return stringCollator.compare(toComparableString(a), toComparableString(b));
 }
 
 function parseQueryParams(query: any) {

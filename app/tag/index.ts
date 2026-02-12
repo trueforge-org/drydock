@@ -67,19 +67,24 @@ export function transform(transformFormula, originalTag) {
     return originalTag;
   }
   try {
-    const transformFormulaSplit = transformFormula.split(/\s*=>\s*/);
+    const separatorIndex = transformFormula.indexOf('=>');
+    if (separatorIndex === -1) {
+      return originalTag;
+    }
+    const pattern = transformFormula.slice(0, separatorIndex).trim();
+    const replacement = transformFormula.slice(separatorIndex + 2).trim();
     const MAX_PATTERN_LENGTH = 1024;
-    if (transformFormulaSplit[0].length > MAX_PATTERN_LENGTH) {
+    if (pattern.length > MAX_PATTERN_LENGTH) {
       log.warn(
         `Transform regex pattern exceeds maximum length of ${MAX_PATTERN_LENGTH} characters`,
       );
       return originalTag;
     }
-    const transformRegex = new RegExp(transformFormulaSplit[0]);
-    const placeholders = transformFormulaSplit[1].match(/\$\d+/g);
+    const transformRegex = new RegExp(pattern);
+    const placeholders = replacement.match(/\$\d+/g);
     const originalTagMatches = originalTag.match(transformRegex);
 
-    let transformedTag = transformFormulaSplit[1];
+    let transformedTag = replacement;
     placeholders.forEach((placeholder) => {
       const placeholderIndex = Number.parseInt(placeholder.substring(1), 10);
       transformedTag = transformedTag.replaceAll(placeholder, originalTagMatches[placeholderIndex]);

@@ -191,7 +191,8 @@ function parseTriggerList(triggerString) {
     return undefined;
   }
   return triggerString
-    .split(/\s*,\s*/)
+    .split(',')
+    .map((entry) => entry.trim())
     .map((entry) => Trigger.parseIncludeOrIncludeTriggerString(entry));
 }
 

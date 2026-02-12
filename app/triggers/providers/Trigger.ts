@@ -136,10 +136,10 @@ function evalStringLiteral(trimmed: string): string | undefined {
   ) {
     return trimmed
       .slice(1, -1)
-      .replaceAll('\\n', '\n')
-      .replaceAll('\\t', '\t')
-      .replaceAll('\\"', '"')
-      .replaceAll("\\'", "'");
+      .replaceAll(String.raw`\n`, '\n')
+      .replaceAll(String.raw`\t`, '\t')
+      .replaceAll(String.raw`\"`, '"')
+      .replaceAll(String.raw`\'`, "'");
   }
   return undefined;
 }
@@ -347,6 +347,13 @@ function renderBatch(template: string, containers: Container[]) {
   return safeInterpolate(template, vars);
 }
 
+function splitAndTrimCommaSeparatedList(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 /**
  * Trigger base component.
  */
@@ -434,17 +441,29 @@ class Trigger extends Component {
    * @returns
    */
   static parseIncludeOrIncludeTriggerString(includeOrExcludeTriggerString: string) {
-    const includeOrExcludeTriggerSplit = includeOrExcludeTriggerString.split(/\s*:\s*/);
+    const separatorIndex = includeOrExcludeTriggerString.indexOf(':');
+    const hasThresholdSeparator = separatorIndex !== -1;
+    const hasMultipleSeparators =
+      hasThresholdSeparator && includeOrExcludeTriggerString.indexOf(':', separatorIndex + 1) !== -1;
+
+    const triggerId = hasThresholdSeparator
+      ? includeOrExcludeTriggerString.slice(0, separatorIndex).trim()
+      : includeOrExcludeTriggerString.trim();
     const includeOrExcludeTrigger = {
-      id: includeOrExcludeTriggerSplit[0],
+      id: triggerId,
       threshold: 'all',
     };
-    if (includeOrExcludeTriggerSplit.length === 2) {
-      const thresholdCandidate = includeOrExcludeTriggerSplit[1].toLowerCase();
+
+    if (hasThresholdSeparator && !hasMultipleSeparators) {
+      const thresholdCandidate = includeOrExcludeTriggerString
+        .slice(separatorIndex + 1)
+        .trim()
+        .toLowerCase();
       if (Trigger.getSupportedThresholds().includes(thresholdCandidate)) {
         includeOrExcludeTrigger.threshold = thresholdCandidate;
       }
     }
+
     return includeOrExcludeTrigger;
   }
 
@@ -563,8 +582,7 @@ class Trigger extends Component {
 
   isTriggerIncludedOrExcluded(containerResult: Container, trigger: string) {
     const triggerId = this.getId().toLowerCase();
-    const triggers = trigger
-      .split(/\s*,\s*/)
+    const triggers = splitAndTrimCommaSeparatedList(trigger)
       .map((triggerToMatch) => Trigger.parseIncludeOrIncludeTriggerString(triggerToMatch));
     const triggerMatched = triggers.find((triggerToMatch) =>
       Trigger.doesReferenceMatchId(triggerToMatch.id, triggerId),

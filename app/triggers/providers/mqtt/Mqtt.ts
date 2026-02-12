@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import mqtt from 'mqtt';
 import { registerContainerAdded, registerContainerUpdated } from '../../../event/index.js';
@@ -8,6 +9,10 @@ import Hass from './Hass.js';
 
 const containerDefaultTopic = 'dd/container';
 const hassDefaultPrefix = 'homeassistant';
+
+function generateClientId() {
+  return `dd_${randomBytes(4).toString('hex')}`;
+}
 
 /**
  * Get container topic.
@@ -44,7 +49,7 @@ class Mqtt extends Trigger {
         })
         .required(),
       topic: this.joi.string().default(containerDefaultTopic),
-      clientid: this.joi.string().default(`dd_${Math.random().toString(16).substring(2, 10)}`),
+      clientid: this.joi.string().default(() => generateClientId()),
       user: this.joi.string(),
       password: this.joi.string(),
       hass: this.joi

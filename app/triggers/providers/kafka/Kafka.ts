@@ -54,7 +54,9 @@ class Kafka extends Trigger {
    * Init trigger.
    */
   initTrigger() {
-    const brokers = this.configuration.brokers.split(/\s*,\s*/).map((broker) => broker.trim());
+    const brokers = this.configuration.brokers
+      .split(',')
+      .map((broker) => broker.trim());
     const clientConfiguration = {
       clientId: this.configuration.clientId,
       brokers,

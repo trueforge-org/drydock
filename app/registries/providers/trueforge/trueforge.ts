@@ -5,20 +5,6 @@ import Quay from '../quay/Quay.js';
  * Linux-Server Container Registry integration.
  */
 class Trueforge extends Quay {
-  getConfigurationSchema() {
-    return this.joi.alternatives([
-      // Anonymous configuration
-      this.joi.string().allow(''),
-
-      // Auth configuration
-      this.joi.object().keys({
-        namespace: this.joi.string().required(),
-        account: this.joi.string().required(),
-        token: this.joi.string().required(),
-      }),
-    ]);
-  }
-
   /**
    * Return true if image has not registry url.
    * @param image the image

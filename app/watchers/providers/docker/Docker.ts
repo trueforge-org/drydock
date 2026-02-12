@@ -191,6 +191,29 @@ interface DeviceCodeFlowOptions {
   timeout?: number;
 }
 
+interface OidcRequestParameters {
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  audience?: string;
+  resource?: string;
+}
+
+interface DeviceCodeTokenPollOptions {
+  tokenEndpoint: string;
+  deviceCode: string;
+  clientId?: string;
+  clientSecret?: string;
+  timeout?: number;
+  pollIntervalMs: number;
+  pollTimeoutMs: number;
+}
+
+interface ImgsetMatchCandidate {
+  specificity: number;
+  imgset: ResolvedImgset;
+}
+
 /**
  * Return all supported registries
  * @returns {*}
@@ -244,8 +267,8 @@ function filterByCurrentPrefix(tags: string[], container: Container, logContaine
   const currentTag = container.image.tag.value;
   let firstDigitIndex = -1;
   for (let i = 0; i < currentTag.length; i += 1) {
-    const charCode = currentTag.charCodeAt(i);
-    if (charCode >= 48 && charCode <= 57) {
+    const charCode = currentTag.codePointAt(i);
+    if (charCode !== undefined && charCode >= 48 && charCode <= 57) {
       firstDigitIndex = i;
       break;
     }
@@ -255,8 +278,8 @@ function filterByCurrentPrefix(tags: string[], container: Container, logContaine
   const filtered = currentPrefix
     ? tags.filter((tag) => tag.startsWith(currentPrefix))
     : tags.filter((tag) => {
-        const firstCharCode = tag.charCodeAt(0);
-        return firstCharCode >= 48 && firstCharCode <= 57;
+        const firstCharCode = tag.codePointAt(0);
+        return firstCharCode !== undefined && firstCharCode >= 48 && firstCharCode <= 57;
       });
 
   if (filtered.length === 0) {
@@ -1208,25 +1231,15 @@ class Docker extends Watcher {
    * Build the URLSearchParams body for a standard OIDC token request
    * (client_credentials or refresh_token grant).
    */
-  private buildTokenRequestBody(
-    grantType: string,
-    params: {
-      clientId?: string;
-      clientSecret?: string;
-      scope?: string;
-      audience?: string;
-      resource?: string;
-    },
-  ): URLSearchParams {
-    const body = new URLSearchParams();
-    body.set('grant_type', grantType);
-    if (grantType === 'refresh_token' && this.remoteOidcRefreshToken) {
-      body.set('refresh_token', this.remoteOidcRefreshToken);
-    }
+  private appendOidcRequestBodyFields(
+    body: URLSearchParams,
+    params: OidcRequestParameters,
+    includeClientSecret = true,
+  ) {
     if (params.clientId) {
       body.set('client_id', params.clientId);
     }
-    if (params.clientSecret) {
+    if (includeClientSecret && params.clientSecret) {
       body.set('client_secret', params.clientSecret);
     }
     if (params.scope) {
@@ -1238,7 +1251,46 @@ class Docker extends Watcher {
     if (params.resource) {
       body.set('resource', params.resource);
     }
+  }
+
+  private buildTokenRequestBody(
+    grantType: string,
+    params: OidcRequestParameters,
+  ): URLSearchParams {
+    const body = new URLSearchParams();
+    body.set('grant_type', grantType);
+    if (grantType === 'refresh_token' && this.remoteOidcRefreshToken) {
+      body.set('refresh_token', this.remoteOidcRefreshToken);
+    }
+    this.appendOidcRequestBodyFields(body, params);
     return body;
+  }
+
+  private applyRemoteOidcTokenPayload(
+    tokenPayload: any,
+    options: { markDeviceCodeCompleted?: boolean; allowMissingAccessToken?: boolean } = {},
+  ): boolean {
+    const accessToken = tokenPayload?.access_token;
+    if (!accessToken) {
+      if (options.allowMissingAccessToken) {
+        return false;
+      }
+      throw new Error(
+        `Unable to refresh OIDC token for ${this.name}: token endpoint response does not contain access_token`,
+      );
+    }
+
+    this.remoteOidcAccessToken = accessToken;
+    if (tokenPayload.refresh_token) {
+      this.remoteOidcRefreshToken = tokenPayload.refresh_token;
+    }
+    const expiresIn = normalizeConfigNumberValue(tokenPayload.expires_in);
+    const tokenTtlMs = (expiresIn ?? OIDC_DEFAULT_ACCESS_TOKEN_TTL_MS / 1000) * 1000;
+    this.remoteOidcAccessTokenExpiresAt = Date.now() + tokenTtlMs;
+    if (options.markDeviceCodeCompleted) {
+      this.remoteOidcDeviceCodeCompleted = true;
+    }
+    return true;
   }
 
   async refreshRemoteOidcAccessToken() {
@@ -1286,21 +1338,7 @@ class Docker extends Watcher {
       },
       timeout: oidcTimeout || OIDC_DEFAULT_TIMEOUT_MS,
     });
-    const tokenPayload = tokenResponse?.data || {};
-    const accessToken = tokenPayload.access_token;
-    if (!accessToken) {
-      throw new Error(
-        `Unable to refresh OIDC token for ${this.name}: token endpoint response does not contain access_token`,
-      );
-    }
-
-    this.remoteOidcAccessToken = accessToken;
-    if (tokenPayload.refresh_token) {
-      this.remoteOidcRefreshToken = tokenPayload.refresh_token;
-    }
-    const expiresIn = normalizeConfigNumberValue(tokenPayload.expires_in);
-    const tokenTtlMs = (expiresIn ?? OIDC_DEFAULT_ACCESS_TOKEN_TTL_MS / 1000) * 1000;
-    this.remoteOidcAccessTokenExpiresAt = Date.now() + tokenTtlMs;
+    this.applyRemoteOidcTokenPayload(tokenResponse?.data || {});
   }
 
   /**
@@ -1318,18 +1356,11 @@ class Docker extends Watcher {
 
     // Step 1: Request device authorization
     const deviceRequestBody = new URLSearchParams();
-    if (clientId) {
-      deviceRequestBody.set('client_id', clientId);
-    }
-    if (scope) {
-      deviceRequestBody.set('scope', scope);
-    }
-    if (audience) {
-      deviceRequestBody.set('audience', audience);
-    }
-    if (resource) {
-      deviceRequestBody.set('resource', resource);
-    }
+    this.appendOidcRequestBodyFields(
+      deviceRequestBody,
+      { clientId, clientSecret, scope, audience, resource },
+      false,
+    );
 
     const deviceResponse = await axios.post(deviceUrl, deviceRequestBody.toString(), {
       headers: {
@@ -1372,7 +1403,7 @@ class Docker extends Watcher {
     }
 
     // Step 3: Poll the token endpoint
-    await this.pollDeviceCodeToken(
+    await this.pollDeviceCodeToken({
       tokenEndpoint,
       deviceCode,
       clientId,
@@ -1380,7 +1411,7 @@ class Docker extends Watcher {
       timeout,
       pollIntervalMs,
       pollTimeoutMs,
-    );
+    });
   }
 
   /**
@@ -1394,12 +1425,7 @@ class Docker extends Watcher {
     const body = new URLSearchParams();
     body.set('grant_type', 'urn:ietf:params:oauth:grant-type:device_code');
     body.set('device_code', deviceCode);
-    if (clientId) {
-      body.set('client_id', clientId);
-    }
-    if (clientSecret) {
-      body.set('client_secret', clientSecret);
-    }
+    this.appendOidcRequestBodyFields(body, { clientId, clientSecret });
     return body;
   }
 
@@ -1451,14 +1477,17 @@ class Docker extends Watcher {
    * the code expires, or the maximum timeout is reached.
    */
   async pollDeviceCodeToken(
-    tokenEndpoint: string,
-    deviceCode: string,
-    clientId: string | undefined,
-    clientSecret: string | undefined,
-    timeout: number | undefined,
-    pollIntervalMs: number,
-    pollTimeoutMs: number,
+    options: DeviceCodeTokenPollOptions,
   ) {
+    const {
+      tokenEndpoint,
+      deviceCode,
+      clientId,
+      clientSecret,
+      timeout,
+      pollIntervalMs,
+      pollTimeoutMs,
+    } = options;
     const startTime = Date.now();
     let currentIntervalMs = pollIntervalMs;
 
@@ -1475,23 +1504,15 @@ class Docker extends Watcher {
           timeout: timeout || OIDC_DEFAULT_TIMEOUT_MS,
         });
 
-        const tokenPayload = tokenResponse?.data || {};
-        const accessToken = tokenPayload.access_token;
-        if (accessToken) {
-          this.remoteOidcAccessToken = accessToken;
-          if (tokenPayload.refresh_token) {
-            this.remoteOidcRefreshToken = tokenPayload.refresh_token;
-          }
-          const tokenExpiresIn = normalizeConfigNumberValue(tokenPayload.expires_in);
-          this.remoteOidcAccessTokenExpiresAt =
-            Date.now() +
-            (tokenExpiresIn !== undefined
-              ? tokenExpiresIn * 1000
-              : OIDC_DEFAULT_ACCESS_TOKEN_TTL_MS);
-          this.remoteOidcDeviceCodeCompleted = true;
-          this.log.info(`OIDC device authorization for ${this.name} completed successfully`);
-          return;
+        const applied = this.applyRemoteOidcTokenPayload(tokenResponse?.data || {}, {
+          markDeviceCodeCompleted: true,
+          allowMissingAccessToken: true,
+        });
+        if (!applied) {
+          continue;
         }
+        this.log.info(`OIDC device authorization for ${this.name} completed successfully`);
+        return;
       } catch (e: any) {
         const result = this.handleTokenErrorResponse(e, currentIntervalMs);
         if (result.continuePolling) {
@@ -2075,36 +2096,59 @@ class Docker extends Watcher {
     };
   }
 
+  private getImgsetMatchCandidate(
+    imgsetName: string,
+    imgsetConfiguration: any,
+    parsedImage: any,
+  ): ImgsetMatchCandidate | undefined {
+    const imagePattern = getFirstConfigString(imgsetConfiguration, ['image', 'match']);
+    if (!imagePattern) {
+      return undefined;
+    }
+
+    const specificity = getImgsetSpecificity(imagePattern, parsedImage);
+    if (specificity < 0) {
+      return undefined;
+    }
+
+    return {
+      specificity,
+      imgset: getResolvedImgsetConfiguration(imgsetName, imgsetConfiguration),
+    };
+  }
+
+  private isBetterImgsetMatch(
+    candidate: ImgsetMatchCandidate,
+    currentBest: ImgsetMatchCandidate,
+  ): boolean {
+    if (candidate.specificity !== currentBest.specificity) {
+      return candidate.specificity > currentBest.specificity;
+    }
+
+    return candidate.imgset.name.localeCompare(currentBest.imgset.name) < 0;
+  }
+
   getMatchingImgsetConfiguration(parsedImage: any): ResolvedImgset | undefined {
     const configuredImgsets = this.configuration.imgset;
     if (!configuredImgsets || typeof configuredImgsets !== 'object') {
       return undefined;
     }
 
-    const matchingImgsets = Object.entries(configuredImgsets)
-      .map(([imgsetName, imgsetConfiguration]: any) => {
-        const imagePattern = getFirstConfigString(imgsetConfiguration, ['image', 'match']);
-        if (!imagePattern) {
-          return undefined;
-        }
-        const specificity = getImgsetSpecificity(imagePattern, parsedImage);
-        if (specificity < 0) {
-          return undefined;
-        }
-        return {
-          specificity,
-          imgset: getResolvedImgsetConfiguration(imgsetName, imgsetConfiguration),
-        };
-      })
-      .filter((imgsetMatch: any) => imgsetMatch !== undefined)
-      .sort((imgsetMatch1: any, imgsetMatch2: any) => {
-        if (imgsetMatch1.specificity !== imgsetMatch2.specificity) {
-          return imgsetMatch2.specificity - imgsetMatch1.specificity;
-        }
-        return imgsetMatch1.imgset.name.localeCompare(imgsetMatch2.imgset.name);
-      });
+    let bestMatch: ImgsetMatchCandidate | undefined;
+    for (const [imgsetName, imgsetConfiguration] of Object.entries(
+      configuredImgsets as Record<string, any>,
+    )) {
+      const candidate = this.getImgsetMatchCandidate(imgsetName, imgsetConfiguration, parsedImage);
+      if (!candidate) {
+        continue;
+      }
 
-    return matchingImgsets.length > 0 ? matchingImgsets[0].imgset : undefined;
+      if (!bestMatch || this.isBetterImgsetMatch(candidate, bestMatch)) {
+        bestMatch = candidate;
+      }
+    }
+
+    return bestMatch?.imgset;
   }
 
   /**

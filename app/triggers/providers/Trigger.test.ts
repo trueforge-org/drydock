@@ -455,6 +455,20 @@ test('parseIncludeOrIncludeTriggerString should parse digest thresholds', async 
   });
 });
 
+test('parseIncludeOrIncludeTriggerString should trim spaces around id and threshold', () => {
+  expect(Trigger.parseIncludeOrIncludeTriggerString('  docker.local : DIGEST  ')).toStrictEqual({
+    id: 'docker.local',
+    threshold: 'digest',
+  });
+});
+
+test('parseIncludeOrIncludeTriggerString should ignore threshold when multiple separators are present', () => {
+  expect(Trigger.parseIncludeOrIncludeTriggerString('docker.local:digest:extra')).toStrictEqual({
+    id: 'docker.local',
+    threshold: 'all',
+  });
+});
+
 test('doesReferenceMatchId should match full trigger id and trigger name', async () => {
   expect(Trigger.doesReferenceMatchId('docker.update', 'docker.update')).toBe(true);
   expect(Trigger.doesReferenceMatchId('update', 'docker.update')).toBe(true);
@@ -829,6 +843,17 @@ test('isTriggerIncludedOrExcluded should return false when trigger not found in 
       'slack.notify:major',
     ),
   ).toBe(false);
+});
+
+test('isTriggerIncludedOrExcluded should parse comma-separated trigger list with spaces', () => {
+  trigger.type = 'docker';
+  trigger.name = 'update';
+  expect(
+    trigger.isTriggerIncludedOrExcluded(
+      { updateKind: { kind: 'tag', semverDiff: 'minor' } },
+      '  , slack.notify:major, docker.update : minor , ',
+    ),
+  ).toBe(true);
 });
 
 test('handleContainerReport should store result when resolvenotifications is enabled', async () => {

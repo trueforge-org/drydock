@@ -1,6 +1,18 @@
 import { defineComponent, inject, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useDisplay } from 'vuetify';
 
+const UINT32_MAX_PLUS_ONE = 0x1_0000_0000;
+
+function getSecureRandomFloat(): number {
+  if (!globalThis.crypto?.getRandomValues) {
+    return 0.5;
+  }
+
+  const values = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(values);
+  return values[0] / UINT32_MAX_PLUS_ONE;
+}
+
 export default defineComponent({
   name: 'SelfUpdateOverlay',
   setup() {
@@ -45,13 +57,13 @@ export default defineComponent({
     }
 
     function startBounce() {
-      x.value = Math.random() * (globalThis.innerWidth - logoSize);
-      y.value = Math.random() * (globalThis.innerHeight - logoSize);
-      const speed = 1.5 + Math.random();
-      const angle = Math.random() * Math.PI * 2;
+      x.value = getSecureRandomFloat() * (globalThis.innerWidth - logoSize);
+      y.value = getSecureRandomFloat() * (globalThis.innerHeight - logoSize);
+      const speed = 1.5 + getSecureRandomFloat();
+      const angle = getSecureRandomFloat() * Math.PI * 2;
       dx.value = Math.cos(angle) * speed;
       dy.value = Math.sin(angle) * speed;
-      hue.value = Math.floor(Math.random() * 360);
+      hue.value = Math.floor(getSecureRandomFloat() * 360);
       animationFrame = requestAnimationFrame(animate);
     }
 

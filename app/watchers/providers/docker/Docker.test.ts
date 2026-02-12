@@ -3270,15 +3270,15 @@ describe('Docker Watcher', () => {
       docker.sleep = vi.fn().mockResolvedValue(undefined);
       mockAxios.post.mockRejectedValue({ response: { data: { error: 'authorization_pending' } } });
       await expect(
-        docker.pollDeviceCodeToken(
-          'https://idp.example.com/oauth/token',
-          'device-code',
-          'client',
-          undefined,
-          undefined,
-          1,
-          0,
-        ),
+        docker.pollDeviceCodeToken({
+          tokenEndpoint: 'https://idp.example.com/oauth/token',
+          deviceCode: 'device-code',
+          clientId: 'client',
+          clientSecret: undefined,
+          timeout: undefined,
+          pollIntervalMs: 1,
+          pollTimeoutMs: 0,
+        }),
       ).rejects.toThrow('polling timed out');
     });
   });

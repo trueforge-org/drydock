@@ -1,6 +1,7 @@
 // @ts-nocheck
 import axios from 'axios';
 import Custom from '../custom/Custom.js';
+import { getTokenAuthConfigurationSchema } from '../shared/tokenAuthConfigurationSchema.js';
 
 /**
  * Docker Hardened Images registry integration.
@@ -18,15 +19,7 @@ class Dhi extends Custom {
    * @returns {*}
    */
   getConfigurationSchema() {
-    return this.joi.alternatives([
-      this.joi.string().allow(''),
-      this.joi.object().keys({
-        login: this.joi.string(),
-        password: this.joi.string(),
-        token: this.joi.string(),
-        auth: this.joi.string().base64(),
-      }),
-    ]);
+    return getTokenAuthConfigurationSchema(this.joi);
   }
 
   /**

@@ -498,6 +498,14 @@ function applyDefaultsToProviderConfigurations(
   return result;
 }
 
+function hasConfigurationEntries(configurations: Record<string, any> | null | undefined): boolean {
+  return !!configurations && Object.keys(configurations).length > 0;
+}
+
+function getKnownProviderSet(providerPath: string): Set<string> {
+  return new Set(getAvailableProviders(providerPath).map((provider) => provider.toLowerCase()));
+}
+
 /**
  * Extract trigger group defaults and apply them across providers.
  *
@@ -524,18 +532,17 @@ function applyTriggerGroupDefaults(
   configurations: Record<string, any>,
   providerPath: string,
 ): Record<string, any> {
-  if (!configurations || Object.keys(configurations).length === 0) {
+  if (!hasConfigurationEntries(configurations)) {
     return configurations;
   }
 
-  const knownProviders = getAvailableProviders(providerPath);
-  const knownProviderSet = new Set(knownProviders.map((p) => p.toLowerCase()));
+  const knownProviderSet = getKnownProviderSet(providerPath);
   const { triggerGroupDefaults, providerConfigurations } = splitTriggerGroupDefaults(
     configurations,
     knownProviderSet,
   );
 
-  if (Object.keys(triggerGroupDefaults).length === 0) {
+  if (!hasConfigurationEntries(triggerGroupDefaults)) {
     return configurations;
   }
 
