@@ -17,7 +17,9 @@ describe('SseService', () => {
       close: vi.fn(),
       onerror: null as EventListener | null,
     };
-    MockEventSourceCtor = vi.fn(() => mockEventSource);
+    MockEventSourceCtor = vi.fn(function () {
+      return mockEventSource;
+    });
     vi.stubGlobal('EventSource', MockEventSourceCtor);
     mockEventBus = {
       emit: vi.fn(),
@@ -110,7 +112,9 @@ describe('SseService', () => {
       close: vi.fn(),
       onerror: null as EventListener | null,
     };
-    MockEventSourceCtor.mockImplementation(() => secondSource);
+    MockEventSourceCtor.mockImplementation(function () {
+      return secondSource;
+    });
 
     sseService.connect(mockEventBus);
     expect(firstSource.close).toHaveBeenCalled();

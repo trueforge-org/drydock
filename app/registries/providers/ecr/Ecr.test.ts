@@ -2,12 +2,16 @@
 import Ecr from './Ecr.js';
 
 vi.mock('@aws-sdk/client-ecr', () => ({
-  ECRClient: vi.fn().mockImplementation(() => ({
-    send: vi.fn().mockResolvedValue({
-      authorizationData: [{ authorizationToken: 'QVdTOnh4eHg=' }],
-    }),
-  })),
-  GetAuthorizationTokenCommand: vi.fn().mockImplementation(() => ({})),
+  ECRClient: vi.fn().mockImplementation(function () {
+    return {
+      send: vi.fn().mockResolvedValue({
+        authorizationData: [{ authorizationToken: 'QVdTOnh4eHg=' }],
+      }),
+    };
+  }),
+  GetAuthorizationTokenCommand: vi.fn().mockImplementation(function () {
+    return {};
+  }),
 }));
 
 const ecr = new Ecr();

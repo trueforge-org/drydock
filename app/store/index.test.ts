@@ -16,7 +16,9 @@ const {
 
   function createLokiMock(loadDbCallback = (options, callback) => callback(null)) {
     return {
-      default: vi.fn().mockImplementation(() => ({ loadDatabase: vi.fn(loadDbCallback) })),
+      default: vi.fn().mockImplementation(function () {
+        return { loadDatabase: vi.fn(loadDbCallback) };
+      }),
     };
   }
 

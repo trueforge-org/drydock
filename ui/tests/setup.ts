@@ -1,6 +1,34 @@
 import { config } from '@vue/test-utils';
 import { createVuetify } from 'vuetify';
 
+// Some CI/runtime environments expose an incompatible localStorage object.
+// Override with a minimal Storage-compatible mock used by this test suite.
+const localStorageMock: Record<string, any> = {
+  getItem(key: string) {
+    return key in localStorageMock ? String(localStorageMock[key]) : null;
+  },
+  setItem(key: string, value: string) {
+    localStorageMock[key] = String(value);
+  },
+  removeItem(key: string) {
+    delete localStorageMock[key];
+  },
+  clear() {
+    for (const key of Object.keys(localStorageMock)) {
+      if (key === 'getItem' || key === 'setItem' || key === 'removeItem' || key === 'clear') {
+        continue;
+      }
+      delete localStorageMock[key];
+    }
+  },
+};
+
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  configurable: true,
+  writable: true,
+});
+
 // Create a Vuetify instance for testing
 const vuetify = createVuetify({
   theme: {
