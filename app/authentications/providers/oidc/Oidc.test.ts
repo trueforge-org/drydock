@@ -135,6 +135,42 @@ test('getStrategy should return an Authentication strategy', async () => {
   expect(strategy.name).toEqual('oidc');
 });
 
+test('getStrategy should wire redirect/callback routes to oidc handlers', async () => {
+  const appMock = {
+    use: vi.fn(),
+    get: vi.fn(),
+  };
+  const redirectSpy = vi.spyOn(oidc, 'redirect').mockResolvedValue(undefined);
+  const callbackSpy = vi.spyOn(oidc, 'callback').mockResolvedValue(undefined);
+
+  oidc.getStrategy(appMock);
+
+  const redirectHandler = appMock.get.mock.calls.find(([path]) => path.endsWith('/redirect'))[1];
+  const callbackHandler = appMock.get.mock.calls.find(([path]) => path.endsWith('/cb'))[1];
+
+  const req = createReq({ session: { save: vi.fn((cb) => cb()) } });
+  const res = createRes();
+  redirectHandler(req, res);
+  callbackHandler(req, res);
+
+  expect(redirectSpy).toHaveBeenCalledWith(req, res);
+  expect(callbackSpy).toHaveBeenCalledWith(req, res);
+});
+
+test('getStrategy should delegate strategy verify callback to oidc.verify', async () => {
+  const appMock = {
+    use: vi.fn(),
+    get: vi.fn(),
+  };
+  const verifySpy = vi.spyOn(oidc, 'verify').mockResolvedValue(undefined);
+  const strategy = oidc.getStrategy(appMock);
+  const done = vi.fn();
+
+  strategy.verify('access-token', done);
+
+  expect(verifySpy).toHaveBeenCalledWith('access-token', done);
+});
+
 test('maskConfiguration should mask configuration secrets', async () => {
   expect(oidc.maskConfiguration()).toEqual({
     clientid: '1*******8',
@@ -337,6 +373,30 @@ test('callback should return explicit error when callback state does not match s
     knownState: createPendingCheck(),
   });
   const req = createCallbackReq('/auth/oidc/default/cb?code=abc&state=unknown-state', session);
+  const res = createRes();
+
+  await oidc.callback(req, res);
+
+  expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
+  expect401Send(res, 'OIDC session state mismatch or expired. Please retry authentication.');
+});
+
+test('callback should reject malformed pending checks from session storage', async () => {
+  const session = {
+    oidc: {
+      default: {
+        pending: {
+          'bad state': createPendingCheck('invalid-entry'),
+          validstate: {
+            state: 'different-state',
+            codeVerifier: 'code-verifier',
+            createdAt: Date.now(),
+          },
+        },
+      },
+    },
+  };
+  const req = createCallbackReq('/auth/oidc/default/cb?code=abc&state=validstate', session);
   const res = createRes();
 
   await oidc.callback(req, res);

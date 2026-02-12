@@ -1,8 +1,8 @@
 import {
-  getRegistryIcon,
-  getRegistryProviderIcon,
-  getRegistryProviderColor,
   getAllRegistries,
+  getRegistryIcon,
+  getRegistryProviderColor,
+  getRegistryProviderIcon,
 } from '@/services/registry';
 
 // Mock fetch globally
@@ -75,17 +75,17 @@ describe('Registry Service', () => {
     it('fetches all registries successfully', async () => {
       const mockRegistries = [
         { name: 'hub', type: 'docker' },
-        { name: 'ghcr', type: 'github' }
+        { name: 'ghcr', type: 'github' },
       ];
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockRegistries
+        json: async () => mockRegistries,
       } as any);
 
       const registries = await getAllRegistries();
 
       expect(fetch).toHaveBeenCalledWith('/api/registries', {
-        credentials: 'include'
+        credentials: 'include',
       });
       expect(registries).toEqual(mockRegistries);
     });

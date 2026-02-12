@@ -40,7 +40,7 @@ export async function runHook(command: string, options: HookRunnerOptions): Prom
       },
       (error, stdout, stderr) => {
         const timedOut = error !== null && 'killed' in error && error.killed === true;
-        const exitCode = timedOut ? 1 : error?.code ?? child.exitCode ?? 0;
+        const exitCode = timedOut ? 1 : (error?.code ?? child.exitCode ?? 0);
 
         const result: HookResult = {
           exitCode: typeof exitCode === 'number' ? exitCode : 1,

@@ -64,10 +64,7 @@ describe('tag/index fuzz tests', () => {
     },
   );
 
-  fcTest.prop([
-    fc.stringMatching(/^[a-z0-9.+-]{1,30}$/),
-    fc.stringMatching(/^[a-z0-9.+-]{1,30}$/),
-  ])(
+  fcTest.prop([fc.stringMatching(/^[a-z0-9.+-]{1,30}$/), fc.stringMatching(/^[a-z0-9.+-]{1,30}$/)])(
     'isGreater handles semver-like strings',
     (v1, v2) => {
       const result = isGreater(v1, v2);

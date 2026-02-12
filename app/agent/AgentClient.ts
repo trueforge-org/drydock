@@ -86,9 +86,7 @@ export class AgentClient {
 
   private async registerAgentComponents(kind: 'watcher' | 'trigger', remoteComponents: any[]) {
     for (const remoteComponent of remoteComponents) {
-      this.log.debug(
-        `Registering agent ${kind} ${remoteComponent.type}.${remoteComponent.name}`,
-      );
+      this.log.debug(`Registering agent ${kind} ${remoteComponent.type}.${remoteComponent.name}`);
       await registry.registerComponent({
         kind,
         provider: remoteComponent.type,
@@ -302,10 +300,7 @@ export class AgentClient {
       const query = params.toString();
       const logEntriesUrl = `${this.baseUrl}/api/log/entries`;
       const requestUrl = query ? `${logEntriesUrl}?${query}` : logEntriesUrl;
-      const response = await axios.get(
-        requestUrl,
-        this.axiosOptions,
-      );
+      const response = await axios.get(requestUrl, this.axiosOptions);
       return response.data;
     } catch (e: any) {
       this.log.error(`Error fetching log entries from agent: ${e.message}`);

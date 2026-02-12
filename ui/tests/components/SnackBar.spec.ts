@@ -7,8 +7,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     expect(wrapper.text()).toContain('Test message');
@@ -20,8 +20,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'error'
-      }
+        level: 'error',
+      },
     });
 
     expect(wrapper.vm.level).toBe('error');
@@ -41,8 +41,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     wrapper.vm.closeSnackbar();
@@ -56,8 +56,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: false,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     expect(wrapper.vm.showLocal).toBe(false);
@@ -71,8 +71,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     expect(wrapper.vm.timeout).toBe(4000);
@@ -83,8 +83,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     expect(wrapper.find('.v-snackbar').exists()).toBe(true);
@@ -95,8 +95,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     // Check that the snackbar has bottom positioning
@@ -109,8 +109,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     const snackbar = wrapper.findComponent({ name: 'v-snackbar' });
@@ -122,8 +122,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     const btn = wrapper.findComponent({ name: 'v-btn' });
@@ -135,8 +135,8 @@ describe('SnackBar', () => {
       props: {
         message: 'Test message',
         show: true,
-        level: 'info'
-      }
+        level: 'info',
+      },
     });
 
     const btn = wrapper.findComponent({ name: 'v-btn' });

@@ -95,6 +95,26 @@ describe('Component Router', () => {
       const result = component.mapComponentsToList({});
       expect(result).toEqual([]);
     });
+
+    test('should sort by name when type is identical', () => {
+      const components = {
+        'docker.zeta': {
+          type: 'docker',
+          name: 'zeta',
+          maskConfiguration: vi.fn(() => ({})),
+        },
+        'docker.alpha': {
+          type: 'docker',
+          name: 'alpha',
+          maskConfiguration: vi.fn(() => ({})),
+        },
+      };
+
+      const result = component.mapComponentsToList(components);
+
+      expect(result[0].name).toBe('alpha');
+      expect(result[1].name).toBe('zeta');
+    });
   });
 
   describe('getById', () => {

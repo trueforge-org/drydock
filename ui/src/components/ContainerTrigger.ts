@@ -35,11 +35,7 @@ export default defineComponent({
         });
         this.$eventBus.emit('notify', 'Trigger executed with success');
       } catch (err: any) {
-        this.$eventBus.emit(
-          'notify',
-          `Trigger executed with error (${err.message})`,
-          'error',
-        );
+        this.$eventBus.emit('notify', `Trigger executed with error (${err.message})`, 'error');
       } finally {
         this.isTriggering = false;
       }

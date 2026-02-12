@@ -1,4 +1,4 @@
-import { getWatcherIcon, getWatcherProviderIcon, getAllWatchers } from '@/services/watcher';
+import { getAllWatchers, getWatcherIcon, getWatcherProviderIcon } from '@/services/watcher';
 
 describe('Watcher Service', () => {
   beforeEach(() => {

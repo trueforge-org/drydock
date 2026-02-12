@@ -6,25 +6,23 @@ import BaseRegistry from '../../BaseRegistry.js';
  */
 class Custom extends BaseRegistry {
   getConfigurationSchema() {
-    const authSchema = this.joi.alternatives().try(
-      this.joi.string().base64(),
-      this.joi.string().valid(''),
-    );
+    const authSchema = this.joi
+      .alternatives()
+      .try(this.joi.string().base64(), this.joi.string().valid(''));
 
-    const customConfigSchema = this.joi.object().keys({
-      url: this.joi.string().uri().required(),
-      login: this.joi.string(),
-      password: this.joi.string(),
-      auth: authSchema,
-    })
+    const customConfigSchema = this.joi
+      .object()
+      .keys({
+        url: this.joi.string().uri().required(),
+        login: this.joi.string(),
+        password: this.joi.string(),
+        auth: authSchema,
+      })
       .and('login', 'password')
       .without('login', 'auth')
       .without('password', 'auth');
 
-    return this.joi.alternatives([
-      this.joi.string().allow(''),
-      customConfigSchema,
-    ]);
+    return this.joi.alternatives([this.joi.string().allow(''), customConfigSchema]);
   }
 
   maskConfiguration() {

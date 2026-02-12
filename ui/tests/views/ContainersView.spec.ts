@@ -1,11 +1,11 @@
 import { mount } from '@vue/test-utils';
-import ContainersView from '@/views/ContainersView.vue';
 import { deleteContainer, getAllContainers } from '@/services/container';
+import ContainersView from '@/views/ContainersView.vue';
 
 // Mock the container service
 vi.mock('@/services/container', () => ({
   getAllContainers: vi.fn(),
-  deleteContainer: vi.fn()
+  deleteContainer: vi.fn(),
 }));
 const { mockGetAgents } = vi.hoisted(() => ({
   mockGetAgents: vi.fn(() => Promise.resolve([])),
@@ -24,7 +24,7 @@ const mockContainers = [
     image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
     updateAvailable: true,
     updateKind: { semverDiff: 'minor' },
-    labels: { app: 'web', env: 'prod' }
+    labels: { app: 'web', env: 'prod' },
   },
   {
     id: '2',
@@ -33,8 +33,8 @@ const mockContainers = [
     watcher: 'docker',
     image: { registry: { name: 'ghcr' }, created: '2023-01-02T00:00:00Z' },
     updateAvailable: false,
-    labels: { app: 'api', env: 'dev' }
-  }
+    labels: { app: 'api', env: 'dev' },
+  },
 ];
 
 describe('ContainersView', () => {
@@ -47,9 +47,9 @@ describe('ContainersView', () => {
       global: {
         stubs: {
           'container-filter': true,
-          'container-item': true
-        }
-      }
+          'container-item': true,
+        },
+      },
     });
     wrapper.vm.onRefreshAllContainers(mockContainers);
   });
@@ -182,7 +182,7 @@ describe('ContainersView', () => {
 
   it('removes container from list when deleted', async () => {
     const containerToDelete = mockContainers[0];
-    
+
     wrapper.vm.removeContainerFromList(containerToDelete);
 
     expect(wrapper.vm.containers).toHaveLength(1);
@@ -249,8 +249,8 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-03T00:00:00Z' },
         updateAvailable: false,
-        labels: {}
-      }
+        labels: {},
+      },
     ];
     wrapper.vm.containers = containersWithMissing;
     wrapper.vm.groupByLabel = 'app';
@@ -271,7 +271,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
         updateAvailable: false,
-        labels: { 'dd.group': 'my-stack' }
+        labels: { 'dd.group': 'my-stack' },
       },
       {
         id: 's2',
@@ -280,7 +280,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-02T00:00:00Z' },
         updateAvailable: false,
-        labels: { 'wud.group': 'wud-stack' }
+        labels: { 'wud.group': 'wud-stack' },
       },
       {
         id: 's3',
@@ -289,7 +289,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-03T00:00:00Z' },
         updateAvailable: false,
-        labels: { 'com.docker.compose.project': 'compose-proj' }
+        labels: { 'com.docker.compose.project': 'compose-proj' },
       },
       {
         id: 's4',
@@ -298,8 +298,8 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-04T00:00:00Z' },
         updateAvailable: false,
-        labels: {}
-      }
+        labels: {},
+      },
     ];
     wrapper.vm.containers = smartContainers;
     wrapper.vm.groupByLabel = '__smart__';
@@ -348,7 +348,7 @@ describe('ContainersView', () => {
         image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
         updateAvailable: true,
         updateKind: { kind: 'tag', semverDiff: 'minor' },
-        labels: {}
+        labels: {},
       },
       {
         id: '2',
@@ -358,7 +358,7 @@ describe('ContainersView', () => {
         image: { registry: { name: 'hub' }, created: '2023-01-02T00:00:00Z' },
         updateAvailable: true,
         updateKind: { kind: 'tag', semverDiff: 'major' },
-        labels: {}
+        labels: {},
       },
     ];
     wrapper.vm.containers = containersWithKinds;
@@ -380,7 +380,7 @@ describe('ContainersView', () => {
         image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
         updateAvailable: true,
         updateKind: { kind: 'tag', semverDiff: 'minor' },
-        labels: {}
+        labels: {},
       },
       {
         id: '2',
@@ -390,7 +390,7 @@ describe('ContainersView', () => {
         image: { registry: { name: 'hub' }, created: '2023-01-02T00:00:00Z' },
         updateAvailable: true,
         updateKind: { kind: 'tag', semverDiff: 'major' },
-        labels: {}
+        labels: {},
       },
       {
         id: '3',
@@ -400,7 +400,7 @@ describe('ContainersView', () => {
         image: { registry: { name: 'hub' }, created: '2023-01-03T00:00:00Z' },
         updateAvailable: false,
         updateKind: { kind: 'tag', semverDiff: 'patch' },
-        labels: {}
+        labels: {},
       },
     ];
     wrapper.vm.containers = containersWithKinds;
@@ -417,7 +417,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-02T00:00:00Z' },
         updateAvailable: false,
-        labels: { app: 'web' }
+        labels: { app: 'web' },
       },
       {
         id: '2',
@@ -426,7 +426,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
         updateAvailable: false,
-        labels: { app: 'web' }
+        labels: { app: 'web' },
       },
     ];
     wrapper.vm.containers = containers;
@@ -469,19 +469,37 @@ describe('ContainersView', () => {
       vi.mocked(getAllContainers).mockResolvedValue(mockContainers);
       mockGetAgents.mockResolvedValue(agents);
 
-      const guard = ContainersView.__component?.beforeRouteEnter ?? (ContainersView as any).beforeRouteEnter;
+      const guard =
+        ContainersView.__component?.beforeRouteEnter ?? (ContainersView as any).beforeRouteEnter;
 
-      let nextCallback: Function | undefined;
-      const to = { query: { registry: 'hub', agent: 'node1', watcher: 'local', 'update-kind': 'minor', 'update-available': 'true', 'oldest-first': 'true', 'group-by-label': 'app' } };
-      await guard.call(undefined, to as any, {} as any, (cb: any) => { nextCallback = cb; });
+      let nextCallback: ((vm: any) => void) | undefined;
+      const to = {
+        query: {
+          registry: 'hub',
+          agent: 'node1',
+          watcher: 'local',
+          'update-kind': 'minor',
+          'update-available': 'true',
+          'oldest-first': 'true',
+          'group-by-label': 'app',
+        },
+      };
+      await guard.call(undefined, to as any, {} as any, (cb: any) => {
+        nextCallback = cb;
+      });
 
       const vm: any = {
-        containers: [], agentsList: [],
-        registrySelected: '', agentSelected: '', watcherSelected: '',
-        updateKindSelected: '', updateAvailableSelected: false,
-        oldestFirst: false, groupByLabel: ''
+        containers: [],
+        agentsList: [],
+        registrySelected: '',
+        agentSelected: '',
+        watcherSelected: '',
+        updateKindSelected: '',
+        updateAvailableSelected: false,
+        oldestFirst: false,
+        groupByLabel: '',
       };
-      nextCallback!(vm);
+      nextCallback?.(vm);
 
       expect(vm.containers).toEqual(mockContainers);
       expect(vm.agentsList).toEqual(agents);
@@ -497,16 +515,23 @@ describe('ContainersView', () => {
     it('emits error notification when beforeRouteEnter fails', async () => {
       vi.mocked(getAllContainers).mockRejectedValue(new Error('Network fail'));
 
-      const guard = ContainersView.__component?.beforeRouteEnter ?? (ContainersView as any).beforeRouteEnter;
+      const guard =
+        ContainersView.__component?.beforeRouteEnter ?? (ContainersView as any).beforeRouteEnter;
 
-      let nextCallback: Function | undefined;
-      await guard.call(undefined, { query: {} } as any, {} as any, (cb: any) => { nextCallback = cb; });
+      let nextCallback: ((vm: any) => void) | undefined;
+      await guard.call(undefined, { query: {} } as any, {} as any, (cb: any) => {
+        nextCallback = cb;
+      });
 
       const emitMock = vi.fn();
       const vm: any = { $eventBus: { emit: emitMock } };
-      nextCallback!(vm);
+      nextCallback?.(vm);
 
-      expect(emitMock).toHaveBeenCalledWith('notify', expect.stringContaining('Network fail'), 'error');
+      expect(emitMock).toHaveBeenCalledWith(
+        'notify',
+        expect.stringContaining('Network fail'),
+        'error',
+      );
     });
   });
 
@@ -519,7 +544,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-01T00:00:00Z' },
         updateAvailable: false,
-        labels: {}
+        labels: {},
       },
       {
         id: '2',
@@ -528,7 +553,7 @@ describe('ContainersView', () => {
         watcher: 'local',
         image: { registry: { name: 'hub' }, created: '2023-01-02T00:00:00Z' },
         updateAvailable: false,
-        labels: { app: 'web' }
+        labels: { app: 'web' },
       },
     ];
     wrapper.vm.containers = containers;

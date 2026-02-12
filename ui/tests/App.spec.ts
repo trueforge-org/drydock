@@ -46,7 +46,8 @@ describe('App.vue', () => {
           'navigation-drawer': { template: '<div class="nav-drawer" />' },
           'app-bar': { template: '<div class="app-bar" />' },
           'snack-bar': {
-            template: '<div class="snack-bar" :data-message="message" :data-show="show" :data-level="level" />',
+            template:
+              '<div class="snack-bar" :data-message="message" :data-show="show" :data-level="level" />',
             props: ['message', 'show', 'level'],
           },
           'self-update-overlay': { template: '<div class="self-update-overlay" />' },
@@ -76,9 +77,7 @@ describe('App.vue', () => {
   });
 
   it('computes breadcrumb items from route', () => {
-    expect(wrapper.vm.items).toEqual([
-      { text: 'containers', disabled: false, href: '' },
-    ]);
+    expect(wrapper.vm.items).toEqual([{ text: 'containers', disabled: false, href: '' }]);
   });
 
   it('does not render nav/bar/footer when unauthenticated', () => {
@@ -88,7 +87,7 @@ describe('App.vue', () => {
 
   it('shows snackbar when notify is called', async () => {
     // Trigger the notify listener
-    const notifyCall = mockEventBus.on.mock.calls.find(c => c[0] === 'notify');
+    const notifyCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'notify');
     const notifyFn = notifyCall[1];
     notifyFn('Test message', 'error');
 
@@ -100,7 +99,7 @@ describe('App.vue', () => {
   });
 
   it('uses default level "info" for notify', async () => {
-    const notifyCall = mockEventBus.on.mock.calls.find(c => c[0] === 'notify');
+    const notifyCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'notify');
     const notifyFn = notifyCall[1];
     notifyFn('Info message');
 
@@ -111,14 +110,14 @@ describe('App.vue', () => {
 
   it('closes snackbar on notify:close', async () => {
     // First show it
-    const notifyCall = mockEventBus.on.mock.calls.find(c => c[0] === 'notify');
+    const notifyCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'notify');
     notifyCall[1]('Test message');
 
     await wrapper.vm.$nextTick();
     expect(wrapper.vm.snackbarShow).toBe(true);
 
     // Now close
-    const closeCall = mockEventBus.on.mock.calls.find(c => c[0] === 'notify:close');
+    const closeCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'notify:close');
     closeCall[1]();
 
     await wrapper.vm.$nextTick();
@@ -127,7 +126,7 @@ describe('App.vue', () => {
   });
 
   it('becomes authenticated when event bus emits authenticated', async () => {
-    const authCall = mockEventBus.on.mock.calls.find(c => c[0] === 'authenticated');
+    const authCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'authenticated');
     const authFn = authCall[1];
     authFn({ username: 'testuser' });
 
@@ -138,7 +137,7 @@ describe('App.vue', () => {
   });
 
   it('renders nav/bar/footer when authenticated', async () => {
-    const authCall = mockEventBus.on.mock.calls.find(c => c[0] === 'authenticated');
+    const authCall = mockEventBus.on.mock.calls.find((c) => c[0] === 'authenticated');
     authCall[1]({ username: 'testuser' });
     await wrapper.vm.$nextTick();
 

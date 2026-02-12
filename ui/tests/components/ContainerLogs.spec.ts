@@ -1,4 +1,4 @@
-import { mount, flushPromises } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import ContainerLogs from '@/components/ContainerLogs';
 
 const { mockGetContainerLogs } = vi.hoisted(() => ({

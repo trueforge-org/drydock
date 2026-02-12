@@ -83,9 +83,7 @@ describe('HealthMonitor', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
 
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('has no HEALTHCHECK defined'),
-    );
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('has no HEALTHCHECK defined'));
 
     abortController.abort();
   });
@@ -112,12 +110,8 @@ describe('HealthMonitor', () => {
     await vi.advanceTimersByTimeAsync(10000);
     await vi.advanceTimersByTimeAsync(10000);
 
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining('window expired'),
-    );
-    expect(log.warn).not.toHaveBeenCalledWith(
-      expect.stringContaining('unhealthy'),
-    );
+    expect(log.info).toHaveBeenCalledWith(expect.stringContaining('window expired'));
+    expect(log.warn).not.toHaveBeenCalledWith(expect.stringContaining('unhealthy'));
 
     abortController.abort();
   });
@@ -169,9 +163,7 @@ describe('HealthMonitor', () => {
 
     // Second poll: unhealthy
     await vi.advanceTimersByTimeAsync(10000);
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('became unhealthy'),
-    );
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('became unhealthy'));
 
     expect(triggerInstance.stopAndRemoveContainer).toHaveBeenCalled();
     expect(triggerInstance.recreateContainer).toHaveBeenCalledWith(
@@ -314,9 +306,7 @@ describe('HealthMonitor', () => {
 
     // At 20s: window expires
     await vi.advanceTimersByTimeAsync(5000);
-    expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining('window expired'),
-    );
+    expect(log.info).toHaveBeenCalledWith(expect.stringContaining('window expired'));
 
     abortController.abort();
   });
@@ -371,9 +361,7 @@ describe('HealthMonitor', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
 
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('No backups found'),
-    );
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('No backups found'));
     expect(triggerInstance.stopAndRemoveContainer).not.toHaveBeenCalled();
 
     abortController.abort();
@@ -400,9 +388,7 @@ describe('HealthMonitor', () => {
 
     await vi.advanceTimersByTimeAsync(10000);
 
-    expect(log.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Error inspecting container'),
-    );
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('Error inspecting container'));
 
     abortController.abort();
   });

@@ -217,11 +217,7 @@ export default defineComponent({
         this.$emit('container-refreshed', containerUpdated);
         this.$eventBus.emit('notify', successMessage);
       } catch (e: any) {
-        this.$eventBus.emit(
-          'notify',
-          `Error when trying to update policy (${e.message})`,
-          'error',
-        );
+        this.$eventBus.emit('notify', `Error when trying to update policy (${e.message})`, 'error');
       }
     },
 
@@ -278,11 +274,7 @@ export default defineComponent({
       try {
         const triggers = await getContainerTriggers(this.container.id);
         if (!Array.isArray(triggers) || triggers.length === 0) {
-          this.$eventBus.emit(
-            'notify',
-            'No triggers associated to this container',
-            'warning',
-          );
+          this.$eventBus.emit('notify', 'No triggers associated to this container', 'warning');
           return;
         }
 
@@ -363,11 +355,7 @@ export default defineComponent({
           this.$emit('container-refreshed', result.container);
         }
       } catch (e: any) {
-        this.$eventBus.emit(
-          'notify',
-          `Error restarting container (${e.message})`,
-          'error',
-        );
+        this.$eventBus.emit('notify', `Error restarting container (${e.message})`, 'error');
       } finally {
         this.isRestarting = false;
       }

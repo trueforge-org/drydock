@@ -106,6 +106,17 @@ describe('AgentClient', () => {
       });
       expect(c).toBeDefined();
     });
+
+    test('should throw when host uses an unsupported protocol', () => {
+      expect(
+        () =>
+          new AgentClient('a', {
+            host: 'httpx://myhost',
+            port: 4000,
+            secret: 's', // NOSONAR - test fixture, not a real credential
+          }),
+      ).toThrowError('Invalid agent URL protocol: httpx:');
+    });
   });
 
   describe('init', () => {

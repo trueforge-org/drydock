@@ -31,10 +31,13 @@ describe('Docker image name parsing fuzz tests', () => {
     expect(result.tag).toBeUndefined();
   });
 
-  fcTest.prop([fc.string()])('parse-docker-image-name never throws on arbitrary strings', (input) => {
-    const result = parse(input);
-    expect(typeof result).toBe('object');
-  });
+  fcTest.prop([fc.string()])(
+    'parse-docker-image-name never throws on arbitrary strings',
+    (input) => {
+      const result = parse(input);
+      expect(typeof result).toBe('object');
+    },
+  );
 
   fcTest.prop([fc.string({ minLength: 1, maxLength: 200 })])(
     'parse-docker-image-name always returns an object with expected fields',

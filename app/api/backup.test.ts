@@ -1,14 +1,21 @@
 // @ts-nocheck
 import { createMockRequest, createMockResponse } from '../test/helpers.js';
 
-const { mockRouter, mockGetContainer, mockGetBackups, mockGetAllBackups, mockGetState } =
-  vi.hoisted(() => ({
-    mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
-    mockGetContainer: vi.fn(),
-    mockGetBackups: vi.fn(),
-    mockGetAllBackups: vi.fn(),
-    mockGetState: vi.fn(),
-  }));
+const {
+  mockRouter,
+  mockGetContainer,
+  mockGetBackups,
+  mockGetAllBackups,
+  mockGetBackup,
+  mockGetState,
+} = vi.hoisted(() => ({
+  mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
+  mockGetContainer: vi.fn(),
+  mockGetBackups: vi.fn(),
+  mockGetAllBackups: vi.fn(),
+  mockGetBackup: vi.fn(),
+  mockGetState: vi.fn(),
+}));
 
 vi.mock('express', () => ({
   default: { Router: vi.fn(() => mockRouter) },
@@ -23,6 +30,7 @@ vi.mock('../store/container', () => ({
 vi.mock('../store/backup', () => ({
   getBackups: mockGetBackups,
   getAllBackups: mockGetAllBackups,
+  getBackup: mockGetBackup,
 }));
 
 vi.mock('../registry', () => ({
@@ -157,6 +165,34 @@ describe('Backup Router', () => {
       );
     });
 
+    test('should return 404 when backupId does not exist', async () => {
+      const handler = getHandler('post', '/:id/rollback');
+      mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
+      mockGetBackup.mockReturnValue(undefined);
+
+      const req = createMockRequest({ params: { id: 'c1' }, body: { backupId: 'missing-backup' } });
+      const res = createMockResponse();
+      await handler(req, res);
+
+      expect(mockGetBackup).toHaveBeenCalledWith('missing-backup');
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Backup not found for this container' });
+    });
+
+    test('should return 404 when backupId belongs to another container', async () => {
+      const handler = getHandler('post', '/:id/rollback');
+      mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
+      mockGetBackup.mockReturnValue({ id: 'b2', containerId: 'c2' });
+
+      const req = createMockRequest({ params: { id: 'c1' }, body: { backupId: 'b2' } });
+      const res = createMockResponse();
+      await handler(req, res);
+
+      expect(mockGetBackup).toHaveBeenCalledWith('b2');
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Backup not found for this container' });
+    });
+
     test('should return 404 when no docker trigger found', async () => {
       const handler = getHandler('post', '/:id/rollback');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
@@ -227,6 +263,42 @@ describe('Backup Router', () => {
           backup: latestBackup,
         }),
       );
+    });
+
+    test('should return 500 when current container cannot be found in Docker', async () => {
+      const handler = getHandler('post', '/:id/rollback');
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { registry: { name: 'hub' } },
+      };
+      const latestBackup = {
+        id: 'b1',
+        containerId: 'c1',
+        imageName: 'library/nginx',
+        imageTag: '1.24',
+      };
+
+      mockGetContainer.mockReturnValue(container);
+      mockGetBackups.mockReturnValue([latestBackup]);
+
+      const mockTrigger = {
+        type: 'docker',
+        getWatcher: vi.fn(() => ({ dockerApi: {} })),
+        pullImage: vi.fn().mockResolvedValue(undefined),
+        getCurrentContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      mockGetState.mockReturnValue({
+        trigger: { 'docker.default': mockTrigger },
+        registry: { hub: { getAuthPull: vi.fn().mockResolvedValue({}) } },
+      });
+
+      const req = createMockRequest({ params: { id: 'c1' } });
+      const res = createMockResponse();
+      await handler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Container not found in Docker' });
     });
 
     test('should return 500 when rollback fails', async () => {

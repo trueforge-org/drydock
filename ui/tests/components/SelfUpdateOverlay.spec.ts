@@ -23,9 +23,10 @@ Object.defineProperty(window, 'location', {
 });
 
 describe('SelfUpdateOverlay', () => {
+  type EventHandler = (...args: unknown[]) => unknown;
   let wrapper: any;
   let mockEventBus: any;
-  let eventHandlers: Record<string, Function>;
+  let eventHandlers: Record<string, EventHandler>;
   let rafMock: ReturnType<typeof vi.fn>;
   let cafMock: ReturnType<typeof vi.fn>;
   let rafId: number;
@@ -50,17 +51,17 @@ describe('SelfUpdateOverlay', () => {
     cafMock = vi.fn();
     window.requestAnimationFrame = rafMock as any;
     window.cancelAnimationFrame = cafMock as any;
-    cryptoRandomSpy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(
-      ((typedArray: Uint32Array) => {
-        typedArray[0] = 0x8000_0000;
-        return typedArray;
-      }) as any,
-    );
+    cryptoRandomSpy = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(((
+      typedArray: Uint32Array,
+    ) => {
+      typedArray[0] = 0x8000_0000;
+      return typedArray;
+    }) as any);
 
     eventHandlers = {};
     mockEventBus = {
       emit: vi.fn(),
-      on: vi.fn((event: string, handler: Function) => {
+      on: vi.fn((event: string, handler: EventHandler) => {
         eventHandlers[event] = handler;
       }),
       off: vi.fn(),
@@ -253,14 +254,14 @@ describe('SelfUpdateOverlay', () => {
       // startBounce: x = random * maxX, y = random * maxY
       // speed = 1.5 + random, angle = random * 2PI
       // We want x near maxX, y near maxY, with positive dx/dy
-      const maxX = window.innerWidth - 120;  // 904
+      const maxX = window.innerWidth - 120; // 904
       const maxY = window.innerHeight - 120; // 648
       const randomValues = [
-        0.999,  // x = 0.999 * maxX ~ maxX
-        0.999,  // y = 0.999 * maxY ~ maxY
-        0.5,    // speed = 2.0
-        0.0,    // angle = 0 -> dx=2, dy=0... we need positive dy too
-        0.5,    // hue = 180
+        0.999, // x = 0.999 * maxX ~ maxX
+        0.999, // y = 0.999 * maxY ~ maxY
+        0.5, // speed = 2.0
+        0.0, // angle = 0 -> dx=2, dy=0... we need positive dy too
+        0.5, // hue = 180
       ];
       queueSecureRandomValues(randomValues);
 
@@ -282,11 +283,11 @@ describe('SelfUpdateOverlay', () => {
     it('bounces off left edge when moving left', async () => {
       // angle = PI -> dx = -speed, dy ~ 0
       const randomValues = [
-        0.001,  // x near 0
-        0.5,    // y in middle
-        0.5,    // speed = 2.0
-        0.5,    // angle = PI -> dx = cos(PI)*2 = -2, dy = sin(PI)*2 ~ 0
-        0.5,    // hue
+        0.001, // x near 0
+        0.5, // y in middle
+        0.5, // speed = 2.0
+        0.5, // angle = PI -> dx = cos(PI)*2 = -2, dy = sin(PI)*2 ~ 0
+        0.5, // hue
       ];
       queueSecureRandomValues(randomValues);
 
@@ -304,11 +305,11 @@ describe('SelfUpdateOverlay', () => {
     it('bounces off top edge when moving upward', async () => {
       // angle = 3*PI/2 -> dx ~ 0, dy = -speed
       const randomValues = [
-        0.5,    // x in middle
-        0.001,  // y near 0
-        0.5,    // speed = 2.0
-        0.75,   // angle = 0.75 * 2PI = 1.5PI -> dx ~ 0, dy = -2
-        0.5,    // hue
+        0.5, // x in middle
+        0.001, // y near 0
+        0.5, // speed = 2.0
+        0.75, // angle = 0.75 * 2PI = 1.5PI -> dx ~ 0, dy = -2
+        0.5, // hue
       ];
       queueSecureRandomValues(randomValues);
 
@@ -327,11 +328,11 @@ describe('SelfUpdateOverlay', () => {
       // angle = PI/2 -> dx ~ 0, dy = +speed
       const maxY = window.innerHeight - 120;
       const randomValues = [
-        0.5,    // x in middle
-        0.999,  // y near maxY
-        0.5,    // speed = 2.0
-        0.25,   // angle = 0.25 * 2PI = PI/2 -> dx ~ 0, dy = +2
-        0.5,    // hue
+        0.5, // x in middle
+        0.999, // y near maxY
+        0.5, // speed = 2.0
+        0.25, // angle = 0.25 * 2PI = PI/2 -> dx ~ 0, dy = +2
+        0.5, // hue
       ];
       queueSecureRandomValues(randomValues);
 
@@ -379,11 +380,11 @@ describe('SelfUpdateOverlay', () => {
     it('updates position each frame without edge hit in the middle', async () => {
       // Place logo in center with small velocity
       const randomValues = [
-        0.5,    // x in middle
-        0.5,    // y in middle
-        0.0,    // speed = 1.5 (minimum)
-        0.125,  // angle = PI/4 -> dx = ~1.06, dy = ~1.06
-        0.0,    // hue = 0
+        0.5, // x in middle
+        0.5, // y in middle
+        0.0, // speed = 1.5 (minimum)
+        0.125, // angle = PI/4 -> dx = ~1.06, dy = ~1.06
+        0.0, // hue = 0
       ];
       queueSecureRandomValues(randomValues);
 

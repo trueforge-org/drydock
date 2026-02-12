@@ -294,3 +294,54 @@ describe('getAuthenticationConfigurations', () => {
     delete configuration.ddEnvVars.DD_AUTH_BASIC_JOHN_HASH;
   });
 });
+
+describe('getWebhookConfiguration', () => {
+  beforeEach(() => {
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+  });
+
+  test('should return disabled webhook by default', () => {
+    expect(configuration.getWebhookConfiguration()).toStrictEqual({
+      enabled: false,
+      token: '',
+    });
+  });
+
+  test('should return enabled webhook when token is provided', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN = 'secret-token'; // NOSONAR - test fixture
+
+    expect(configuration.getWebhookConfiguration()).toStrictEqual({
+      enabled: true,
+      token: 'secret-token',
+    });
+  });
+
+  test('should throw when webhook is enabled without token', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+
+    expect(() => configuration.getWebhookConfiguration()).toThrow();
+  });
+});
+
+describe('module bootstrap env mapping', () => {
+  const WUD_KEY = 'WUD_TEST_BOOTSTRAP_VAR';
+  const DD_KEY = 'DD_TEST_BOOTSTRAP_VAR';
+
+  afterEach(() => {
+    delete process.env[WUD_KEY];
+    delete process.env[DD_KEY];
+  });
+
+  test('should remap WUD_ vars and let DD_ override them at module init', async () => {
+    process.env[WUD_KEY] = 'legacy-value';
+    process.env[DD_KEY] = 'new-value';
+
+    vi.resetModules();
+    const freshConfiguration = await import('./index.js');
+
+    expect(freshConfiguration.ddEnvVars.DD_TEST_BOOTSTRAP_VAR).toBe('new-value');
+  });
+});

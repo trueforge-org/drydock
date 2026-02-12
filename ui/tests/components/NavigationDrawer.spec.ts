@@ -42,9 +42,11 @@ Object.defineProperty(window, 'matchMedia', {
 
 const stubs = {
   'v-fade-transition': { template: '<div><slot /></div>' },
-  'v-list-group': { template: '<div class="v-list-group"><slot /><slot name="activator" :props="{}" /></div>' },
+  'v-list-group': {
+    template: '<div class="v-list-group"><slot /><slot name="activator" :props="{}" /></div>',
+  },
   'router-link': { template: '<a><slot /></a>' },
-  'img': true,
+  img: true,
 };
 
 describe('NavigationDrawer', () => {
@@ -71,7 +73,7 @@ describe('NavigationDrawer', () => {
 
   it('has configuration items sorted alphabetically', () => {
     const sorted = wrapper.vm.configurationItemsSorted;
-    const names = sorted.map(i => i.name);
+    const names = sorted.map((i) => i.name);
     expect(names).toEqual(['agents', 'auth', 'registries', 'servers', 'triggers', 'watchers']);
   });
 
@@ -81,7 +83,7 @@ describe('NavigationDrawer', () => {
 
   it('contains configuration items with correct routes', () => {
     const items = wrapper.vm.configurationItems;
-    const routes = items.map(i => i.to);
+    const routes = items.map((i) => i.to);
     expect(routes).toContain('/configuration/agents');
     expect(routes).toContain('/configuration/registries');
     expect(routes).toContain('/configuration/triggers');
@@ -92,9 +94,8 @@ describe('NavigationDrawer', () => {
 
   it('has monitoring items with correct routes', () => {
     const items = wrapper.vm.monitoringItems;
-    const routes = items.map(i => i.to);
+    const routes = items.map((i) => i.to);
     expect(routes).toContain('/monitoring/history');
     expect(routes).toContain('/configuration/logs');
   });
-
 });

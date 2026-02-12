@@ -1,8 +1,9 @@
 import sseService from '@/services/sse';
 
 describe('SseService', () => {
+  type EventListener = (...args: unknown[]) => unknown;
   let mockEventSource: any;
-  let eventListeners: Record<string, Function>;
+  let eventListeners: Record<string, EventListener>;
   let mockEventBus: any;
   let MockEventSourceCtor: any;
 
@@ -10,15 +11,13 @@ describe('SseService', () => {
     vi.useFakeTimers();
     eventListeners = {};
     mockEventSource = {
-      addEventListener: vi.fn((event: string, handler: Function) => {
+      addEventListener: vi.fn((event: string, handler: EventListener) => {
         eventListeners[event] = handler;
       }),
       close: vi.fn(),
-      onerror: null as Function | null,
+      onerror: null as EventListener | null,
     };
-    MockEventSourceCtor = vi.fn(function () {
-      return mockEventSource;
-    });
+    MockEventSourceCtor = vi.fn(() => mockEventSource);
     vi.stubGlobal('EventSource', MockEventSourceCtor);
     mockEventBus = {
       emit: vi.fn(),
@@ -109,11 +108,9 @@ describe('SseService', () => {
     const secondSource = {
       addEventListener: vi.fn(),
       close: vi.fn(),
-      onerror: null as Function | null,
+      onerror: null as EventListener | null,
     };
-    MockEventSourceCtor.mockImplementation(function () {
-      return secondSource;
-    });
+    MockEventSourceCtor.mockImplementation(() => secondSource);
 
     sseService.connect(mockEventBus);
     expect(firstSource.close).toHaveBeenCalled();

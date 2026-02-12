@@ -90,7 +90,9 @@ describe('Backup Service', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         statusText: 'Internal Server Error',
-        json: async () => { throw new Error('parse error'); },
+        json: async () => {
+          throw new Error('parse error');
+        },
       } as any);
 
       await expect(rollback('container-1')).rejects.toThrow(

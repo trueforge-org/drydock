@@ -12,8 +12,8 @@ import { getState } from '../../../registry/index.js';
 import * as auditStore from '../../../store/audit.js';
 import * as backupStore from '../../../store/backup.js';
 import { runHook } from '../../hooks/HookRunner.js';
-import { startHealthMonitor } from './HealthMonitor.js';
 import Trigger from '../Trigger.js';
+import { startHealthMonitor } from './HealthMonitor.js';
 
 const PULL_PROGRESS_LOG_INTERVAL_MS = 2000;
 
@@ -589,9 +589,7 @@ class Docker extends Trigger {
           'true'
         ).toLowerCase() === 'true',
       hookTimeout: Number.parseInt(
-        container.labels?.['dd.hook.timeout'] ??
-          container.labels?.['wud.hook.timeout'] ??
-          '60000',
+        container.labels?.['dd.hook.timeout'] ?? container.labels?.['wud.hook.timeout'] ?? '60000',
         10,
       ),
       hookEnv: {

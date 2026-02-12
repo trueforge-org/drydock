@@ -4,7 +4,7 @@ import { loginBasic } from '@/services/auth';
 
 // Mock the auth service
 vi.mock('@/services/auth', () => ({
-  loginBasic: vi.fn()
+  loginBasic: vi.fn(),
 }));
 
 describe('LoginBasic', () => {
@@ -27,7 +27,7 @@ describe('LoginBasic', () => {
   it('has proper autocomplete attributes', () => {
     const usernameInput = wrapper.find('input[autocomplete="username"]');
     const passwordInput = wrapper.find('input[autocomplete="current-password"]');
-    
+
     expect(usernameInput.exists()).toBe(true);
     expect(passwordInput.exists()).toBe(true);
   });
@@ -51,7 +51,7 @@ describe('LoginBasic', () => {
       await usernameInput.setValue('testuser');
       expect(wrapper.vm.username).toBe('testuser');
     }
-    
+
     if (passwordInput.exists()) {
       await passwordInput.setValue('testpass');
       expect(wrapper.vm.password).toBe('testpass');
@@ -89,7 +89,11 @@ describe('LoginBasic', () => {
     await wrapper.vm.login();
 
     expect(wrapper.emitted('authentication-success')).toBeFalsy();
-    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith('notify', 'Invalid credentials', 'error');
+    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
+      'notify',
+      'Invalid credentials',
+      'error',
+    );
   });
 
   it('shows loading state during login', async () => {
@@ -99,7 +103,7 @@ describe('LoginBasic', () => {
     wrapper.vm.password = 'testpass';
 
     await wrapper.vm.login();
-    
+
     expect(wrapper.emitted('authentication-success')).toBeTruthy();
   });
 

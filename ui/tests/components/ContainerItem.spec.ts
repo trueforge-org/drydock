@@ -12,24 +12,24 @@ const mockContainer = {
     tag: { value: '1.0.0', semver: true },
     created: '2023-01-01T00:00:00Z',
     os: 'linux',
-    architecture: 'amd64'
+    architecture: 'amd64',
   },
   updateAvailable: true,
   updateKind: {
     kind: 'tag',
     semverDiff: 'minor',
     remoteValue: '1.1.0',
-    localValue: '1.0.0'
+    localValue: '1.0.0',
   },
   result: {
     created: '2023-01-02T00:00:00Z',
-    tag: '1.1.0'
+    tag: '1.1.0',
   },
   labels: {
-    'app': 'test-app',
-    'env': 'production'
+    app: 'test-app',
+    env: 'production',
   },
-  status: 'running'
+  status: 'running',
 };
 
 describe('ContainerItem', () => {
@@ -40,8 +40,8 @@ describe('ContainerItem', () => {
       props: {
         container: mockContainer,
         groupingLabel: '',
-        oldestFirst: false
-      }
+        oldestFirst: false,
+      },
     });
   });
 
@@ -69,8 +69,8 @@ describe('ContainerItem', () => {
     await wrapper.setProps({
       container: {
         ...mockContainer,
-        updateKind: { ...mockContainer.updateKind, semverDiff: 'major' }
-      }
+        updateKind: { ...mockContainer.updateKind, semverDiff: 'major' },
+      },
     });
     expect(wrapper.vm.newVersionClass).toBe('error');
   });
@@ -79,8 +79,8 @@ describe('ContainerItem', () => {
     await wrapper.setProps({
       container: {
         ...mockContainer,
-        updateKind: { ...mockContainer.updateKind, semverDiff: 'patch' }
-      }
+        updateKind: { ...mockContainer.updateKind, semverDiff: 'patch' },
+      },
     });
     expect(wrapper.vm.newVersionClass).toBe('success');
   });
@@ -88,12 +88,12 @@ describe('ContainerItem', () => {
   it('shows grouping header when grouping label changes', async () => {
     const previousContainer = {
       ...mockContainer,
-      labels: { 'app': 'different-app' }
+      labels: { app: 'different-app' },
     };
 
     await wrapper.setProps({
       groupingLabel: 'app',
-      previousContainer
+      previousContainer,
     });
 
     expect(wrapper.text()).toContain('app = test-app');
@@ -101,9 +101,9 @@ describe('ContainerItem', () => {
 
   it('toggles detail view when header is clicked', async () => {
     expect(wrapper.vm.showDetail).toBe(false);
-    
+
     await wrapper.find('[style*="cursor: pointer"]').trigger('click');
-    
+
     expect(wrapper.vm.showDetail).toBe(true);
   });
 
@@ -124,8 +124,8 @@ describe('ContainerItem', () => {
     await wrapper.setProps({
       container: {
         ...mockContainer,
-        image: { ...mockContainer.image, os: 'windows' }
-      }
+        image: { ...mockContainer.image, os: 'windows' },
+      },
     });
     expect(wrapper.vm.osIcon).toBe('fab fa-windows');
   });
@@ -140,9 +140,9 @@ describe('ContainerItem', () => {
         ...mockContainer,
         updateKind: {
           kind: 'digest',
-          remoteValue: 'sha256:1234567890abcdef1234567890abcdef1234567890abcdef'
-        }
-      }
+          remoteValue: 'sha256:1234567890abcdef1234567890abcdef1234567890abcdef',
+        },
+      },
     });
     expect(wrapper.vm.newVersion).toBe('sha256:12345678...');
   });

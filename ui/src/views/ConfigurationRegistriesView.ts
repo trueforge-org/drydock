@@ -2,8 +2,8 @@ import { defineComponent } from 'vue';
 import ConfigurationItem from '@/components/ConfigurationItem.vue';
 import {
   getAllRegistries,
-  getRegistryProviderIcon,
   getRegistryProviderColor,
+  getRegistryProviderIcon,
 } from '@/services/registry';
 
 export default defineComponent({

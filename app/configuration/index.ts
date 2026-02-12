@@ -156,11 +156,7 @@ export function getServerConfiguration() {
       }),
     trustproxy: joi
       .alternatives()
-      .try(
-        joi.boolean(),
-        joi.number().integer().min(0),
-        joi.string(),
-      )
+      .try(joi.boolean(), joi.number().integer().min(0), joi.string())
       .default(false),
     metrics: joi
       .object({

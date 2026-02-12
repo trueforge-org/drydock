@@ -1,8 +1,8 @@
 import { computed, defineComponent, inject, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useTheme } from 'vuetify';
-import { logout } from '@/services/auth';
 import logo from '@/assets/whale-logo.png';
+import { logout } from '@/services/auth';
 
 export default defineComponent({
   props: {

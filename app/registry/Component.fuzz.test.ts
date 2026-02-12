@@ -51,16 +51,19 @@ describe('registry/Component fuzz tests', () => {
     },
   );
 
-  fcTest.prop([fc.anything()])('validateConfiguration handles arbitrary config objects', (config) => {
-    const component = new Component();
-    try {
-      const result = component.validateConfiguration(config);
-      expect(typeof result).toBe('object');
-    } catch (e) {
-      // Joi validation errors are expected for bad input
-      expect(e).toBeDefined();
-    }
-  });
+  fcTest.prop([fc.anything()])(
+    'validateConfiguration handles arbitrary config objects',
+    (config) => {
+      const component = new Component();
+      try {
+        const result = component.validateConfiguration(config);
+        expect(typeof result).toBe('object');
+      } catch (e) {
+        // Joi validation errors are expected for bad input
+        expect(e).toBeDefined();
+      }
+    },
+  );
 
   fcTest.prop([
     fc.dictionary(

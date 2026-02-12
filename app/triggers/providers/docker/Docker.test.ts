@@ -960,8 +960,14 @@ describe('lifecycle hooks', () => {
     );
 
     expect(mockRunHook).toHaveBeenCalledTimes(2);
-    expect(mockRunHook).toHaveBeenCalledWith('echo before', expect.objectContaining({ label: 'pre-update' }));
-    expect(mockRunHook).toHaveBeenCalledWith('echo after', expect.objectContaining({ label: 'post-update' }));
+    expect(mockRunHook).toHaveBeenCalledWith(
+      'echo before',
+      expect.objectContaining({ label: 'pre-update' }),
+    );
+    expect(mockRunHook).toHaveBeenCalledWith(
+      'echo after',
+      expect.objectContaining({ label: 'post-update' }),
+    );
   });
 
   test('trigger should not call hooks when no hook labels are set', async () => {
@@ -1019,8 +1025,14 @@ describe('lifecycle hooks', () => {
       }),
     );
 
-    expect(mockRunHook).toHaveBeenCalledWith('echo legacy-pre', expect.objectContaining({ label: 'pre-update' }));
-    expect(mockRunHook).toHaveBeenCalledWith('echo legacy-post', expect.objectContaining({ label: 'post-update' }));
+    expect(mockRunHook).toHaveBeenCalledWith(
+      'echo legacy-pre',
+      expect.objectContaining({ label: 'pre-update' }),
+    );
+    expect(mockRunHook).toHaveBeenCalledWith(
+      'echo legacy-post',
+      expect.objectContaining({ label: 'post-update' }),
+    );
   });
 
   test('trigger should not abort on post-hook failure', async () => {
@@ -1100,7 +1112,10 @@ describe('auto-rollback health monitor integration', () => {
   });
 
   test('trigger should start health monitor when dd.rollback.auto=true and HEALTHCHECK exists', async () => {
-    stubTriggerFlow({ running: true, inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } } });
+    stubTriggerFlow({
+      running: true,
+      inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } },
+    });
 
     await docker.trigger(
       createTriggerContainer({
@@ -1160,7 +1175,10 @@ describe('auto-rollback health monitor integration', () => {
   });
 
   test('trigger should use custom window and interval from labels', async () => {
-    stubTriggerFlow({ running: true, inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } } });
+    stubTriggerFlow({
+      running: true,
+      inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } },
+    });
 
     await docker.trigger(
       createTriggerContainer({
@@ -1181,7 +1199,10 @@ describe('auto-rollback health monitor integration', () => {
   });
 
   test('trigger should use wud.* labels as fallback for auto-rollback', async () => {
-    stubTriggerFlow({ running: true, inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } } });
+    stubTriggerFlow({
+      running: true,
+      inspectOverrides: { State: { Running: true, Health: { Status: 'healthy' } } },
+    });
 
     await docker.trigger(
       createTriggerContainer({

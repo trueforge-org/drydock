@@ -86,7 +86,9 @@ export default defineComponent({
     },
     watchers() {
       return [
-        ...new Set(this.containers.map((container) => container.watcher).sort(compareStringLikeValues)),
+        ...new Set(
+          this.containers.map((container) => container.watcher).sort(compareStringLikeValues),
+        ),
       ];
     },
     agents() {
@@ -169,7 +171,7 @@ export default defineComponent({
 
       return entries.map(([name, containers]) => ({ name, containers }));
     },
-    },
+  },
 
   methods: {
     sortContainers(a: any, b: any) {

@@ -1,10 +1,6 @@
 import { defineComponent } from 'vue';
 import ContainerItem from '@/components/ContainerItem.vue';
-import {
-  getContainerTriggers,
-  runTrigger,
-  refreshContainer,
-} from '@/services/container';
+import { getContainerTriggers, refreshContainer, runTrigger } from '@/services/container';
 
 export default defineComponent({
   components: {
@@ -70,9 +66,7 @@ export default defineComponent({
     },
     async updateAllInGroup() {
       this.isUpdatingAll = true;
-      const updatableContainers = (this.containers as any[]).filter(
-        (c) => c.updateAvailable,
-      );
+      const updatableContainers = (this.containers as any[]).filter((c) => c.updateAvailable);
       let errorCount = 0;
 
       for (const container of updatableContainers) {
@@ -108,10 +102,7 @@ export default defineComponent({
           'warning',
         );
       } else {
-        this.$eventBus.emit(
-          'notify',
-          `All containers in "${this.displayName}" updated`,
-        );
+        this.$eventBus.emit('notify', `All containers in "${this.displayName}" updated`);
       }
       this.isUpdatingAll = false;
     },

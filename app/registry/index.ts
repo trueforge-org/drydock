@@ -489,7 +489,10 @@ function applyDefaultsToProviderConfiguration(
   for (const triggerName of Object.keys(providerConfig)) {
     const triggerConfig = providerConfig[triggerName];
     const groupDefaults = triggerGroupDefaults[triggerName.toLowerCase()];
-    providerResult[triggerName] = mergeTriggerConfigurationWithDefaults(triggerConfig, groupDefaults);
+    providerResult[triggerName] = mergeTriggerConfigurationWithDefaults(
+      triggerConfig,
+      groupDefaults,
+    );
   }
 
   return providerResult;

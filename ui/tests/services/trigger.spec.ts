@@ -1,7 +1,7 @@
 import {
+  getAllTriggers,
   getTriggerIcon,
   getTriggerProviderIcon,
-  getAllTriggers,
   runTrigger,
 } from '@/services/trigger';
 
@@ -89,11 +89,13 @@ describe('Trigger Service', () => {
         json: async () => ({ error: 'Trigger execution failed' }),
       } as any);
 
-      await expect(runTrigger({
-        triggerType: 'webhook',
-        triggerName: 'hook1',
-        container: { id: 'c1' },
-      })).rejects.toThrow('Trigger execution failed');
+      await expect(
+        runTrigger({
+          triggerType: 'webhook',
+          triggerName: 'hook1',
+          container: { id: 'c1' },
+        }),
+      ).rejects.toThrow('Trigger execution failed');
     });
 
     it('throws "Unknown error" when no error message in response', async () => {
@@ -103,11 +105,13 @@ describe('Trigger Service', () => {
         json: async () => ({}),
       } as any);
 
-      await expect(runTrigger({
-        triggerType: 'webhook',
-        triggerName: 'hook1',
-        container: { id: 'c1' },
-      })).rejects.toThrow('Unknown error');
+      await expect(
+        runTrigger({
+          triggerType: 'webhook',
+          triggerName: 'hook1',
+          container: { id: 'c1' },
+        }),
+      ).rejects.toThrow('Unknown error');
     });
   });
 });

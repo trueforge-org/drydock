@@ -71,7 +71,7 @@ describe('ContainerTrigger', () => {
     await wrapper.vm.runTrigger();
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
       'notify',
-      'Trigger executed with success'
+      'Trigger executed with success',
     );
   });
 
@@ -81,16 +81,20 @@ describe('ContainerTrigger', () => {
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
       'notify',
       'Trigger executed with error (network error)',
-      'error'
+      'error',
     );
   });
 
   it('sets isTriggering during execution', async () => {
-    let resolvePromise: () => void;
-    mockRunTrigger.mockReturnValue(new Promise<void>((r) => { resolvePromise = r; }));
+    let resolvePromise: (() => void) | undefined;
+    mockRunTrigger.mockReturnValue(
+      new Promise<void>((r) => {
+        resolvePromise = r;
+      }),
+    );
     const promise = wrapper.vm.runTrigger();
     expect(wrapper.vm.isTriggering).toBe(true);
-    resolvePromise!();
+    resolvePromise?.();
     await promise;
     expect(wrapper.vm.isTriggering).toBe(false);
   });

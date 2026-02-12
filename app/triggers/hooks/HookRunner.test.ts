@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { type HookResult, runHook } from './HookRunner.js';
+import { runHook } from './HookRunner.js';
 
 vi.mock('../../log/index.js', () => ({
   default: {
@@ -46,9 +46,12 @@ describe('HookRunner', () => {
 
   test('should truncate stdout to 10KB', async () => {
     // Generate output larger than 10KB
-    const result = await runHook('python3 -c "print(\'x\' * 20000)" 2>/dev/null || printf "%0.sx" $(seq 1 20000)', {
-      label: 'test',
-    });
+    const result = await runHook(
+      'python3 -c "print(\'x\' * 20000)" 2>/dev/null || printf "%0.sx" $(seq 1 20000)',
+      {
+        label: 'test',
+      },
+    );
     expect(result.stdout.length).toBeLessThanOrEqual(10 * 1024);
   });
 

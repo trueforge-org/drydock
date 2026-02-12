@@ -115,7 +115,7 @@ describe('ContainerDetail', () => {
     await wrapper.vm.copyToClipboard('container id', 'abc123');
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
       'notify',
-      'container id copied to clipboard'
+      'container id copied to clipboard',
     );
   });
 

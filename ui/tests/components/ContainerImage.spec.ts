@@ -3,7 +3,11 @@ import ContainerImage from '@/components/ContainerImage';
 
 vi.mock('@/services/registry', () => ({
   getRegistryProviderIcon: vi.fn((name: string) => {
-    const icons: Record<string, string> = { hub: 'si-docker', ghcr: 'si-github', ecr: 'si-amazonaws' };
+    const icons: Record<string, string> = {
+      hub: 'si-docker',
+      ghcr: 'si-github',
+      ecr: 'si-amazonaws',
+    };
     return icons[name] || 'fas fa-circle-question';
   }),
 }));
@@ -128,7 +132,7 @@ describe('ContainerImage', () => {
     await wrapper.vm.copyToClipboard('image digest', 'sha256:deadbeef1234567890');
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
       'notify',
-      'image digest copied to clipboard'
+      'image digest copied to clipboard',
     );
   });
 

@@ -1,11 +1,11 @@
 // Mock the auth service
 vi.mock('@/services/auth', () => ({
-  getUser: vi.fn()
+  getUser: vi.fn(),
 }));
 
-import { getUser } from '@/services/auth';
 // Import router after mocking
 import router from '@/router';
+import { getUser } from '@/services/auth';
 
 describe('Router', () => {
   beforeEach(() => {
@@ -14,7 +14,7 @@ describe('Router', () => {
 
   it('has correct routes defined', () => {
     const routes = router.getRoutes();
-    const routeNames = routes.map(route => route.name);
+    const routeNames = routes.map((route) => route.name);
 
     expect(routeNames).toContain('home');
     expect(routeNames).toContain('login');
@@ -30,10 +30,10 @@ describe('Router', () => {
 
   it('has correct route paths', () => {
     const routes = router.getRoutes();
-    const homeRoute = routes.find(route => route.name === 'home');
-    const containersRoute = routes.find(route => route.name === 'containers');
-    const loginRoute = routes.find(route => route.name === 'login');
-    const agentsRoute = routes.find(route => route.name === 'agents');
+    const homeRoute = routes.find((route) => route.name === 'home');
+    const containersRoute = routes.find((route) => route.name === 'containers');
+    const loginRoute = routes.find((route) => route.name === 'login');
+    const agentsRoute = routes.find((route) => route.name === 'agents');
 
     expect(homeRoute.path).toBe('/');
     expect(containersRoute.path).toBe('/containers');
@@ -43,7 +43,7 @@ describe('Router', () => {
 
   it('has all configuration route paths', () => {
     const routes = router.getRoutes();
-    const paths = routes.map(r => r.path);
+    const paths = routes.map((r) => r.path);
 
     expect(paths).toContain('/configuration/authentications');
     expect(paths).toContain('/configuration/registries');
@@ -92,7 +92,7 @@ describe('Router', () => {
 
     it('logs route has lazy component loader', async () => {
       const routes = router.getRoutes();
-      const logsRoute = routes.find(r => r.name === 'logs');
+      const logsRoute = routes.find((r) => r.name === 'logs');
       // Exercise the lazy import function
       const component = await logsRoute.components.default();
       expect(component).toBeDefined();

@@ -3,11 +3,11 @@ import AppBar from '@/components/AppBar';
 
 vi.mock('vue-router', () => ({
   useRoute: vi.fn(() => ({ name: 'home' })),
-  useRouter: vi.fn(() => ({ push: vi.fn() }))
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
 }));
 
 vi.mock('@/services/auth', () => ({
-  logout: vi.fn(() => Promise.resolve({}))
+  logout: vi.fn(() => Promise.resolve({})),
 }));
 
 // Mock vuetify useTheme
@@ -38,7 +38,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 const mockUser = {
-  username: 'testuser'
+  username: 'testuser',
 };
 
 const mountOpts = {

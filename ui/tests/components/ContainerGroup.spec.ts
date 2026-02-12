@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils';
 import ContainerGroup from '@/components/ContainerGroup';
-import { getContainerTriggers, runTrigger, refreshContainer } from '@/services/container';
+import { getContainerTriggers, refreshContainer, runTrigger } from '@/services/container';
 
 vi.mock('@/services/container', () => ({
   getContainerTriggers: vi.fn(),

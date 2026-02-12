@@ -74,9 +74,7 @@ export function startHealthMonitor(options: HealthMonitorOptions): AbortControll
       const status = healthState.Status;
 
       if (status === 'unhealthy') {
-        log.warn(
-          `Container ${containerName} became unhealthy — initiating automatic rollback`,
-        );
+        log.warn(`Container ${containerName} became unhealthy — initiating automatic rollback`);
         cleanup();
         await performRollback();
       }

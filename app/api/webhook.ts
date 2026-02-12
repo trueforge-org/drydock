@@ -4,15 +4,12 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import nocache from 'nocache';
 import { getWebhookConfiguration } from '../configuration/index.js';
-import { recordAuditEvent } from './audit-events.js';
-import {
-  findDockerTriggerForContainer,
-  NO_DOCKER_TRIGGER_FOUND_ERROR,
-} from './docker-trigger.js';
 import logger from '../log/index.js';
 import { getWebhookCounter } from '../prometheus/webhook.js';
 import * as registry from '../registry/index.js';
 import * as storeContainer from '../store/container.js';
+import { recordAuditEvent } from './audit-events.js';
+import { findDockerTriggerForContainer, NO_DOCKER_TRIGGER_FOUND_ERROR } from './docker-trigger.js';
 
 const log = logger.child({ component: 'webhook' });
 

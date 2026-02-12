@@ -3,15 +3,19 @@ import ConfigurationAgentsView from '@/views/ConfigurationAgentsView';
 
 vi.mock('@/services/agent', () => ({
   default: {
-    getAgents: vi.fn(() => Promise.resolve([
+    getAgents: vi.fn(() =>
+      Promise.resolve([
+        { name: 'agent1', host: '192.168.1.1', port: 3000, connected: true },
+        { name: 'agent2', host: '192.168.1.2', port: 3001, connected: false },
+      ]),
+    ),
+  },
+  getAgents: vi.fn(() =>
+    Promise.resolve([
       { name: 'agent1', host: '192.168.1.1', port: 3000, connected: true },
       { name: 'agent2', host: '192.168.1.2', port: 3001, connected: false },
-    ])),
-  },
-  getAgents: vi.fn(() => Promise.resolve([
-    { name: 'agent1', host: '192.168.1.1', port: 3000, connected: true },
-    { name: 'agent2', host: '192.168.1.2', port: 3001, connected: false },
-  ])),
+    ]),
+  ),
 }));
 
 describe('ConfigurationAgentsView', () => {

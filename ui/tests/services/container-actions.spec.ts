@@ -1,4 +1,4 @@
-import { startContainer, stopContainer, restartContainer } from '@/services/container-actions';
+import { restartContainer, startContainer, stopContainer } from '@/services/container-actions';
 
 global.fetch = vi.fn();
 
@@ -37,7 +37,9 @@ describe('Container Actions Service', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         statusText: 'Internal Server Error',
-        json: async () => { throw new Error('parse error'); },
+        json: async () => {
+          throw new Error('parse error');
+        },
       } as any);
 
       await expect(startContainer('abc123')).rejects.toThrow(
@@ -76,7 +78,9 @@ describe('Container Actions Service', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         statusText: 'Internal Server Error',
-        json: async () => { throw new Error('parse error'); },
+        json: async () => {
+          throw new Error('parse error');
+        },
       } as any);
 
       await expect(stopContainer('abc123')).rejects.toThrow(
@@ -115,7 +119,9 @@ describe('Container Actions Service', () => {
       vi.mocked(fetch).mockResolvedValueOnce({
         ok: false,
         statusText: 'Internal Server Error',
-        json: async () => { throw new Error('parse error'); },
+        json: async () => {
+          throw new Error('parse error');
+        },
       } as any);
 
       await expect(restartContainer('abc123')).rejects.toThrow(

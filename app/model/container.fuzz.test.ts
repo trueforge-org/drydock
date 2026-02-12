@@ -78,9 +78,7 @@ describe('model/container fuzz tests', () => {
     };
 
     const link = testable_getLink(container as any, '1.2.3');
-    expect(link).toBe(
-      'https://example.test/1.2.3?raw=1.2.3&original=1.2.3&transformed=1.2.3',
-    );
+    expect(link).toBe('https://example.test/1.2.3?raw=1.2.3&original=1.2.3&transformed=1.2.3');
   });
 
   test.prop([fc.anything()])('validate handles arbitrary input without crashing', (input) => {

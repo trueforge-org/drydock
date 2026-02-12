@@ -31,7 +31,7 @@ type TemplateVars = Record<string, unknown>;
 function resolvePath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((cur, key) => {
     if (cur == null) return undefined;
-    return Reflect.get(Object(cur), key);
+    return Reflect.get(new Object(cur), key);
   }, obj);
 }
 
@@ -100,7 +100,7 @@ const ALLOWED_METHODS = new Set([
   'toString',
 ]);
 
-function evalTernary(trimmed: string, vars: TemplateVars): unknown | undefined {
+function evalTernary(trimmed: string, vars: TemplateVars): unknown {
   const ternaryIdx = findTopLevelOperator(trimmed, isOperator('?'));
   if (ternaryIdx === -1) return undefined;
   const condition = trimmed.slice(0, ternaryIdx);
@@ -113,7 +113,7 @@ function evalTernary(trimmed: string, vars: TemplateVars): unknown | undefined {
   return condVal ? safeEvalExpr(consequent, vars) : safeEvalExpr(alternate, vars);
 }
 
-function evalLogicalAnd(trimmed: string, vars: TemplateVars): unknown | undefined {
+function evalLogicalAnd(trimmed: string, vars: TemplateVars): unknown {
   const andIdx = findTopLevelOperator(trimmed, isOperator('&&'));
   if (andIdx === -1) return undefined;
   const left = trimmed.slice(0, andIdx);
@@ -123,12 +123,30 @@ function evalLogicalAnd(trimmed: string, vars: TemplateVars): unknown | undefine
   return safeEvalExpr(right, vars);
 }
 
+function toTemplateString(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint' ||
+    typeof value === 'symbol'
+  ) {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 function evalConcat(trimmed: string, vars: TemplateVars): string | undefined {
   const plusIdx = findTopLevelOperator(trimmed, isPlusOperator);
   if (plusIdx === -1) return undefined;
   const left = trimmed.slice(0, plusIdx);
   const right = trimmed.slice(plusIdx + 1);
-  return String(safeEvalExpr(left, vars)) + String(safeEvalExpr(right, vars));
+  return toTemplateString(safeEvalExpr(left, vars)) + toTemplateString(safeEvalExpr(right, vars));
 }
 
 function evalStringLiteral(trimmed: string): string | undefined {
@@ -153,7 +171,7 @@ function evalNumberLiteral(trimmed: string): string | undefined {
   return undefined;
 }
 
-function evalMethodCall(trimmed: string, vars: TemplateVars): unknown | undefined {
+function evalMethodCall(trimmed: string, vars: TemplateVars): unknown {
   const methodMatch = parseMethodCall(trimmed);
   if (!methodMatch) return undefined;
   const { objPath, method, rawArgs } = methodMatch;
@@ -161,7 +179,7 @@ function evalMethodCall(trimmed: string, vars: TemplateVars): unknown | undefine
   if (target == null || !ALLOWED_METHODS.has(method)) {
     return '';
   }
-  const methodFn = Reflect.get(Object(target), method);
+  const methodFn = Reflect.get(new Object(target), method);
   if (typeof methodFn !== 'function') {
     return '';
   }
@@ -169,7 +187,7 @@ function evalMethodCall(trimmed: string, vars: TemplateVars): unknown | undefine
   return methodFn.apply(target, args);
 }
 
-function evalPropertyPath(trimmed: string, vars: TemplateVars): unknown | undefined {
+function evalPropertyPath(trimmed: string, vars: TemplateVars): unknown {
   if (isValidPropertyPath(trimmed)) {
     const val = resolvePath(vars, trimmed);
     return val ?? '';
@@ -329,7 +347,7 @@ function safeInterpolate(template: string | undefined, vars: TemplateVars): stri
   // Match ${...} placeholders, handling nested braces
   return template.replaceAll(/\$\{([^}]+)\}/g, (_, expr) => {
     const result = safeEvalExpr(expr, vars);
-    return result != null ? String(result) : '';
+    return toTemplateString(result);
   });
 }
 
@@ -461,7 +479,8 @@ class Trigger extends Component {
     const hasThresholdSeparator = includeOrExcludeTriggerString.includes(':');
     const separatorIndex = hasThresholdSeparator ? includeOrExcludeTriggerString.indexOf(':') : -1;
     const hasMultipleSeparators =
-      hasThresholdSeparator && includeOrExcludeTriggerString.slice(separatorIndex + 1).includes(':');
+      hasThresholdSeparator &&
+      includeOrExcludeTriggerString.slice(separatorIndex + 1).includes(':');
 
     const triggerId = hasThresholdSeparator
       ? includeOrExcludeTriggerString.slice(0, separatorIndex).trim()
@@ -599,8 +618,9 @@ class Trigger extends Component {
 
   isTriggerIncludedOrExcluded(containerResult: Container, trigger: string) {
     const triggerId = this.getId().toLowerCase();
-    const triggers = splitAndTrimCommaSeparatedList(trigger)
-      .map((triggerToMatch) => Trigger.parseIncludeOrIncludeTriggerString(triggerToMatch));
+    const triggers = splitAndTrimCommaSeparatedList(trigger).map((triggerToMatch) =>
+      Trigger.parseIncludeOrIncludeTriggerString(triggerToMatch),
+    );
     const triggerMatched = triggers.find((triggerToMatch) =>
       Trigger.doesReferenceMatchId(triggerToMatch.id, triggerId),
     );
@@ -850,7 +870,7 @@ class Trigger extends Component {
    * @returns {*}
    */
   renderSimpleTitle(container: Container) {
-    return renderSimple(this.configuration.simpletitle!, container);
+    return renderSimple(this.configuration.simpletitle ?? '', container);
   }
 
   /**
@@ -859,7 +879,7 @@ class Trigger extends Component {
    * @returns {*}
    */
   renderSimpleBody(container: Container) {
-    return renderSimple(this.configuration.simplebody!, container);
+    return renderSimple(this.configuration.simplebody ?? '', container);
   }
 
   /**
@@ -868,7 +888,7 @@ class Trigger extends Component {
    * @returns {*}
    */
   renderBatchTitle(containers: Container[]) {
-    return renderBatch(this.configuration.batchtitle!, containers);
+    return renderBatch(this.configuration.batchtitle ?? '', containers);
   }
 
   /**

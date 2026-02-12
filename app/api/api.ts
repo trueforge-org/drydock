@@ -14,10 +14,10 @@ import * as logRouter from './log.js';
 import * as previewRouter from './preview.js';
 import * as registryRouter from './registry.js';
 import * as serverRouter from './server.js';
+import * as sseRouter from './sse.js';
 import * as storeRouter from './store.js';
 import * as triggerRouter from './trigger.js';
 import * as watcherRouter from './watcher.js';
-import * as sseRouter from './sse.js';
 import * as webhookRouter from './webhook.js';
 
 /**

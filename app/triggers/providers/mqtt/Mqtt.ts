@@ -56,9 +56,7 @@ class Mqtt extends Trigger {
         .object({
           enabled: this.joi.boolean().default(false),
           prefix: this.joi.string().default(hassDefaultPrefix),
-          discovery: this.joi
-            .boolean()
-            .default((parent) => !!parent?.enabled),
+          discovery: this.joi.boolean().default((parent) => !!parent?.enabled),
         })
         .default({
           enabled: false,

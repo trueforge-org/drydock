@@ -55,7 +55,9 @@ vi.mock('../prometheus/webhook.js', () => ({
 }));
 
 vi.mock('../log/index.js', () => ({
-  default: { child: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() })) },
+  default: {
+    child: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() })),
+  },
 }));
 
 import * as webhookRouter from './webhook.js';

@@ -2,14 +2,18 @@ import { mount } from '@vue/test-utils';
 import ConfigurationAuthenticationsView from '@/views/ConfigurationAuthenticationsView';
 
 vi.mock('@/services/authentication', () => ({
-  getAllAuthentications: vi.fn(() => Promise.resolve([
-    { id: 'auth1', type: 'basic', name: 'Docker Hub' },
-    { id: 'auth2', type: 'token', name: 'GHCR' },
-  ])),
+  getAllAuthentications: vi.fn(() =>
+    Promise.resolve([
+      { id: 'auth1', type: 'basic', name: 'Docker Hub' },
+      { id: 'auth2', type: 'token', name: 'GHCR' },
+    ]),
+  ),
   getAuthProviderIcon: vi.fn((type) => {
     switch (type) {
-      case 'basic': return 'fas fa-key';
-      default: return 'fas fa-lock';
+      case 'basic':
+        return 'fas fa-key';
+      default:
+        return 'fas fa-lock';
     }
   }),
 }));
@@ -46,7 +50,10 @@ describe('ConfigurationAuthenticationsView Route Hook', () => {
   it('fetches authentications on beforeRouteEnter', async () => {
     const next = vi.fn();
     await ConfigurationAuthenticationsView.beforeRouteEnter.call(
-      ConfigurationAuthenticationsView, {}, {}, next,
+      ConfigurationAuthenticationsView,
+      {},
+      {},
+      next,
     );
     expect(next).toHaveBeenCalledWith(expect.any(Function));
 
@@ -64,7 +71,10 @@ describe('ConfigurationAuthenticationsView Route Hook', () => {
 
     const next = vi.fn();
     await ConfigurationAuthenticationsView.beforeRouteEnter.call(
-      ConfigurationAuthenticationsView, {}, {}, next,
+      ConfigurationAuthenticationsView,
+      {},
+      {},
+      next,
     );
 
     const vm = { $eventBus: { emit: vi.fn() } };

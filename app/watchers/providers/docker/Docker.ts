@@ -528,7 +528,11 @@ function getOldContainers(newContainers: Container[], containersFromTheStore: Co
  * @param containersFromTheStore
  * @param dockerApi
  */
-async function pruneOldContainers(newContainers: Container[], containersFromTheStore: Container[], dockerApi: any) {
+async function pruneOldContainers(
+  newContainers: Container[],
+  containersFromTheStore: Container[],
+  dockerApi: any,
+) {
   const containersToRemove = getOldContainers(newContainers, containersFromTheStore);
   for (const containerToRemove of containersToRemove) {
     try {
@@ -1276,10 +1280,7 @@ class Docker extends Watcher {
     }
   }
 
-  private buildTokenRequestBody(
-    grantType: string,
-    params: OidcRequestParameters,
-  ): URLSearchParams {
+  private buildTokenRequestBody(grantType: string, params: OidcRequestParameters): URLSearchParams {
     const body = new URLSearchParams();
     body.set('grant_type', grantType);
     if (grantType === 'refresh_token' && this.remoteOidcRefreshToken) {
@@ -1499,9 +1500,7 @@ class Docker extends Watcher {
    * Poll the token endpoint with the device_code until the user authorizes,
    * the code expires, or the maximum timeout is reached.
    */
-  async pollDeviceCodeToken(
-    options: DeviceCodeTokenPollOptions,
-  ) {
+  async pollDeviceCodeToken(options: DeviceCodeTokenPollOptions) {
     const {
       tokenEndpoint,
       deviceCode,
@@ -2000,25 +1999,22 @@ class Docker extends Watcher {
       ),
     );
     const containerPromises = filteredContainers.map((container: any) =>
-      this.addImageDetailsToContainer(
-        container,
-        {
-          includeTags: getLabel(container.Labels, ddTagInclude, wudTagInclude),
-          excludeTags: getLabel(container.Labels, ddTagExclude, wudTagExclude),
-          transformTags: getLabel(container.Labels, ddTagTransform, wudTagTransform),
-          linkTemplate: getLabel(container.Labels, ddLinkTemplate, wudLinkTemplate),
-          displayName: getLabel(container.Labels, ddDisplayName, wudDisplayName),
-          displayIcon: getLabel(container.Labels, ddDisplayIcon, wudDisplayIcon),
-          triggerInclude: getLabel(container.Labels, ddTriggerInclude, wudTriggerInclude),
-          triggerExclude: getLabel(container.Labels, ddTriggerExclude, wudTriggerExclude),
-          registryLookupImage: getLabel(
-            container.Labels,
-            ddRegistryLookupImage,
-            wudRegistryLookupImage,
-          ),
-          registryLookupUrl: getLabel(container.Labels, ddRegistryLookupUrl, wudRegistryLookupUrl),
-        },
-      ).catch((e) => {
+      this.addImageDetailsToContainer(container, {
+        includeTags: getLabel(container.Labels, ddTagInclude, wudTagInclude),
+        excludeTags: getLabel(container.Labels, ddTagExclude, wudTagExclude),
+        transformTags: getLabel(container.Labels, ddTagTransform, wudTagTransform),
+        linkTemplate: getLabel(container.Labels, ddLinkTemplate, wudLinkTemplate),
+        displayName: getLabel(container.Labels, ddDisplayName, wudDisplayName),
+        displayIcon: getLabel(container.Labels, ddDisplayIcon, wudDisplayIcon),
+        triggerInclude: getLabel(container.Labels, ddTriggerInclude, wudTriggerInclude),
+        triggerExclude: getLabel(container.Labels, ddTriggerExclude, wudTriggerExclude),
+        registryLookupImage: getLabel(
+          container.Labels,
+          ddRegistryLookupImage,
+          wudRegistryLookupImage,
+        ),
+        registryLookupUrl: getLabel(container.Labels, ddRegistryLookupUrl, wudRegistryLookupUrl),
+      }).catch((e) => {
         this.log.warn(`Failed to fetch image detail for container ${container.Id}: ${e.message}`);
         return e;
       }),
@@ -2239,10 +2235,7 @@ class Docker extends Watcher {
   /**
    * Add image detail to Container.
    */
-  async addImageDetailsToContainer(
-    container: any,
-    labelOverrides: ContainerLabelOverrides = {},
-  ) {
+  async addImageDetailsToContainer(container: any, labelOverrides: ContainerLabelOverrides = {}) {
     const containerId = container.Id;
     const containerLabels = container.Labels || {};
 
@@ -2404,7 +2397,8 @@ class Docker extends Watcher {
       const updatedContainer = storeContainer.updateContainer(containerWithResult);
       return {
         container: updatedContainer,
-        changed: containerInDb.resultChanged(updatedContainer) && containerWithResult.updateAvailable,
+        changed:
+          containerInDb.resultChanged(updatedContainer) && containerWithResult.updateAvailable,
       };
     }
     // Not found in DB? => Save it

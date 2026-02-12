@@ -1,4 +1,4 @@
-import { getAuditLog, getAuditIcon } from '@/services/audit';
+import { getAuditIcon, getAuditLog } from '@/services/audit';
 
 describe('audit service', () => {
   beforeEach(() => {

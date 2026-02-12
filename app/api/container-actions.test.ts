@@ -119,7 +119,9 @@ describe('Container Actions Router', () => {
 
       expect(dockerContainer.start).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Container started successfully' }));
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Container started successfully' }),
+      );
     });
 
     test('should return 404 when container not found', async () => {
@@ -253,7 +255,9 @@ describe('Container Actions Router', () => {
 
       expect(dockerContainer.stop).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Container stopped successfully' }));
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Container stopped successfully' }),
+      );
     });
 
     test('should return 403 when feature flag is disabled', async () => {
@@ -300,7 +304,9 @@ describe('Container Actions Router', () => {
 
       expect(dockerContainer.restart).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ message: 'Container restarted successfully' }));
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Container restarted successfully' }),
+      );
     });
 
     test('should return 403 when feature flag is disabled', async () => {

@@ -2029,12 +2029,9 @@ describe('Docker Watcher', () => {
         registryId: 'ghcr',
       });
 
-      const result = await docker.addImageDetailsToContainer(
-        container,
-        {
-          displayName: 'DD CE Custom',
-        },
-      );
+      const result = await docker.addImageDetailsToContainer(container, {
+        displayName: 'DD CE Custom',
+      });
 
       expect(result.displayName).toBe('DD CE Custom');
     });
@@ -2118,15 +2115,12 @@ describe('Docker Watcher', () => {
         registryId: 'ghcr',
       });
 
-      const result = await docker.addImageDetailsToContainer(
-        container,
-        {
-          includeTags: '^stable$',
-          displayName: 'HA Label Name',
-          displayIcon: 'mdi-docker',
-          triggerInclude: 'discord.default:major',
-        },
-      );
+      const result = await docker.addImageDetailsToContainer(container, {
+        includeTags: '^stable$',
+        displayName: 'HA Label Name',
+        displayIcon: 'mdi-docker',
+        triggerInclude: 'discord.default:major',
+      });
 
       expect(result.includeTags).toBe('^stable$');
       expect(result.displayName).toBe('HA Label Name');

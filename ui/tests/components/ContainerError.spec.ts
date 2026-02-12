@@ -3,7 +3,7 @@ import ContainerError from '@/components/ContainerError';
 
 const mockError = {
   message: 'Test error message',
-  code: 500
+  code: 500,
 };
 
 describe('ContainerError', () => {
@@ -12,8 +12,8 @@ describe('ContainerError', () => {
   beforeEach(() => {
     wrapper = mount(ContainerError, {
       props: {
-        error: mockError
-      }
+        error: mockError,
+      },
     });
   });
 

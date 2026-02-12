@@ -2,10 +2,12 @@ import { mount } from '@vue/test-utils';
 import ConfigurationRegistriesView from '@/views/ConfigurationRegistriesView';
 
 vi.mock('@/services/registry', () => ({
-  getAllRegistries: vi.fn(() => Promise.resolve([
-    { id: 'registry-b', type: 'hub', name: 'Docker Hub' },
-    { id: 'registry-a', type: 'ghcr', name: 'GitHub' },
-  ])),
+  getAllRegistries: vi.fn(() =>
+    Promise.resolve([
+      { id: 'registry-b', type: 'hub', name: 'Docker Hub' },
+      { id: 'registry-a', type: 'ghcr', name: 'GitHub' },
+    ]),
+  ),
   getRegistryProviderIcon: vi.fn((type) => {
     const icons = { hub: 'si-docker', ghcr: 'si-github' };
     return icons[type] || 'si-linuxcontainers';
@@ -24,7 +26,13 @@ describe('ConfigurationRegistriesView', () => {
     await wrapper.setData({
       registries: [
         { id: 'registry-a', type: 'ghcr', name: 'GitHub', icon: 'si-github', iconColor: '#8B5CF6' },
-        { id: 'registry-b', type: 'hub', name: 'Docker Hub', icon: 'si-docker', iconColor: '#2496ED' },
+        {
+          id: 'registry-b',
+          type: 'hub',
+          name: 'Docker Hub',
+          icon: 'si-docker',
+          iconColor: '#2496ED',
+        },
       ],
     });
   });
@@ -48,7 +56,10 @@ describe('ConfigurationRegistriesView Route Hook', () => {
   it('fetches registries and sorts by id on beforeRouteEnter', async () => {
     const next = vi.fn();
     await ConfigurationRegistriesView.beforeRouteEnter.call(
-      ConfigurationRegistriesView, {}, {}, next,
+      ConfigurationRegistriesView,
+      {},
+      {},
+      next,
     );
     expect(next).toHaveBeenCalledWith(expect.any(Function));
 
@@ -74,7 +85,10 @@ describe('ConfigurationRegistriesView Route Hook', () => {
 
     const next = vi.fn();
     await ConfigurationRegistriesView.beforeRouteEnter.call(
-      ConfigurationRegistriesView, {}, {}, next,
+      ConfigurationRegistriesView,
+      {},
+      {},
+      next,
     );
 
     const vm = { $eventBus: { emit: vi.fn() } };

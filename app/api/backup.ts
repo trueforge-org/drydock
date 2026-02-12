@@ -1,15 +1,12 @@
 // @ts-nocheck
 import express from 'express';
 import nocache from 'nocache';
-import { recordAuditEvent } from './audit-events.js';
-import {
-  findDockerTriggerForContainer,
-  NO_DOCKER_TRIGGER_FOUND_ERROR,
-} from './docker-trigger.js';
 import logger from '../log/index.js';
 import * as registry from '../registry/index.js';
 import * as storeBackup from '../store/backup.js';
 import * as storeContainer from '../store/container.js';
+import { recordAuditEvent } from './audit-events.js';
+import { findDockerTriggerForContainer, NO_DOCKER_TRIGGER_FOUND_ERROR } from './docker-trigger.js';
 
 const log = logger.child({ component: 'backup' });
 
