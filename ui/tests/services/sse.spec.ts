@@ -17,6 +17,7 @@ describe('SseService', () => {
       close: vi.fn(),
       onerror: null as EventListener | null,
     };
+    // biome-ignore lint/complexity/useArrowFunction: must be a function expression for `new EventSource()` constructor mock
     MockEventSourceCtor = vi.fn(function () {
       return mockEventSource;
     });
@@ -67,6 +68,15 @@ describe('SseService', () => {
     expect(mockEventBus.emit).toHaveBeenCalledWith('self-update');
   });
 
+  it('handles heartbeat events without emitting additional bus events', () => {
+    sseService.connect(mockEventBus);
+    mockEventBus.emit.mockClear();
+
+    eventListeners['dd:heartbeat']();
+
+    expect(mockEventBus.emit).not.toHaveBeenCalled();
+  });
+
   it('emits connection-lost on error when in self-update mode', () => {
     sseService.connect(mockEventBus);
     eventListeners['dd:self-update']();
@@ -85,6 +95,16 @@ describe('SseService', () => {
 
     vi.advanceTimersByTime(5000);
     expect(MockEventSourceCtor).toHaveBeenCalledWith('/api/events/ui');
+  });
+
+  it('clears pending reconnect timer before scheduling a new one', () => {
+    sseService.connect(mockEventBus);
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+    mockEventSource.onerror();
+    mockEventSource.onerror();
+
+    expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
   it('closes EventSource on disconnect', () => {
@@ -112,6 +132,7 @@ describe('SseService', () => {
       close: vi.fn(),
       onerror: null as EventListener | null,
     };
+    // biome-ignore lint/complexity/useArrowFunction: must be a function expression for `new EventSource()` constructor mock
     MockEventSourceCtor.mockImplementation(function () {
       return secondSource;
     });

@@ -1,5 +1,5 @@
 async function startContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/start`, {
+  var response = await fetch(`/api/containers/${containerId}/start`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -11,7 +11,7 @@ async function startContainer(containerId: string) {
 }
 
 async function stopContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/stop`, {
+  var response = await fetch(`/api/containers/${containerId}/stop`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -23,7 +23,7 @@ async function stopContainer(containerId: string) {
 }
 
 async function restartContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/restart`, {
+  var response = await fetch(`/api/containers/${containerId}/restart`, {
     method: 'POST',
     credentials: 'include',
   });
