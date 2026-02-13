@@ -4,10 +4,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import capitalize from 'capitalize';
 import logger from '../log/index.js';
-import { resolveFromRuntimeRoot, resolveRuntimeRoot } from '../runtime/paths.js';
 
 const log = logger.child({ component: 'registry' });
 
@@ -25,6 +23,16 @@ import type Trigger from '../triggers/providers/Trigger.js';
 import type Watcher from '../watchers/Watcher.js';
 import type Component from './Component.js';
 import type { ComponentConfiguration } from './Component.js';
+import {
+  getAvailableProviders,
+  getHelpfulErrorMessage,
+  resolveComponentModuleSpecifier,
+  resolveComponentRoot,
+} from './component-resolution.js';
+import {
+  applySharedTriggerConfigurationByName as applySharedTriggerConfigurationByNameHelper,
+  applyTriggerGroupDefaults as applyTriggerGroupDefaultsHelper,
+} from './trigger-shared-config.js';
 
 export interface RegistryState {
   trigger: { [key: string]: Trigger };
@@ -48,13 +56,6 @@ export interface RegisterComponentOptions {
 }
 
 type ComponentKind = keyof RegistryState;
-const SHARED_TRIGGER_CONFIGURATION_KEYS = ['threshold', 'once', 'mode', 'order'];
-
-function isRecord(value: unknown): value is Record<string, any> {
-  return (
-    value !== null && value !== undefined && typeof value === 'object' && !Array.isArray(value)
-  );
-}
 
 /**
  * Registry state.
@@ -72,101 +73,6 @@ export function getState() {
 }
 
 /**
- * Get available providers for a given component kind.
- * @param {string} basePath relative path to the providers directory
- * @returns {string[]} sorted list of available provider names
- */
-function getAvailableProviders(basePath: string) {
-  try {
-    const resolvedPath = resolveFromRuntimeRoot(basePath);
-    const runtimeRoot = resolveRuntimeRoot();
-    if (!resolvedPath.startsWith(runtimeRoot)) {
-      log.warn(`Path ${resolvedPath} is outside runtime root ${runtimeRoot}`);
-      return [];
-    }
-    const providers = fs
-      .readdirSync(resolvedPath)
-      .filter((file) => {
-        const filePath = path.join(resolvedPath, file);
-        return fs.statSync(filePath).isDirectory();
-      })
-      .sort();
-    return providers;
-  } catch (e: any) {
-    log.debug(`Unable to load providers under ${basePath}: ${e.message}`);
-    return [];
-  }
-}
-
-function resolveComponentModuleSpecifier(componentFileBase: string) {
-  const jsCandidate = `${componentFileBase}.js`;
-  if (fs.existsSync(jsCandidate)) {
-    return pathToFileURL(jsCandidate).href;
-  }
-
-  const tsCandidate = `${componentFileBase}.ts`;
-  if (fs.existsSync(tsCandidate)) {
-    if (process.env.JEST_WORKER_ID) {
-      // ts-jest resolves extensionless local modules in test mode.
-      return componentFileBase;
-    }
-    return pathToFileURL(tsCandidate).href;
-  }
-
-  return pathToFileURL(jsCandidate).href;
-}
-
-/**
- * Get documentation link for a component kind.
- * @param {string} kind component kind (trigger, watcher, etc.)
- * @returns {string} documentation path
- */
-function getDocumentationLink(kind: ComponentKind) {
-  const docLinks: Record<ComponentKind, string> = {
-    trigger: 'https://github.com/CodesWhat/drydock/tree/main/docs/configuration/triggers',
-    watcher: 'https://github.com/CodesWhat/drydock/tree/main/docs/configuration/watchers',
-    registry: 'https://github.com/CodesWhat/drydock/tree/main/docs/configuration/registries',
-    authentication:
-      'https://github.com/CodesWhat/drydock/tree/main/docs/configuration/authentications',
-    agent: 'https://github.com/CodesWhat/drydock/tree/main/docs/configuration/agents',
-  };
-  return docLinks[kind] || 'https://github.com/CodesWhat/drydock/tree/main/docs/configuration';
-}
-
-/**
- * Build error message when a component provider is not found.
- * @param {string} kind component kind (trigger, watcher, etc.)
- * @param {string} provider the provider name that was not found
- * @param {string} error the original error message
- * @param {string[]} availableProviders list of available providers
- * @returns {string} formatted error message
- */
-function getHelpfulErrorMessage(
-  kind: ComponentKind,
-  provider: string,
-  error: string,
-  availableProviders: string[],
-) {
-  let message = `Error when registering component ${provider} (${error})`;
-
-  if (error.includes('Cannot find module')) {
-    const kindDisplay = kind.charAt(0).toUpperCase() + kind.slice(1);
-    const envVarPattern = `DD_${kindDisplay.toUpperCase()}_${provider.toUpperCase()}_*`;
-
-    message = `Unknown ${kind} provider: '${provider}'.`;
-    message += `\n  (Check your environment variables - this comes from: ${envVarPattern})`;
-
-    if (availableProviders.length > 0) {
-      message += `\n  Available ${kind} providers: ${availableProviders.join(', ')}`;
-      const docLink = getDocumentationLink(kind);
-      message += `\n  For more information, visit: ${docLink}`;
-    }
-  }
-
-  return message;
-}
-
-/**
  * Register a component.
  *
  * @param {RegisterComponentOptions} options - Component registration options
@@ -175,7 +81,7 @@ export async function registerComponent(options: RegisterComponentOptions): Prom
   const { kind, provider, name, configuration, componentPath, agent } = options;
   const providerLowercase = provider.toLowerCase();
   const nameLowercase = name.toLowerCase();
-  const componentRoot = resolveFromRuntimeRoot(componentPath);
+  const componentRoot = resolveComponentRoot(kind, componentPath);
   const componentFileByConvention = path.join(
     componentRoot,
     providerLowercase,
@@ -210,7 +116,7 @@ export async function registerComponent(options: RegisterComponentOptions): Prom
     (state[kind] as any)[component.getId()] = component;
     return componentRegistered;
   } catch (e: any) {
-    const availableProviders = getAvailableProviders(componentPath);
+    const availableProviders = getAvailableProviders(componentPath, (message) => log.debug(message));
     const helpfulMessage = getHelpfulErrorMessage(
       kind,
       providerLowercase,
@@ -253,316 +159,32 @@ async function registerComponents(
   return [];
 }
 
-function applyProviderSharedTriggerConfiguration(configurations: Record<string, any>) {
-  const normalizedConfigurations: Record<string, any> = {};
-
-  Object.keys(configurations || {}).forEach((provider) => {
-    const providerConfigurations = configurations[provider];
-    if (!isRecord(providerConfigurations)) {
-      normalizedConfigurations[provider] = providerConfigurations;
-      return;
-    }
-
-    const sharedConfiguration: Record<string, any> = {};
-    Object.keys(providerConfigurations).forEach((key) => {
-      const value = providerConfigurations[key];
-      if (SHARED_TRIGGER_CONFIGURATION_KEYS.includes(key.toLowerCase()) && !isRecord(value)) {
-        sharedConfiguration[key.toLowerCase()] = value;
-      }
-    });
-
-    normalizedConfigurations[provider] = {};
-    Object.keys(providerConfigurations).forEach((triggerName) => {
-      const triggerConfiguration = providerConfigurations[triggerName];
-      if (isRecord(triggerConfiguration)) {
-        normalizedConfigurations[provider][triggerName] = {
-          ...sharedConfiguration,
-          ...triggerConfiguration,
-        };
-      } else if (!SHARED_TRIGGER_CONFIGURATION_KEYS.includes(triggerName.toLowerCase())) {
-        normalizedConfigurations[provider][triggerName] = triggerConfiguration;
-      }
-    });
-  });
-
-  return normalizedConfigurations;
-}
-
-/**
- * Collect all shared-key values across providers, grouped by trigger name.
- * Returns a map of triggerName -> key -> Set of distinct values.
- */
-function addSharedTriggerValue(
-  valuesByName: Record<string, Record<string, Set<any>>>,
-  triggerName: string,
-  key: string,
-  value: any,
-) {
-  const normalizedTriggerName = triggerName.toLowerCase();
-  valuesByName[normalizedTriggerName] ??= {};
-  valuesByName[normalizedTriggerName][key] ??= new Set();
-  valuesByName[normalizedTriggerName][key].add(value);
-}
-
-function collectSharedValuesForTrigger(
-  valuesByName: Record<string, Record<string, Set<any>>>,
-  triggerName: string,
-  triggerConfiguration: Record<string, any>,
-) {
-  for (const key of SHARED_TRIGGER_CONFIGURATION_KEYS) {
-    const value = triggerConfiguration[key];
-    if (value !== undefined) {
-      addSharedTriggerValue(valuesByName, triggerName, key, value);
-    }
-  }
-}
-
-function collectValuesForProvider(
-  valuesByName: Record<string, Record<string, Set<any>>>,
-  providerConfigurations: unknown,
-) {
-  if (!isRecord(providerConfigurations)) {
-    return;
-  }
-
-  for (const triggerName of Object.keys(providerConfigurations)) {
-    const triggerConfiguration = providerConfigurations[triggerName];
-    if (!isRecord(triggerConfiguration)) {
-      continue;
-    }
-    collectSharedValuesForTrigger(valuesByName, triggerName, triggerConfiguration);
-  }
-}
-
-function collectValuesByName(
-  configurations: Record<string, any>,
-): Record<string, Record<string, Set<any>>> {
-  const valuesByName: Record<string, Record<string, Set<any>>> = {};
-
-  for (const providerConfigurations of Object.values(configurations || {})) {
-    collectValuesForProvider(valuesByName, providerConfigurations);
-  }
-
-  return valuesByName;
-}
-
-/**
- * From collected values, extract keys where all providers agree on a single value.
- */
-function extractSharedValues(
-  valuesByName: Record<string, Record<string, Set<any>>>,
-): Record<string, any> {
-  const shared: Record<string, any> = {};
-
-  for (const triggerName of Object.keys(valuesByName)) {
-    for (const key of SHARED_TRIGGER_CONFIGURATION_KEYS) {
-      const valuesForKey = valuesByName[triggerName][key];
-      if (valuesForKey?.size === 1) {
-        if (!shared[triggerName]) {
-          shared[triggerName] = {};
-        }
-        shared[triggerName][key] = Array.from(valuesForKey)[0];
-      }
-    }
-  }
-
-  return shared;
-}
-
-function getSharedTriggerConfigurationByName(configurations: Record<string, any>) {
-  const valuesByName = collectValuesByName(configurations);
-  return extractSharedValues(valuesByName);
-}
-
 function applySharedTriggerConfigurationByName(configurations: Record<string, any>) {
-  const configurationsWithProviderSharedValues =
-    applyProviderSharedTriggerConfiguration(configurations);
-  const sharedConfigurationByName = getSharedTriggerConfigurationByName(
-    configurationsWithProviderSharedValues,
-  );
-  const configurationsWithSharedValues: Record<string, any> = {};
-
-  Object.keys(configurationsWithProviderSharedValues || {}).forEach((provider) => {
-    const providerConfigurations = configurationsWithProviderSharedValues[provider];
-    if (!isRecord(providerConfigurations)) {
-      configurationsWithSharedValues[provider] = providerConfigurations;
-      return;
-    }
-    configurationsWithSharedValues[provider] = {};
-    Object.keys(providerConfigurations).forEach((triggerName) => {
-      const triggerConfiguration = providerConfigurations[triggerName];
-      if (!isRecord(triggerConfiguration)) {
-        configurationsWithSharedValues[provider][triggerName] = triggerConfiguration;
-        return;
-      }
-      const sharedConfiguration = sharedConfigurationByName[triggerName.toLowerCase()] || {};
-      configurationsWithSharedValues[provider][triggerName] = {
-        ...sharedConfiguration,
-        ...triggerConfiguration,
-      };
-    });
-  });
-
-  return configurationsWithSharedValues;
-}
-
-/**
- * Check whether a record contains only shared trigger configuration keys
- * with scalar values (i.e. it qualifies as a trigger group entry).
- */
-function isValidTriggerGroup(entry: Record<string, any>): boolean {
-  const keys = Object.keys(entry);
-  return (
-    keys.length > 0 &&
-    keys.every(
-      (k) => SHARED_TRIGGER_CONFIGURATION_KEYS.includes(k.toLowerCase()) && !isRecord(entry[k]),
-    )
-  );
-}
-
-/**
- * Classify a single top-level configuration entry as either a known provider,
- * a trigger group (shared defaults), or an unknown provider.
- */
-function classifyConfigurationEntry(
-  key: string,
-  value: any,
-  knownProviderSet: Set<string>,
-): 'provider' | 'trigger-group' {
-  const keyLower = key.toLowerCase();
-  if (knownProviderSet.has(keyLower)) {
-    return 'provider';
-  }
-  if (isRecord(value) && isValidTriggerGroup(value)) {
-    return 'trigger-group';
-  }
-  return 'provider';
-}
-
-function splitTriggerGroupDefaults(
-  configurations: Record<string, any>,
-  knownProviderSet: Set<string>,
-) {
-  const triggerGroupDefaults: Record<string, Record<string, any>> = {};
-  const providerConfigurations: Record<string, any> = {};
-
-  for (const key of Object.keys(configurations)) {
-    const value = configurations[key];
-    const classification = classifyConfigurationEntry(key, value, knownProviderSet);
-    if (classification === 'trigger-group') {
-      const keyLower = key.toLowerCase();
-      triggerGroupDefaults[keyLower] = value;
-      log.info(
-        `Detected trigger group '${keyLower}' with shared configuration: ${JSON.stringify(value)}`,
-      );
-      continue;
-    }
-    providerConfigurations[key] = value;
-  }
-
-  return { triggerGroupDefaults, providerConfigurations };
-}
-
-function mergeTriggerConfigurationWithDefaults(
-  triggerConfiguration: any,
-  groupDefaults: Record<string, any> | undefined,
-) {
-  if (!groupDefaults || !isRecord(triggerConfiguration)) {
-    return triggerConfiguration;
-  }
-
-  return {
-    ...groupDefaults,
-    ...triggerConfiguration,
-  };
-}
-
-function applyDefaultsToProviderConfiguration(
-  providerConfig: unknown,
-  triggerGroupDefaults: Record<string, Record<string, any>>,
-) {
-  if (!isRecord(providerConfig)) {
-    return providerConfig;
-  }
-
-  const providerResult: Record<string, any> = {};
-  for (const triggerName of Object.keys(providerConfig)) {
-    const triggerConfig = providerConfig[triggerName];
-    const groupDefaults = triggerGroupDefaults[triggerName.toLowerCase()];
-    providerResult[triggerName] = mergeTriggerConfigurationWithDefaults(
-      triggerConfig,
-      groupDefaults,
-    );
-  }
-
-  return providerResult;
-}
-
-function applyDefaultsToProviderConfigurations(
-  providerConfigurations: Record<string, any>,
-  triggerGroupDefaults: Record<string, Record<string, any>>,
-) {
-  const result: Record<string, any> = {};
-
-  for (const provider of Object.keys(providerConfigurations)) {
-    result[provider] = applyDefaultsToProviderConfiguration(
-      providerConfigurations[provider],
-      triggerGroupDefaults,
-    );
-  }
-
-  return result;
-}
-
-function hasConfigurationEntries(configurations: Record<string, any> | null | undefined): boolean {
-  return !!configurations && Object.keys(configurations).length > 0;
+  return applySharedTriggerConfigurationByNameHelper(configurations);
 }
 
 function getKnownProviderSet(providerPath: string): Set<string> {
-  return new Set(getAvailableProviders(providerPath).map((provider) => provider.toLowerCase()));
+  return new Set(
+    getAvailableProviders(providerPath, (message) => log.debug(message)).map((provider) =>
+      provider.toLowerCase(),
+    ),
+  );
 }
 
-/**
- * Extract trigger group defaults and apply them across providers.
- *
- * A "trigger group" entry is a top-level key in the trigger configuration
- * that is NOT a real trigger provider directory (e.g. "update") but instead
- * a trigger name shared across multiple providers.
- *
- * For example, given the env vars:
- *   DD_TRIGGER_DOCKER_UPDATE_PRUNE=true
- *   DD_TRIGGER_DISCORD_UPDATE_URL=http://...
- *   DD_TRIGGER_UPDATE_THRESHOLD=minor
- *
- * The parsed configuration looks like:
- *   { docker: { update: { prune: "true" } },
- *     discord: { update: { url: "http://..." } },
- *     update: { threshold: "minor" } }
- *
- * This function detects "update" as a trigger group (not a provider),
- * merges { threshold: "minor" } as defaults into docker.update and
- * discord.update, and removes the "update" entry so it is not
- * registered as a provider.
- */
 function applyTriggerGroupDefaults(
-  configurations: Record<string, any>,
+  configurations: Record<string, any> | null | undefined,
   providerPath: string,
-): Record<string, any> {
-  if (!hasConfigurationEntries(configurations)) {
-    return configurations;
-  }
-
+): Record<string, any> | null | undefined {
   const knownProviderSet = getKnownProviderSet(providerPath);
-  const { triggerGroupDefaults, providerConfigurations } = splitTriggerGroupDefaults(
+  return applyTriggerGroupDefaultsHelper(
     configurations,
     knownProviderSet,
+    (groupName, value) => {
+      log.info(
+        `Detected trigger group '${groupName}' with shared configuration: ${JSON.stringify(value)}`,
+      );
+    },
   );
-
-  if (!hasConfigurationEntries(triggerGroupDefaults)) {
-    return configurations;
-  }
-
-  return applyDefaultsToProviderConfigurations(providerConfigurations, triggerGroupDefaults);
 }
 
 /**
@@ -868,6 +490,7 @@ export {
   deregisterAll as testable_deregisterAll,
   shutdown as testable_shutdown,
   applyTriggerGroupDefaults as testable_applyTriggerGroupDefaults,
+  getKnownProviderSet as testable_getKnownProviderSet,
   applySharedTriggerConfigurationByName as testable_applySharedTriggerConfigurationByName,
   log as testable_log,
 };

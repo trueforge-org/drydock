@@ -469,10 +469,21 @@ test('parseIncludeOrIncludeTriggerString should ignore threshold when multiple s
   });
 });
 
+test('parseIncludeOrIncludeTriggerString should fallback to all for unsupported threshold', () => {
+  expect(Trigger.parseIncludeOrIncludeTriggerString('docker.local:not-supported')).toStrictEqual({
+    id: 'docker.local',
+    threshold: 'all',
+  });
+});
+
 test('doesReferenceMatchId should match full trigger id and trigger name', async () => {
   expect(Trigger.doesReferenceMatchId('docker.update', 'docker.update')).toBe(true);
   expect(Trigger.doesReferenceMatchId('update', 'docker.update')).toBe(true);
   expect(Trigger.doesReferenceMatchId('notify', 'docker.update')).toBe(false);
+});
+
+test('doesReferenceMatchId should return false for trigger ids without provider segment', () => {
+  expect(Trigger.doesReferenceMatchId('docker.update', 'update')).toBe(false);
 });
 
 test('mustTrigger should accept trigger name-only include filters', async () => {
@@ -942,6 +953,54 @@ test('handleContainerReport should debug log when mustTrigger returns false', as
   expect(spy).not.toHaveBeenCalled();
 });
 
+test('handleContainerReport should fallback to parent logger when child logger is unavailable', async () => {
+  trigger.configuration = {
+    threshold: undefined,
+    mode: 'simple',
+    once: true,
+  };
+  trigger.type = 'docker';
+  trigger.name = 'update';
+  trigger.log = {
+    ...log,
+    child: vi.fn().mockReturnValue(undefined),
+  };
+  const triggerSpy = vi.spyOn(trigger, 'trigger').mockResolvedValue(undefined);
+
+  await trigger.handleContainerReport({
+    changed: true,
+    container: {
+      name: 'container1',
+      updateAvailable: true,
+      updateKind: { kind: 'tag', semverDiff: 'major' },
+    },
+  });
+
+  expect(triggerSpy).toHaveBeenCalled();
+});
+
+test('handleContainerReports should fallback to all threshold when configuration threshold is empty', async () => {
+  trigger.configuration = {
+    threshold: '',
+    once: true,
+    mode: 'batch',
+  };
+  const spy = vi.spyOn(trigger, 'triggerBatch').mockResolvedValue(undefined);
+
+  await trigger.handleContainerReports([
+    {
+      changed: true,
+      container: {
+        name: 'container1',
+        updateAvailable: true,
+        updateKind: { kind: 'tag', semverDiff: 'major' },
+      },
+    },
+  ]);
+
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+
 test('init with resolvenotifications should invoke handleContainerUpdateApplied callback', async () => {
   let capturedCallback;
   vi.spyOn(event, 'registerContainerReport').mockReturnValue(vi.fn());
@@ -1037,4 +1096,33 @@ test('handleContainerReports should warn when triggerBatch fails', async () => {
     },
   ]);
   expect(spyLog).toHaveBeenCalledWith('Error (batch fail)');
+});
+
+test('parseThresholdWithDigestBehavior should parse suffix behavior', () => {
+  expect(Trigger.parseThresholdWithDigestBehavior(undefined)).toEqual({
+    thresholdBase: 'all',
+    nonDigestOnly: false,
+  });
+  expect(Trigger.parseThresholdWithDigestBehavior('minor-no-digest')).toEqual({
+    thresholdBase: 'minor',
+    nonDigestOnly: true,
+  });
+});
+
+test('doesReferenceMatchId should return false when trigger id has no name segment', () => {
+  expect(Trigger.doesReferenceMatchId('update', '')).toBe(false);
+});
+
+test('preview should return an empty object by default', async () => {
+  await expect(trigger.preview({})).resolves.toEqual({});
+});
+
+test('maskFields should mask non-empty configured values', () => {
+  trigger.configuration = {
+    token: 'super-secret', // NOSONAR - test fixture
+    empty: '',
+  };
+  const masked = trigger.maskFields(['token', 'empty']);
+  expect(masked.token).toBe('s**********t');
+  expect(masked.empty).toBe('');
 });

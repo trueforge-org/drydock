@@ -1,4 +1,6 @@
 // @ts-nocheck
+import fs from 'node:fs';
+import path from 'node:path';
 import * as configuration from '../configuration/index.js';
 import * as prometheusWatcher from '../prometheus/watcher.js';
 import Component from './Component.js';
@@ -64,7 +66,7 @@ afterEach(async () => {
 
 test('registerComponent should warn when component does not exist', async () => {
   const registerComponent = registry.testable_registerComponent;
-  expect(
+  await expect(
     registerComponent({
       kind: 'kind' as any,
       provider: 'provider',
@@ -77,7 +79,7 @@ test('registerComponent should warn when component does not exist', async () => 
 
 test('registerComponents should return empty array if not components', async () => {
   const registerComponents = registry.testable_registerComponents;
-  expect(registerComponents('kind', undefined, 'path')).resolves.toEqual([]);
+  await expect(registerComponents('kind', undefined, 'path')).resolves.toEqual([]);
 });
 
 test('deregisterComponent should throw when component fails to deregister', async () => {
@@ -86,9 +88,45 @@ test('deregisterComponent should throw when component fails to deregister', asyn
   component.deregister = () => {
     throw new Error('Error x');
   };
-  expect(deregisterComponent(component)).rejects.toThrowError(
+  await expect(deregisterComponent(component)).rejects.toThrowError(
     'Error when deregistering component .',
   );
+});
+
+test('registerComponent should resolve agent component path when agent option is set', async () => {
+  await expect(
+    registry.testable_registerComponent({
+      kind: 'watcher',
+      provider: 'docker',
+      name: 'agent-local',
+      configuration: {},
+      componentPath: 'watchers/providers',
+      agent: 'node-1',
+    }),
+  ).rejects.toThrow(/Unknown watcher provider|Error when registering component/);
+});
+
+test('registerComponent should execute module fallback branch when module has no default export', async () => {
+  const tempProviderPath = path.join(process.cwd(), 'tmp-test-providers');
+  const providerDir = path.join(tempProviderPath, 'nodefault');
+  const providerModule = path.join(providerDir, 'nodefault.ts');
+
+  fs.mkdirSync(providerDir, { recursive: true });
+  fs.writeFileSync(providerModule, 'export const value = 1;');
+
+  try {
+    await expect(
+      registry.testable_registerComponent({
+        kind: 'trigger',
+        provider: 'nodefault',
+        name: 'sample',
+        configuration: {},
+        componentPath: 'tmp-test-providers',
+      }),
+    ).rejects.toThrow(/Error when registering component|Unknown trigger provider/);
+  } finally {
+    fs.rmSync(tempProviderPath, { recursive: true, force: true });
+  }
 });
 
 test('registerRegistries should register all registries', async () => {
@@ -561,6 +599,55 @@ test('applyTriggerGroupDefaults should support multiple shared keys', () => {
   expect(result.notify).toBeUndefined();
 });
 
+test('applyTriggerGroupDefaults should treat known providers case-insensitively from provider directory list', () => {
+  const tempProviderPath = path.join(process.cwd(), 'tmp-test-trigger-providers');
+  fs.mkdirSync(path.join(tempProviderPath, 'MockProvider'), { recursive: true });
+
+  try {
+    const result = registry.testable_applyTriggerGroupDefaults(
+      {
+        MockProvider: {
+          update: {
+            threshold: 'patch',
+          },
+        },
+        update: {
+          threshold: 'minor',
+        },
+      },
+      'tmp-test-trigger-providers',
+    );
+
+    expect(result.MockProvider.update.threshold).toBe('patch');
+    expect(result.update).toBeUndefined();
+  } finally {
+    fs.rmSync(tempProviderPath, { recursive: true, force: true });
+  }
+});
+
+test('getKnownProviderSet should normalize provider names to lowercase', () => {
+  const tempProviderPath = path.join(process.cwd(), 'tmp-test-provider-set');
+  fs.mkdirSync(path.join(tempProviderPath, 'UpperOne'), { recursive: true });
+  fs.mkdirSync(path.join(tempProviderPath, 'lowerTwo'), { recursive: true });
+
+  try {
+    const providerSet = registry.testable_getKnownProviderSet('tmp-test-provider-set');
+    expect(providerSet.has('upperone')).toBe(true);
+    expect(providerSet.has('lowertwo')).toBe(true);
+  } finally {
+    fs.rmSync(tempProviderPath, { recursive: true, force: true });
+  }
+});
+
+test('getKnownProviderSet should invoke debug callback when provider path cannot be read', () => {
+  const debugSpy = vi.spyOn(registry.testable_log, 'debug');
+
+  const providers = registry.testable_getKnownProviderSet('tmp-provider-path-that-does-not-exist');
+
+  expect(providers.size).toBe(0);
+  expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('Unable to load providers under'));
+});
+
 test('applyTriggerGroupDefaults should handle non-record provider configs', () => {
   const configurations = {
     mock: 'not-a-record',
@@ -666,6 +753,32 @@ test('init should register agents and their watchers/triggers', async () => {
   authentications = {};
   await registry.init();
   expect(Object.keys(registry.getState().agent)).toContain('dd.node1');
+});
+
+test('init in agent mode should skip authentications and agents registration', async () => {
+  registry.getState().authentication = {};
+  registry.getState().agent = {};
+  triggers = {};
+  watchers = {};
+  registries = {};
+  authentications = {
+    basic: {
+      john: {
+        user: 'john',
+        hash: 'hash',
+      },
+    },
+  };
+  agents = {
+    node1: {
+      host: 'http://10.0.0.1:3000', // NOSONAR - test fixture
+      secret: 'mysecret', // NOSONAR - test fixture
+    },
+  };
+
+  await registry.init({ agent: true });
+  expect(Object.keys(registry.getState().authentication)).toEqual([]);
+  expect(Object.keys(registry.getState().agent)).toEqual([]);
 });
 
 test('deregisterAgentComponents should remove agent-specific watchers and triggers', async () => {
