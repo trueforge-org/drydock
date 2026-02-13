@@ -319,7 +319,7 @@ These settings are displayed read-only in the UI with a note that changes requir
 
 #### Architecture
 
-```
+```text
 UI Panel --POST--> /api/config/triggers --> validate (Joi) --> write drydock.yml --> hot-reload triggers
                                                            --> return { success: true, restart: false }
 

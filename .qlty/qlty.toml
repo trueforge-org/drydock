@@ -39,6 +39,10 @@ exclude_patterns = [
   "**/testdata/**",
   "**/vendor/**",
   "**/assets/**",
+  ".qlty/out/**",
+  ".qlty/logs/**",
+  ".qlty/results/**",
+  ".qlty/plugin_cachedir/**",
 ]
 
 test_patterns = [
@@ -64,7 +68,7 @@ name = "actionlint"
 
 [[plugin]]
 name = "biome"
-version = "2.3.7"
+version = "2.3.15"
 
 [[plugin]]
 name = "checkov"
@@ -109,3 +113,8 @@ name = "trufflehog"
 
 [[plugin]]
 name = "yamllint"
+
+# Entrypoint uses su-exec for runtime privilege drop; no static USER needed
+[[triage]]
+match.rules = ["trivy:DS002"]
+set.ignored = true
