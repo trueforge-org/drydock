@@ -55,7 +55,7 @@
 
 ---
 
-<h2 align="center">Quick Start</h2>
+<h2 align="center" id="quick-start">Quick Start</h2>
 
 ```bash
 docker run -d \
@@ -135,7 +135,7 @@ Accepted values: `false` (default — no proxy), `true` (trust all), a number (h
 
 ---
 
-<h2 align="center">Screenshots</h2>
+<h2 align="center" id="screenshots">Screenshots</h2>
 
 <table>
 <tr>
@@ -154,7 +154,7 @@ Accepted values: `false` (default — no proxy), `true` (trust all), a number (h
 
 ---
 
-<h2 align="center">Features</h2>
+<h2 align="center" id="features">Features</h2>
 
 <table>
 <tr>
@@ -245,7 +245,7 @@ Available on GHCR, Docker Hub, and Quay.io for flexible deployment
 
 ---
 
-<h2 align="center">Supported Registries</h2>
+<h2 align="center" id="supported-registries">Supported Registries</h2>
 
 <details>
 <summary><strong>Public registries</strong> (auto-registered, no config needed)</summary>
@@ -284,7 +284,7 @@ See [Registry docs](docs/configuration/registries/README.md) for full configurat
 
 ---
 
-<h2 align="center">Supported Triggers</h2>
+<h2 align="center" id="supported-triggers">Supported Triggers</h2>
 
 <details>
 <summary><strong>Notification triggers</strong> (16 providers)</summary>
@@ -316,7 +316,7 @@ All triggers support **threshold filtering** (`all`, `major`, `minor`, `patch`) 
 
 ---
 
-<h2 align="center">Authentication</h2>
+<h2 align="center" id="authentication">Authentication</h2>
 
 <details>
 <summary><strong>Supported auth methods</strong></summary>
@@ -331,7 +331,7 @@ All triggers support **threshold filtering** (`all`, `major`, `minor`, `patch`) 
 
 ---
 
-<h2 align="center">Migrating from WUD</h2>
+<h2 align="center" id="migrating-from-wud">Migrating from WUD</h2>
 
 drydock is a drop-in replacement for What's Up Docker (WUD). Switch only the image reference — everything else stays the same:
 
@@ -461,7 +461,7 @@ drydock is a drop-in replacement for What's Up Docker (WUD). Switch only the ima
 
 ---
 
-<h2 align="center">Documentation</h2>
+<h2 align="center" id="documentation">Documentation</h2>
 
 | Resource | Link |
 | --- | --- |
@@ -476,7 +476,7 @@ drydock is a drop-in replacement for What's Up Docker (WUD). Switch only the ima
 
 ---
 
-<h2 align="center">Star History</h2>
+<h2 align="center" id="star-history">Star History</h2>
 
 <div align="center">
   <a href="https://www.star-history.com/#CodesWhat/drydock&type=timeline&legend=top-left">
