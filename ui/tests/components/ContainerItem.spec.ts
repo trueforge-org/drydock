@@ -562,6 +562,22 @@ describe('ContainerItem', () => {
     expect(wrapper.vm.isUpdatingContainer).toBe(false);
   });
 
+  it('uses singular trigger label when only one trigger is executed', async () => {
+    mockGetContainerTriggers.mockResolvedValueOnce([
+      { type: 'slack', name: 'primary', agent: 'node1' },
+    ]);
+    mockRunTrigger.mockResolvedValueOnce({});
+    const refreshSpy = vi.spyOn(wrapper.vm, 'refreshContainerNow').mockResolvedValue(undefined);
+
+    await wrapper.vm.updateContainerNow();
+
+    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
+      'notify',
+      'Update triggered (1 trigger)',
+    );
+    expect(refreshSpy).toHaveBeenCalledWith(false);
+  });
+
   it('reports trigger failures while updating container', async () => {
     mockGetContainerTriggers.mockResolvedValueOnce([
       { type: 'slack', name: 'primary', agent: 'node1' },

@@ -66,6 +66,22 @@ describe('SnackBar', () => {
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith('notify:close');
   });
 
+  it('handles v-snackbar model update event from template binding', async () => {
+    const wrapper = mount(SnackBar, {
+      props: {
+        message: 'Test message',
+        show: true,
+        level: 'info',
+      },
+    });
+
+    const snackbar = wrapper.findComponent({ name: 'v-snackbar' });
+    snackbar.vm.$emit('update:modelValue', false);
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith('notify:close');
+  });
+
   it('does not close when showLocal setter receives true', async () => {
     const wrapper = mount(SnackBar, {
       props: {

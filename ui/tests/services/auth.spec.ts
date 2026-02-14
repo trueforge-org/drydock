@@ -43,6 +43,19 @@ describe('Auth Service', () => {
 
       expect(user).toBeUndefined();
     });
+
+    it('logs fallback error detail when thrown value is not an Error object', async () => {
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      fetch.mockRejectedValueOnce('raw-network-error');
+
+      try {
+        const user = await getUser();
+        expect(user).toBeUndefined();
+        expect(debugSpy).toHaveBeenCalledWith('Unable to fetch current user: raw-network-error');
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
   });
 
   describe('loginBasic', () => {

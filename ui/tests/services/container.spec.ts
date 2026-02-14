@@ -307,6 +307,28 @@ describe('Container Service', () => {
         'Failed to update container policy enable: Internal Server Error',
       );
     });
+
+    it('logs parse failures when response json throws a non-Error value', async () => {
+      const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Internal Server Error',
+        json: async () => {
+          throw 'parse-failed';
+        },
+      } as any);
+
+      try {
+        await expect(updateContainerPolicy('c1', 'enable')).rejects.toThrow(
+          'Failed to update container policy enable: Internal Server Error',
+        );
+        expect(debugSpy).toHaveBeenCalledWith(
+          'Unable to parse policy update response payload: parse-failed',
+        );
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
   });
 
   describe('getContainerLogs', () => {
