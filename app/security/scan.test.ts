@@ -554,3 +554,303 @@ test('trivy queue should recover after a failed scan', async () => {
   expect(first.error).toContain('cache locked');
   expect(second.status).toBe('passed');
 });
+
+// --- Branch coverage tests ---
+
+test('normalizeSeverity should fall back to UNKNOWN when severity is undefined', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(
+      null,
+      JSON.stringify({
+        Results: [{ Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: undefined }] }],
+      }),
+      '',
+    );
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.vulnerabilities[0].severity).toBe('UNKNOWN');
+});
+
+test('normalizeSeverity should fall back to UNKNOWN when severity is empty string', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(
+      null,
+      JSON.stringify({
+        Results: [{ Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: '' }] }],
+      }),
+      '',
+    );
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.vulnerabilities[0].severity).toBe('UNKNOWN');
+});
+
+test('parseTrivyOutput should handle missing Results key', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(null, JSON.stringify({}), '');
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.status).toBe('passed');
+  expect(result.vulnerabilities).toEqual([]);
+});
+
+test('parseTrivyOutput should handle non-string Target', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(
+      null,
+      JSON.stringify({
+        Results: [{ Target: 12345, Vulnerabilities: [{ VulnerabilityID: 'CVE-1', Severity: 'LOW' }] }],
+      }),
+      '',
+    );
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.vulnerabilities[0].target).toBeUndefined();
+  expect(result.vulnerabilities[0].id).toBe('CVE-1');
+});
+
+test('parseTrivyOutput should handle missing Vulnerabilities array', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(
+      null,
+      JSON.stringify({ Results: [{ Target: 'app' }] }),
+      '',
+    );
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.vulnerabilities).toEqual([]);
+});
+
+test('parseTrivyOutput should handle missing VulnerabilityID', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(
+      null,
+      JSON.stringify({
+        Results: [{ Target: 'app', Vulnerabilities: [{ Severity: 'HIGH' }] }],
+      }),
+      '',
+    );
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.vulnerabilities[0].id).toBe('unknown-vulnerability');
+});
+
+test('runCommand should use process.env when no env option provided', async () => {
+  const execFileMock = vi.fn((_command, _args, options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  // When no auth is provided, buildTrivyEnvironment still returns a copy of process.env,
+  // so env is always set. This test verifies that path works.
+  await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(execFileMock).toHaveBeenCalledWith(
+    'trivy',
+    expect.any(Array),
+    expect.objectContaining({ env: expect.any(Object) }),
+    expect.any(Function),
+  );
+});
+
+test('runCommand should handle failure with no stderr and no error code', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    const error = new Error('') as NodeJS.ErrnoException;
+    // No code set, no stderr — use setTimeout so child is assigned before callback
+    const child = { exitCode: null };
+    setTimeout(() => callback(error, '', ''), 0);
+    return child;
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toContain('unknown error');
+});
+
+test('runCommand should handle failure with empty error message and empty stderr', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    const error = new Error('') as NodeJS.ErrnoException;
+    error.code = undefined;
+    const child = { exitCode: null };
+    setTimeout(() => callback(error, '', '   '), 0);
+    return child;
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.status).toBe('error');
+  // stderr is whitespace only -> trims to '' -> falls back to error.message '' -> falls back to 'unknown error'
+  expect(result.error).toContain('unknown error');
+});
+
+test('buildTrivyEnvironment should not set auth env when password is undefined', async () => {
+  const execFileMock = vi.fn((_command, _args, options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await scanImageForVulnerabilities({
+    image: 'img:test',
+    auth: { username: 'user', password: undefined },
+  });
+
+  const envUsed = execFileMock.mock.calls[0][2].env;
+  expect(envUsed).not.toHaveProperty('TRIVY_USERNAME');
+  expect(envUsed).not.toHaveProperty('TRIVY_PASSWORD');
+});
+
+test('runTrivyVulnerabilityCommand should fallback to trivy when command is empty', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    trivy: { ...createEnabledConfiguration().trivy, command: '' },
+  });
+  const execFileMock = vi.fn((_command, _args, _options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(execFileMock.mock.calls[0][0]).toBe('trivy');
+});
+
+test('runTrivySbomCommand should fallback to trivy when command is empty', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    trivy: { ...createEnabledConfiguration().trivy, command: '' },
+  });
+  const execFileMock = vi.fn((_command, _args, _options, callback) => {
+    callback(null, JSON.stringify({ spdxVersion: 'SPDX-2.3' }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await generateImageSbom({ image: 'img:test' });
+
+  expect(execFileMock.mock.calls[0][0]).toBe('trivy');
+});
+
+test('runCosignVerifyCommand should fallback to cosign when command is empty', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    signature: {
+      ...createEnabledConfiguration().signature,
+      cosign: { ...createEnabledConfiguration().signature.cosign, command: '' },
+    },
+  });
+  const execFileMock = vi.fn((_command, _args, _options, callback) => {
+    callback(null, '[{"sig":1}]', '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await verifyImageSignature({ image: 'img:test' });
+
+  expect(execFileMock.mock.calls[0][0]).toBe('cosign');
+});
+
+test('parseCosignSignaturesCount should return 1 for non-array JSON object', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(null, '{"critical":{"identity":{}}}', '');
+    return { exitCode: 0 };
+  };
+
+  const result = await verifyImageSignature({ image: 'img:test' });
+
+  // Non-array object returns 1 signature count, minimum kept as 1
+  expect(result.signatures).toBe(1);
+});
+
+test('scanImageForVulnerabilities catch should handle error with no message property', async () => {
+  // Throw a non-Error so catch receives something without .message
+  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:test' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toBe('Unknown security scan error');
+});
+
+test('verifyImageSignature catch should handle error with no message property', async () => {
+  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+
+  const result = await verifyImageSignature({ image: 'img:test' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toBe('Unknown signature verification error');
+});
+
+test('generateImageSbom catch should handle error with no message property', async () => {
+  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+
+  const result = await generateImageSbom({ image: 'img:test', formats: ['spdx-json'] });
+
+  expect(result.status).toBe('error');
+  // errors.push(`${format}: ${error?.message || 'Unknown SBOM generation error'}`)
+  expect(result.error).toContain('Unknown SBOM generation error');
+});
+
+test('generateImageSbom error join fallback when catch produces empty-looking messages', async () => {
+  // Throw non-Error objects so error?.message is undefined -> fallback text is used
+  childProcessControl.execFileImpl = () => { throw null; };
+
+  const result = await generateImageSbom({ image: 'img:test', formats: ['spdx-json'] });
+
+  expect(result.status).toBe('error');
+  // errors.push produces 'spdx-json: Unknown SBOM generation error', join is non-empty
+  expect(result.error).toContain('Unknown SBOM generation error');
+});
+
+test('buildTrivyEnvironment should use empty string for username when password is set but username is undefined', async () => {
+  const execFileMock = vi.fn((_command, _args, options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await scanImageForVulnerabilities({
+    image: 'img:test',
+    auth: { password: 'secret' },
+  });
+
+  const envUsed = execFileMock.mock.calls[0][2].env;
+  expect(envUsed.TRIVY_USERNAME).toBe('');
+  expect(envUsed.TRIVY_PASSWORD).toBe('secret');
+});
+
+test('parseCosignSignaturesCount should return 0 for JSON primitive (non-object, non-array)', async () => {
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    // JSON.parse('42') is a number — not array, not object → falls through to line-delimited parsing
+    callback(null, '42', '');
+    return { exitCode: 0 };
+  };
+
+  const result = await verifyImageSignature({ image: 'img:test' });
+
+  // 42 is not an object → line-delimited fallback parses '42' which is not an object → 0 sigs
+  // verifyImageSignature clamps to min 1 when cosign succeeds
+  expect(result.signatures).toBe(1);
+  expect(result.status).toBe('verified');
+});

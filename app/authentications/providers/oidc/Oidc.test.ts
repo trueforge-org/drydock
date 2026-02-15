@@ -703,6 +703,25 @@ test('callback should use req.url as fallback when originalUrl is missing', asyn
   expect(res.redirect).toHaveBeenCalledWith('https://dd.example.com');
 });
 
+test('redirect should return 500 when session regenerate also fails after reload error', async () => {
+  const regenerate = vi.fn((cb) => cb(new Error('regenerate failed')));
+  const save = vi.fn((cb) => cb());
+  const req = createReq({
+    session: {
+      reload: vi.fn((cb) => cb(new Error('corrupt session'))),
+      regenerate,
+      save,
+    },
+  });
+  const res = createRes();
+
+  await oidc.redirect(req, res);
+
+  expect(regenerate).toHaveBeenCalledTimes(1);
+  expect(res.status).toHaveBeenCalledWith(500);
+  expect(res.json).toHaveBeenCalledWith({ error: 'Unable to initialize OIDC session' });
+});
+
 test('redirect should skip session lock when sessionID is empty', async () => {
   const save = vi.fn((cb) => cb());
   const req = createReq({ sessionID: '', session: { save } });

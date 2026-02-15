@@ -291,4 +291,51 @@ describe('API Index', () => {
     const indexRouter = await import('./index.js');
     await expect(indexRouter.init()).rejects.toThrow('Cert not found');
   });
+
+  test('global error handler should use err.status and err.message', async () => {
+    mockGetServerConfiguration.mockReturnValue({
+      enabled: true,
+      port: 3000,
+      cors: {},
+      tls: {},
+    });
+
+    vi.resetModules();
+    await import('./index.js').then((m) => m.init());
+
+    const errorHandler = mockApp.use.mock.calls.find(
+      (call) => typeof call[0] === 'function' && call[0].length === 4,
+    )?.[0];
+    expect(errorHandler).toBeDefined();
+
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    const err = { status: 422, message: 'Validation failed' };
+    errorHandler(err, {}, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Validation failed' });
+  });
+
+  test('global error handler should default to 500 and generic message', async () => {
+    mockGetServerConfiguration.mockReturnValue({
+      enabled: true,
+      port: 3000,
+      cors: {},
+      tls: {},
+    });
+
+    vi.resetModules();
+    await import('./index.js').then((m) => m.init());
+
+    const errorHandler = mockApp.use.mock.calls.find(
+      (call) => typeof call[0] === 'function' && call[0].length === 4,
+    )?.[0];
+    expect(errorHandler).toBeDefined();
+
+    const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+    errorHandler({}, {}, res, vi.fn());
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Internal server error' });
+  });
 });

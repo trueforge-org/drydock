@@ -330,6 +330,26 @@ test('deleteContainer should delete doc and emit an event', async () => {
   expect(spyEvent).toHaveBeenCalled();
 });
 
+test('updateContainer should default security to undefined when container and store both lack it', async () => {
+  const collection = {
+    findOne: () => undefined,
+    insert: () => {},
+    chain: () => ({
+      find: () => ({
+        remove: () => ({}),
+      }),
+    }),
+  };
+  const db = {
+    getCollection: () => collection,
+    addCollection: () => null,
+  };
+  container.createCollections(db);
+  const containerToSave = createContainerFixture();
+  const updated = container.updateContainer(containerToSave);
+  expect(updated.security).toBeUndefined();
+});
+
 test('insertContainer should pick up cached security state when container has none', async () => {
   const collection = {
     findOne: () => {},

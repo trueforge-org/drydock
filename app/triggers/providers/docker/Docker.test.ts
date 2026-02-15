@@ -952,6 +952,77 @@ test('trigger should continue update when sbom generation fails', async () => {
   expect(executeContainerUpdateSpy).toHaveBeenCalled();
 });
 
+test('trigger should use fallback message when signature verification fails without error', async () => {
+  mockGetSecurityConfiguration.mockReturnValue(
+    createSecurityConfiguration({
+      signature: {
+        verify: true,
+        cosign: { command: 'cosign', timeout: 60000, key: '', identity: '', issuer: '' },
+      },
+    }),
+  );
+  mockVerifyImageSignature.mockResolvedValue(
+    createSignatureVerificationResult({ status: 'unverified', signatures: 0, error: '' }),
+  );
+  stubTriggerFlow({ running: true });
+
+  await expect(docker.trigger(createTriggerContainer())).rejects.toThrowError(
+    'Image signature verification failed: no valid signatures found',
+  );
+});
+
+test('trigger should use security-signature-failed action when signature status is error', async () => {
+  mockGetSecurityConfiguration.mockReturnValue(
+    createSecurityConfiguration({
+      signature: {
+        verify: true,
+        cosign: { command: 'cosign', timeout: 60000, key: '', identity: '', issuer: '' },
+      },
+    }),
+  );
+  mockVerifyImageSignature.mockResolvedValue(
+    createSignatureVerificationResult({ status: 'error', signatures: 0, error: 'cosign crashed' }),
+  );
+  stubTriggerFlow({ running: true });
+
+  await expect(docker.trigger(createTriggerContainer())).rejects.toThrowError(
+    'Image signature verification failed: cosign crashed',
+  );
+
+  expect(mockAuditCounterInc).toHaveBeenCalledWith({ action: 'security-signature-failed' });
+});
+
+test('trigger should use fallback message when sbom generation fails without error', async () => {
+  mockGetSecurityConfiguration.mockReturnValue(
+    createSecurityConfiguration({
+      sbom: { enabled: true, formats: ['spdx-json'] },
+    }),
+  );
+  mockScanImageForVulnerabilities.mockResolvedValue(createSecurityScanResult());
+  mockGenerateImageSbom.mockResolvedValue(
+    createSbomResult({ status: 'error', documents: {}, error: '' }),
+  );
+  stubTriggerFlow({ running: true });
+
+  await expect(docker.trigger(createTriggerContainer())).resolves.toBeUndefined();
+
+  expect(mockAuditCounterInc).toHaveBeenCalledWith(
+    expect.objectContaining({ action: 'security-sbom-failed' }),
+  );
+});
+
+test('trigger should use fallback message when security scan errors without error', async () => {
+  mockGetSecurityConfiguration.mockReturnValue(createSecurityConfiguration());
+  mockScanImageForVulnerabilities.mockResolvedValue(
+    createSecurityScanResult({ status: 'error', error: '' }),
+  );
+  stubTriggerFlow({ running: true });
+
+  await expect(docker.trigger(createTriggerContainer())).rejects.toThrowError(
+    'Security scan failed: unknown scanner error',
+  );
+});
+
 test('persistSecurityState should warn when container store update fails', async () => {
   const storeContainer = await import('../../../store/container.js');
   storeContainer.updateContainer.mockImplementationOnce(() => {
