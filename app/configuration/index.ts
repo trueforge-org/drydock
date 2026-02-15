@@ -6,7 +6,7 @@ import { resolveConfiguredPath } from '../runtime/paths.js';
 
 const VAR_FILE_SUFFIX = '__FILE';
 export const SECURITY_SEVERITY_VALUES = ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
-export const SECURITY_SBOM_FORMAT_VALUES = ['spdx-json', 'cyclonedx'] as const;
+export const SECURITY_SBOM_FORMAT_VALUES = ['spdx-json', 'cyclonedx-json'] as const;
 const DEFAULT_SECURITY_BLOCK_SEVERITY = 'CRITICAL,HIGH';
 const DEFAULT_SECURITY_SBOM_FORMATS = 'spdx-json';
 
@@ -349,7 +349,7 @@ export function getSecurityConfiguration() {
       .object({
         command: joi.string().default('cosign'),
         timeout: joi.number().integer().min(1000).default(60000),
-        key: joi.string().allow('').default(''),
+        key: joi.string().allow('').default('').pattern(/^(?!.*\.\.)/, 'no path traversal'),
         identity: joi.string().allow('').default(''),
         issuer: joi.string().allow('').default(''),
       })

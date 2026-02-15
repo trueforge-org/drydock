@@ -240,6 +240,7 @@ test('verifyImageSignature should return verified when cosign succeeds', async (
   });
 
   expect(result.status).toBe('verified');
+  expect(result.keyless).toBe(false);
   expect(result.signatures).toBe(1);
   expect(execFileMock).toHaveBeenCalledWith(
     'cosign',
@@ -253,15 +254,19 @@ test('verifyImageSignature should return verified when cosign succeeds', async (
       'maintainer@example.com',
       '--certificate-oidc-issuer',
       'https://token.actions.githubusercontent.com',
-      '--registry-username',
-      'user',
-      '--registry-password',
-      'token',
       'registry.example.com/app:1.2.3',
     ]),
-    expect.any(Object),
+    expect.objectContaining({
+      env: expect.objectContaining({
+        COSIGN_REGISTRY_USERNAME: 'user',
+        COSIGN_REGISTRY_PASSWORD: 'token',
+      }),
+    }),
     expect.any(Function),
   );
+  const callArgs = execFileMock.mock.calls[0][1];
+  expect(callArgs).not.toContain('--registry-username');
+  expect(callArgs).not.toContain('--registry-password');
 });
 
 test('verifyImageSignature should parse cosign json array output', async () => {
@@ -273,6 +278,7 @@ test('verifyImageSignature should parse cosign json array output', async () => {
   const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
 
   expect(result.status).toBe('verified');
+  expect(result.keyless).toBe(true);
   expect(result.signatures).toBe(2);
 });
 
@@ -346,7 +352,7 @@ test('generateImageSbom should generate configured formats', async () => {
     ...createEnabledConfiguration(),
     sbom: {
       enabled: true,
-      formats: ['spdx-json', 'cyclonedx'],
+      formats: ['spdx-json', 'cyclonedx-json'],
     },
   });
 
@@ -360,11 +366,11 @@ test('generateImageSbom should generate configured formats', async () => {
   const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
 
   expect(result.status).toBe('generated');
-  expect(result.formats).toEqual(['spdx-json', 'cyclonedx']);
+  expect(result.formats).toEqual(['spdx-json', 'cyclonedx-json']);
   expect(result.documents['spdx-json']).toEqual(
     expect.objectContaining({ bomFormat: 'spdx-json' }),
   );
-  expect(result.documents.cyclonedx).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx' }));
+  expect(result.documents['cyclonedx-json']).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx-json' }));
 });
 
 test('generateImageSbom should keep generated status when one format fails', async () => {
@@ -372,14 +378,14 @@ test('generateImageSbom should keep generated status when one format fails', asy
     ...createEnabledConfiguration(),
     sbom: {
       enabled: true,
-      formats: ['spdx-json', 'cyclonedx'],
+      formats: ['spdx-json', 'cyclonedx-json'],
     },
   });
 
   childProcessControl.execFileImpl = (command, args, options, callback) => {
     const formatIndex = args.indexOf('--format');
     const format = args[formatIndex + 1];
-    if (format === 'cyclonedx') {
+    if (format === 'cyclonedx-json') {
       const error = new Error('failed') as NodeJS.ErrnoException;
       error.code = '1';
       callback(error, '', 'network error');
@@ -393,7 +399,7 @@ test('generateImageSbom should keep generated status when one format fails', asy
 
   expect(result.status).toBe('generated');
   expect(result.formats).toEqual(['spdx-json']);
-  expect(result.error).toContain('cyclonedx');
+  expect(result.error).toContain('cyclonedx-json');
 });
 
 test('generateImageSbom should fallback to spdx-json when configured formats are invalid', async () => {

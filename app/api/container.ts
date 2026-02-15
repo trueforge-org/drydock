@@ -235,11 +235,19 @@ export async function getContainerSbom(req, res) {
       auth,
       formats: [sbomFormat],
     });
+    const existingSbomState = container.security?.sbom;
     const containerToStore = {
       ...container,
       security: {
         ...(container.security || {}),
-        sbom: sbomResult,
+        sbom: {
+          ...existingSbomState,
+          ...sbomResult,
+          documents: {
+            ...(existingSbomState?.documents || {}),
+            ...sbomResult.documents,
+          },
+        },
       },
     };
     storeContainer.updateContainer(containerToStore);

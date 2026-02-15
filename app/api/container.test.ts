@@ -38,7 +38,7 @@ vi.mock('./component', () => ({
 
 vi.mock('../security/scan', () => ({
   generateImageSbom: (...args: unknown[]) => mockGenerateImageSbom(...args),
-  SECURITY_SBOM_FORMATS: ['spdx-json', 'cyclonedx'],
+  SECURITY_SBOM_FORMATS: ['spdx-json', 'cyclonedx-json'],
 }));
 
 vi.mock('../triggers/providers/Trigger', () => ({

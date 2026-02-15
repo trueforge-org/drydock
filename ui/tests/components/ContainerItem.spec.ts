@@ -577,6 +577,25 @@ describe('ContainerItem', () => {
     expect(wrapper.text()).toContain('signed');
   });
 
+  it('computes signature tooltip with plural signatures', async () => {
+    const multiSignature = {
+      ...BASE_SIGNATURE_VERIFICATION,
+      signatures: 3,
+      keyless: false,
+    };
+    await wrapper.setProps({
+      container: createContainer({
+        security: {
+          signature: multiSignature,
+        },
+      }),
+    });
+
+    expect(wrapper.vm.signatureTooltipDescription).toBe(
+      `Verified at ${new Date(multiSignature.verifiedAt).toLocaleString()}. 3 signatures (public-key)`,
+    );
+  });
+
   it('computes signature chip and tooltip for unverified images', async () => {
     const unverifiedSignature = {
       ...BASE_SIGNATURE_VERIFICATION,

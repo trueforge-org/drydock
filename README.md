@@ -247,7 +247,7 @@ Available on GHCR, Docker Hub, and Quay.io for flexible deployment
 1. Scan the candidate image before pull/restart
 2. Block the update when vulnerabilities exceed configured severity threshold
 3. Verify candidate image signatures with cosign (optional block gate)
-4. Generate SBOM documents (`spdx-json`, `cyclonedx`) for candidate images
+4. Generate SBOM documents (`spdx-json`, `cyclonedx-json`) for candidate images
 5. Persist security state to `container.security.{scan,signature,sbom}` for API/UI visibility
 
 Security scanning is disabled by default and is enabled with `DD_SECURITY_SCANNER=trivy`.
@@ -264,14 +264,15 @@ services:
       # - DD_SECURITY_COSIGN_KEY=/keys/cosign.pub
       # Optional: generate and persist SBOM
       # - DD_SECURITY_SBOM_ENABLED=true
-      # - DD_SECURITY_SBOM_FORMATS=spdx-json,cyclonedx
+      # - DD_SECURITY_SBOM_FORMATS=spdx-json,cyclonedx-json
       # Optional: use Trivy server mode instead of local CLI
       # - DD_SECURITY_TRIVY_SERVER=http://trivy:4954
 ```
 
 Security APIs:
+
 - `GET /api/containers/:id/vulnerabilities`
-- `GET /api/containers/:id/sbom?format=spdx-json|cyclonedx`
+- `GET /api/containers/:id/sbom?format={format}` where `format` is `spdx-json` or `cyclonedx-json`
 
 See full configuration in [`docs/configuration/security/README.md`](docs/configuration/security/README.md).
 

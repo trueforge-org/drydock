@@ -166,10 +166,6 @@ function parseTrivyOutput(trivyOutput: string): ContainerVulnerability[] {
   return vulnerabilities;
 }
 
-function parseJsonOutput(value: string): unknown {
-  return JSON.parse(value);
-}
-
 function toTrivyTimeout(durationMs: number) {
   const timeoutSeconds = Math.max(1, Math.ceil(durationMs / 1000));
   return `${timeoutSeconds}s`;
@@ -280,6 +276,17 @@ function runTrivySbomCommand(
   });
 }
 
+function buildCosignEnvironment(options: ScanImageOptions) {
+  const env = { ...process.env };
+  if (options.auth?.username) {
+    env.COSIGN_REGISTRY_USERNAME = options.auth.username;
+  }
+  if (options.auth?.password) {
+    env.COSIGN_REGISTRY_PASSWORD = options.auth.password;
+  }
+  return env;
+}
+
 function runCosignVerifyCommand(
   options: ScanImageOptions,
   configuration: ReturnType<typeof getSecurityConfiguration>,
@@ -295,12 +302,6 @@ function runCosignVerifyCommand(
   if (configuration.signature.cosign.issuer) {
     args.push('--certificate-oidc-issuer', configuration.signature.cosign.issuer);
   }
-  if (options.auth?.username) {
-    args.push('--registry-username', options.auth.username);
-  }
-  if (options.auth?.password) {
-    args.push('--registry-password', options.auth.password);
-  }
   args.push(options.image);
 
   return runCommand({
@@ -308,6 +309,7 @@ function runCosignVerifyCommand(
     args,
     timeout: configuration.signature.cosign.timeout,
     maxBuffer: MAX_COSIGN_OUTPUT_BYTES,
+    env: buildCosignEnvironment(options),
     commandName: 'Cosign',
   });
 }
@@ -396,7 +398,7 @@ function parseCosignSignaturesCount(rawOutput: string): number {
   }
 
   try {
-    const parsed = parseJsonOutput(output);
+    const parsed = JSON.parse(output);
     if (Array.isArray(parsed)) {
       return parsed.length;
     }
@@ -411,7 +413,7 @@ function parseCosignSignaturesCount(rawOutput: string): number {
   let signaturesCount = 0;
   lines.forEach((line) => {
     try {
-      const parsed = parseJsonOutput(line);
+      const parsed = JSON.parse(line);
       if (parsed && typeof parsed === 'object') {
         signaturesCount += 1;
       }
@@ -523,7 +525,7 @@ export async function verifyImageSignature(
 
 /**
  * Generate SBOM documents using Trivy.
- * Supported formats: spdx-json, cyclonedx.
+ * Supported formats: spdx-json, cyclonedx-json.
  */
 export async function generateImageSbom(
   options: GenerateSbomOptions,
@@ -549,7 +551,7 @@ export async function generateImageSbom(
   for (const format of formats) {
     try {
       const sbomOutput = await runTrivySbomCommand(options, configuration, format);
-      generatedDocuments[format] = parseJsonOutput(sbomOutput);
+      generatedDocuments[format] = JSON.parse(sbomOutput);
       generatedFormats.push(format);
     } catch (error: any) {
       errors.push(`${format}: ${error?.message || 'Unknown SBOM generation error'}`);

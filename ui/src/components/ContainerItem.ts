@@ -247,11 +247,11 @@ export default defineComponent({
         return 'No vulnerability scan result';
       }
       const summary = this.securityScan?.summary || {};
-      const critical = summary.critical || 0;
-      const high = summary.high || 0;
-      const medium = summary.medium || 0;
-      const low = summary.low || 0;
-      const unknown = summary.unknown || 0;
+      const critical = summary.critical ?? 0;
+      const high = summary.high ?? 0;
+      const medium = summary.medium ?? 0;
+      const low = summary.low ?? 0;
+      const unknown = summary.unknown ?? 0;
       const scannedAt = this.securityScan?.scannedAt
         ? this.$filters.dateTime(this.securityScan.scannedAt)
         : 'unknown';
@@ -308,7 +308,7 @@ export default defineComponent({
           this.signatureVerification?.error || 'signature missing or invalid'
         }`;
       }
-      const signatures = this.signatureVerification?.signatures || 0;
+      const signatures = this.signatureVerification?.signatures ?? 0;
       const verificationMode = this.signatureVerification?.keyless ? 'keyless' : 'public-key';
       return `Verified at ${verifiedAt}. ${signatures} signature${
         signatures === 1 ? '' : 's'

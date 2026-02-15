@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Snyk vulnerability monitoring** — Integrated Snyk for continuous dependency scanning of `app/package.json` and `ui/package.json`. Added Snyk badge to README with `targetFile` parameter for monorepo support.
 - **Update Guard (Trivy safe-pull gate)** — Added pre-update vulnerability scanning for Docker-triggered updates. Candidate images are scanned before pull/restart, updates are blocked when vulnerabilities match configured blocking severities, and latest scan data is persisted on `container.security.scan`. Added `GET /api/containers/:id/vulnerabilities` endpoint for retrieving scan results.
+- **Update Guard signature verification (cosign)** — Added optional pre-update image signature verification. When enabled, Docker-triggered updates are blocked if candidate image signatures are missing/invalid or verification fails.
+- **Update Guard SBOM generation** — Added Trivy SBOM generation (`spdx-json`, `cyclonedx-json`) for candidate images with persistence in `container.security.sbom` and a new `GET /api/containers/:id/sbom` API endpoint (with `format` query support).
 - **Container card security status chip** — Added a vulnerability chip on container cards showing Update Guard scan status (`safe`, `blocked`, `scan error`) with severity summary tooltip data from `container.security.scan`.
 
 ### Changed
