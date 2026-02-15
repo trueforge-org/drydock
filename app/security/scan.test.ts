@@ -370,7 +370,7 @@ test('generateImageSbom should generate configured formats', async () => {
   expect(result.documents['spdx-json']).toEqual(
     expect.objectContaining({ bomFormat: 'spdx-json' }),
   );
-  expect(result.documents['cyclonedx-json']).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx-json' }));
+  expect(result.documents['cyclonedx-json']).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx' }));
 });
 
 test('generateImageSbom should keep generated status when one format fails', async () => {
@@ -385,7 +385,7 @@ test('generateImageSbom should keep generated status when one format fails', asy
   childProcessControl.execFileImpl = (command, args, options, callback) => {
     const formatIndex = args.indexOf('--format');
     const format = args[formatIndex + 1];
-    if (format === 'cyclonedx-json') {
+    if (format === 'cyclonedx') {
       const error = new Error('failed') as NodeJS.ErrnoException;
       error.code = '1';
       callback(error, '', 'network error');
@@ -443,4 +443,68 @@ test('generateImageSbom should return error when all formats fail', async () => 
 
   expect(result.status).toBe('error');
   expect(result.error).toContain('unavailable');
+});
+
+test('generateImageSbom should map cyclonedx-json to cyclonedx in trivy args', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    sbom: { enabled: true, formats: ['cyclonedx-json'] },
+  });
+  const execFileMock = vi.fn((command, args, options, callback) => {
+    callback(null, JSON.stringify({ bomFormat: 'CycloneDX' }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('generated');
+  expect(result.formats).toEqual(['cyclonedx-json']);
+  expect(execFileMock).toHaveBeenCalledWith(
+    'trivy',
+    expect.arrayContaining(['--format', 'cyclonedx']),
+    expect.any(Object),
+    expect.any(Function),
+  );
+  const callArgs = execFileMock.mock.calls[0][1];
+  expect(callArgs).not.toContain('cyclonedx-json');
+});
+
+test('generateImageSbom should pass spdx-json through unchanged in trivy args', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    sbom: { enabled: true, formats: ['spdx-json'] },
+  });
+  const execFileMock = vi.fn((command, args, options, callback) => {
+    callback(null, JSON.stringify({ spdxVersion: 'SPDX-2.3' }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('generated');
+  expect(execFileMock).toHaveBeenCalledWith(
+    'trivy',
+    expect.arrayContaining(['--format', 'spdx-json']),
+    expect.any(Object),
+    expect.any(Function),
+  );
+});
+
+test('scanImageForVulnerabilities should pass json format through unchanged in trivy args', async () => {
+  const execFileMock = vi.fn((command, args, options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  await scanImageForVulnerabilities({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(execFileMock).toHaveBeenCalledWith(
+    'trivy',
+    expect.arrayContaining(['--format', 'json']),
+    expect.any(Object),
+    expect.any(Function),
+  );
 });

@@ -217,6 +217,15 @@ function buildTrivyEnvironment(options: ScanImageOptions) {
   return env;
 }
 
+// Trivy uses 'cyclonedx' (not 'cyclonedx-json') for CycloneDX JSON output.
+const TRIVY_FORMAT_MAP: Partial<Record<string, string>> = {
+  'cyclonedx-json': 'cyclonedx',
+};
+
+function toTrivyFormat(format: string): string {
+  return TRIVY_FORMAT_MAP[format] ?? format;
+}
+
 function buildTrivyArgs(
   configuration: ReturnType<typeof getSecurityConfiguration>,
   outputFormat: 'json' | SecuritySbomFormat,
@@ -225,7 +234,7 @@ function buildTrivyArgs(
     'image',
     '--quiet',
     '--format',
-    outputFormat,
+    toTrivyFormat(outputFormat),
     '--timeout',
     toTrivyTimeout(configuration.trivy.timeout),
   ];
