@@ -192,8 +192,7 @@ describe('MonitoringHistoryView', () => {
       global: {
         stubs: {
           'v-chip': {
-            template:
-              '<span class="v-chip" @click="$emit(\'click:close\')"><slot /></span>',
+            template: '<span class="v-chip" @click="$emit(\'click:close\')"><slot /></span>',
             emits: ['click:close'],
           },
         },
@@ -251,8 +250,7 @@ describe('MonitoringHistoryView', () => {
       global: {
         stubs: {
           'v-pagination': {
-            template:
-              '<div class="v-pagination" @click="$emit(\'update:modelValue\', 2)"></div>',
+            template: '<div class="v-pagination" @click="$emit(\'update:modelValue\', 2)"></div>',
             props: ['modelValue', 'length'],
             emits: ['update:modelValue'],
           },

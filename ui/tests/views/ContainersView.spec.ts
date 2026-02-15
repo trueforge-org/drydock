@@ -751,18 +751,21 @@ describe('ContainersView', () => {
     await wrapper.vm.$nextTick();
 
     const originalSort = Array.prototype.sort;
-    const sortSpy = vi
-      .spyOn(Array.prototype, 'sort')
-      .mockImplementation(function mockedSort(this: any[], compareFn?: any) {
-        if (typeof compareFn === 'function') {
-          compareFn([null, []], [null, []]);
-          compareFn(['alpha', []], [null, []]);
-        }
-        return originalSort.call(this, compareFn);
-      });
+    const sortSpy = vi.spyOn(Array.prototype, 'sort').mockImplementation(function mockedSort(
+      this: any[],
+      compareFn?: any,
+    ) {
+      if (typeof compareFn === 'function') {
+        compareFn([null, []], [null, []]);
+        compareFn(['alpha', []], [null, []]);
+      }
+      return originalSort.call(this, compareFn);
+    });
 
     try {
-      const computeGroups = wrapper.vm.$options.computed?.computedGroups as ((this: any) => any[]) | undefined;
+      const computeGroups = wrapper.vm.$options.computed?.computedGroups as
+        | ((this: any) => any[])
+        | undefined;
       const groups = computeGroups?.call(wrapper.vm) ?? wrapper.vm.computedGroups;
       expect(groups.at(-1)?.name).toBeNull();
     } finally {

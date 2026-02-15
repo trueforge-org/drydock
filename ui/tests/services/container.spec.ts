@@ -368,9 +368,7 @@ describe('Container Service', () => {
         json: async () => ({}),
       } as any);
 
-      await expect(scanContainer('c1')).rejects.toThrow(
-        'Failed to scan container: Bad Request',
-      );
+      await expect(scanContainer('c1')).rejects.toThrow('Failed to scan container: Bad Request');
     });
 
     it('throws without detail when response body parsing fails', async () => {
@@ -387,9 +385,7 @@ describe('Container Service', () => {
         await expect(scanContainer('c1')).rejects.toThrow(
           'Failed to scan container: Internal Server Error',
         );
-        expect(debugSpy).toHaveBeenCalledWith(
-          'Unable to parse scan response payload: parse error',
-        );
+        expect(debugSpy).toHaveBeenCalledWith('Unable to parse scan response payload: parse error');
       } finally {
         debugSpy.mockRestore();
       }

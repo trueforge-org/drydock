@@ -287,7 +287,7 @@ test('callback should fail with explicit message when callback state is missing'
   await oidc.callback(req, res);
 
   expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
-  expect401JsonMessage(res,'OIDC callback is missing state. Please retry authentication.');
+  expect401JsonMessage(res, 'OIDC callback is missing state. Please retry authentication.');
 });
 
 test('callback should return explicit error when oidc checks are missing', async () => {
@@ -299,7 +299,7 @@ test('callback should return explicit error when oidc checks are missing', async
   await oidc.callback(req, res);
 
   expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
-  expect401JsonMessage(res,'OIDC session is missing or expired. Please retry authentication.');
+  expect401JsonMessage(res, 'OIDC session is missing or expired. Please retry authentication.');
 });
 
 test('callback should authenticate using matching state when multiple auth redirects are pending', async () => {
@@ -379,7 +379,7 @@ test('callback should return explicit error when callback state does not match s
   await oidc.callback(req, res);
 
   expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
-  expect401JsonMessage(res,'OIDC session state mismatch or expired. Please retry authentication.');
+  expect401JsonMessage(res, 'OIDC session state mismatch or expired. Please retry authentication.');
 });
 
 test('callback should reject when pending check guard reports a missing entry', async () => {
@@ -389,12 +389,14 @@ test('callback should reject when pending check guard reports a missing entry', 
   const req = createCallbackReq('/auth/oidc/default/cb?code=abc&state=unknown-state', session);
   const res = createRes();
   const originalHasOwn = Object.hasOwn;
-  const hasOwnSpy = vi.spyOn(Object, 'hasOwn').mockImplementation((value: any, key: PropertyKey) => {
-    if (key === 'unknown-state') {
-      return true;
-    }
-    return originalHasOwn(value, key);
-  });
+  const hasOwnSpy = vi
+    .spyOn(Object, 'hasOwn')
+    .mockImplementation((value: any, key: PropertyKey) => {
+      if (key === 'unknown-state') {
+        return true;
+      }
+      return originalHasOwn(value, key);
+    });
 
   try {
     await oidc.callback(req, res);
@@ -403,7 +405,7 @@ test('callback should reject when pending check guard reports a missing entry', 
   }
 
   expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
-  expect401JsonMessage(res,'OIDC session state mismatch or expired. Please retry authentication.');
+  expect401JsonMessage(res, 'OIDC session state mismatch or expired. Please retry authentication.');
 });
 
 test('callback should reject malformed pending checks from session storage', async () => {
@@ -427,7 +429,7 @@ test('callback should reject malformed pending checks from session storage', asy
   await oidc.callback(req, res);
 
   expect(openidClientMock.authorizationCodeGrant).not.toHaveBeenCalled();
-  expect401JsonMessage(res,'OIDC session state mismatch or expired. Please retry authentication.');
+  expect401JsonMessage(res, 'OIDC session state mismatch or expired. Please retry authentication.');
 });
 
 test('callback should accept pending checks without numeric createdAt', async () => {

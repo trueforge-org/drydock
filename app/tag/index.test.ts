@@ -312,11 +312,9 @@ describe('transform', () => {
     });
 
     test('should return original tag when transform throws unexpectedly', async () => {
-      const replaceAllSpy = vi
-        .spyOn(String.prototype, 'replaceAll')
-        .mockImplementationOnce(() => {
-          throw new Error('replace failed');
-        });
+      const replaceAllSpy = vi.spyOn(String.prototype, 'replaceAll').mockImplementationOnce(() => {
+        throw new Error('replace failed');
+      });
 
       try {
         expect(semver.transform('^v(.+)$ => $1', 'v1.2.3')).toBe('v1.2.3');

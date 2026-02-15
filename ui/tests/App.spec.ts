@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
-import App from '@/App.vue';
 import { loadServerConfig, setupAuthStateManagement, setupEventBusListeners } from '@/App';
+import App from '@/App.vue';
 import { getServer } from '@/services/server';
 
 // Mock services
@@ -197,8 +197,7 @@ describe('App.vue', () => {
         },
         stubs: {
           'navigation-drawer': {
-            template:
-              '<div class="nav-drawer" @click="$emit(\'update:modelValue\', false)"></div>',
+            template: '<div class="nav-drawer" @click="$emit(\'update:modelValue\', false)"></div>',
             props: ['modelValue'],
             emits: ['update:modelValue'],
           },

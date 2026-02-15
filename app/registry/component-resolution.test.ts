@@ -62,9 +62,7 @@ describe('component-resolution', () => {
     const onError = vi.fn();
 
     expect(getAvailableProviders('triggers/providers', onError)).toEqual([]);
-    expect(onError).toHaveBeenCalledWith(
-      expect.stringContaining('cannot read as string'),
-    );
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('cannot read as string'));
   });
 
   test('resolveComponentModuleSpecifier should prefer .js files when available', () => {

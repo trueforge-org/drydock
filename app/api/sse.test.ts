@@ -208,7 +208,8 @@ describe('SSE Router', () => {
 
       sseRouter._broadcastScanCompleted('container-1', 'success');
 
-      var expected = 'event: dd:scan-completed\ndata: {"containerId":"container-1","status":"success"}\n\n';
+      var expected =
+        'event: dd:scan-completed\ndata: {"containerId":"container-1","status":"success"}\n\n';
       expect(res1.write).toHaveBeenCalledWith(expected);
       expect(res2.write).toHaveBeenCalledWith(expected);
     });
@@ -223,7 +224,8 @@ describe('SSE Router', () => {
 
       sseRouter._broadcastScanCompleted('container-1', 'error');
 
-      var expected = 'event: dd:scan-completed\ndata: {"containerId":"container-1","status":"error"}\n\n';
+      var expected =
+        'event: dd:scan-completed\ndata: {"containerId":"container-1","status":"error"}\n\n';
       expect(res.write).toHaveBeenCalledWith(expected);
     });
   });

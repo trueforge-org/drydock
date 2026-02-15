@@ -31,12 +31,7 @@ export default mergeConfig(
         reporter: ['text', 'lcov', 'html'],
         // Measure executable app logic; Vue SFC template render output produces non-actionable partial branches.
         include: ['src/**/*.{js,ts}'],
-        exclude: [
-          'src/main.ts',
-          'src/registerServiceWorker.ts',
-          '**/*.d.ts',
-          '**/node_modules/**',
-        ],
+        exclude: ['src/main.ts', 'src/registerServiceWorker.ts', '**/*.d.ts', '**/node_modules/**'],
         thresholds: {
           lines: 75,
           branches: 65,

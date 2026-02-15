@@ -33,7 +33,13 @@ vi.mock('node:child_process', async () => {
   };
 });
 
-import { _resetTrivyQueueForTesting, generateImageSbom, scanImageForVulnerabilities, verifyImageSignature } from './scan.js';
+import {
+  _resetTrivyQueueForTesting,
+  _setTrivyQueueRejectedForTesting,
+  generateImageSbom,
+  scanImageForVulnerabilities,
+  verifyImageSignature,
+} from './scan.js';
 
 function createEnabledConfiguration() {
   return {
@@ -371,7 +377,9 @@ test('generateImageSbom should generate configured formats', async () => {
   expect(result.documents['spdx-json']).toEqual(
     expect.objectContaining({ bomFormat: 'spdx-json' }),
   );
-  expect(result.documents['cyclonedx-json']).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx' }));
+  expect(result.documents['cyclonedx-json']).toEqual(
+    expect.objectContaining({ bomFormat: 'cyclonedx' }),
+  );
 });
 
 test('generateImageSbom should keep generated status when one format fails', async () => {
@@ -555,6 +563,18 @@ test('trivy queue should recover after a failed scan', async () => {
   expect(second.status).toBe('passed');
 });
 
+test('trivy queue should recover when previous queue tail is rejected', async () => {
+  _setTrivyQueueRejectedForTesting();
+  childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
+    callback(null, JSON.stringify({ Results: [] }), '');
+    return { exitCode: 0 };
+  };
+
+  const result = await scanImageForVulnerabilities({ image: 'img:rejected-tail' });
+
+  expect(result.status).toBe('passed');
+});
+
 // --- Branch coverage tests ---
 
 test('normalizeSeverity should fall back to UNKNOWN when severity is undefined', async () => {
@@ -562,7 +582,9 @@ test('normalizeSeverity should fall back to UNKNOWN when severity is undefined',
     callback(
       null,
       JSON.stringify({
-        Results: [{ Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: undefined }] }],
+        Results: [
+          { Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: undefined }] },
+        ],
       }),
       '',
     );
@@ -579,7 +601,9 @@ test('normalizeSeverity should fall back to UNKNOWN when severity is empty strin
     callback(
       null,
       JSON.stringify({
-        Results: [{ Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: '' }] }],
+        Results: [
+          { Target: 'app', Vulnerabilities: [{ VulnerabilityID: 'CVE-99', Severity: '' }] },
+        ],
       }),
       '',
     );
@@ -608,7 +632,9 @@ test('parseTrivyOutput should handle non-string Target', async () => {
     callback(
       null,
       JSON.stringify({
-        Results: [{ Target: 12345, Vulnerabilities: [{ VulnerabilityID: 'CVE-1', Severity: 'LOW' }] }],
+        Results: [
+          { Target: 12345, Vulnerabilities: [{ VulnerabilityID: 'CVE-1', Severity: 'LOW' }] },
+        ],
       }),
       '',
     );
@@ -623,11 +649,7 @@ test('parseTrivyOutput should handle non-string Target', async () => {
 
 test('parseTrivyOutput should handle missing Vulnerabilities array', async () => {
   childProcessControl.execFileImpl = (_command, _args, _options, callback) => {
-    callback(
-      null,
-      JSON.stringify({ Results: [{ Target: 'app' }] }),
-      '',
-    );
+    callback(null, JSON.stringify({ Results: [{ Target: 'app' }] }), '');
     return { exitCode: 0 };
   };
 
@@ -785,7 +807,9 @@ test('parseCosignSignaturesCount should return 1 for non-array JSON object', asy
 
 test('scanImageForVulnerabilities catch should handle error with no message property', async () => {
   // Throw a non-Error so catch receives something without .message
-  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+  childProcessControl.execFileImpl = () => {
+    throw 'bare string';
+  };
 
   const result = await scanImageForVulnerabilities({ image: 'img:test' });
 
@@ -794,7 +818,9 @@ test('scanImageForVulnerabilities catch should handle error with no message prop
 });
 
 test('verifyImageSignature catch should handle error with no message property', async () => {
-  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+  childProcessControl.execFileImpl = () => {
+    throw 'bare string';
+  };
 
   const result = await verifyImageSignature({ image: 'img:test' });
 
@@ -803,7 +829,9 @@ test('verifyImageSignature catch should handle error with no message property', 
 });
 
 test('generateImageSbom catch should handle error with no message property', async () => {
-  childProcessControl.execFileImpl = () => { throw 'bare string'; };
+  childProcessControl.execFileImpl = () => {
+    throw 'bare string';
+  };
 
   const result = await generateImageSbom({ image: 'img:test', formats: ['spdx-json'] });
 
@@ -814,7 +842,9 @@ test('generateImageSbom catch should handle error with no message property', asy
 
 test('generateImageSbom error join fallback when catch produces empty-looking messages', async () => {
   // Throw non-Error objects so error?.message is undefined -> fallback text is used
-  childProcessControl.execFileImpl = () => { throw null; };
+  childProcessControl.execFileImpl = () => {
+    throw null;
+  };
 
   const result = await generateImageSbom({ image: 'img:test', formats: ['spdx-json'] });
 

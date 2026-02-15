@@ -293,7 +293,8 @@ describe('getSecurityConfiguration', () => {
     configuration.ddEnvVars.DD_SECURITY_COSIGN_TIMEOUT = '45000';
     configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY = '/keys/cosign.pub';
     configuration.ddEnvVars.DD_SECURITY_COSIGN_IDENTITY = 'maintainer@example.com';
-    configuration.ddEnvVars.DD_SECURITY_COSIGN_ISSUER = 'https://token.actions.githubusercontent.com';
+    configuration.ddEnvVars.DD_SECURITY_COSIGN_ISSUER =
+      'https://token.actions.githubusercontent.com';
     configuration.ddEnvVars.DD_SECURITY_SBOM_ENABLED = 'true';
     configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS = 'cyclonedx-json,spdx-json,cyclonedx-json';
 

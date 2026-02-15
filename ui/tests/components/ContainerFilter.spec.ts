@@ -299,8 +299,7 @@ describe('ContainerFilter', () => {
       global: {
         stubs: {
           'v-chip': {
-            template:
-              '<span class="v-chip" @click="$emit(\'click:close\')"><slot /></span>',
+            template: '<span class="v-chip" @click="$emit(\'click:close\')"><slot /></span>',
             emits: ['click:close'],
           },
         },

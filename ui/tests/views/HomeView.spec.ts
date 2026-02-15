@@ -179,8 +179,7 @@ describe('HomeView', () => {
       global: {
         stubs: {
           'v-tabs': {
-            template:
-              '<div class="v-tabs" @click="$emit(\'update:modelValue\', 3)"><slot /></div>',
+            template: '<div class="v-tabs" @click="$emit(\'update:modelValue\', 3)"><slot /></div>',
             props: ['modelValue'],
             emits: ['update:modelValue'],
           },
