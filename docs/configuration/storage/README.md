@@ -10,7 +10,7 @@ If you want the state to persist after the container removal, you need to mount 
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     volumes:
       - /path-on-my-host:/store
@@ -22,6 +22,6 @@ services:
 docker run \
   -v /path-on-my-host:/store
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

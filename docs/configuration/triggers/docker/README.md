@@ -33,7 +33,7 @@ The trigger will:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_DOCKER_EXAMPLE_PRUNE=true
@@ -45,6 +45,6 @@ services:
 docker run \
   -e "DD_TRIGGER_DOCKER_EXAMPLE_PRUNE=true" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

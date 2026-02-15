@@ -31,7 +31,7 @@ The `pushover` trigger lets you send realtime notifications to your devices (And
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_PUSHOVER_1_TOKEN=*****************************
@@ -45,7 +45,7 @@ docker run \
   -e DD_TRIGGER_PUSHOVER_1_TOKEN="*****************************" \
   -e DD_TRIGGER_PUSHOVER_1_USER="******************************" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -56,7 +56,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_TRIGGER_PUSHOVER_1_TOKEN=*****************************
@@ -80,7 +80,7 @@ docker run \
     -e DD_TRIGGER_PUSHOVER_1_EXPIRE="600" \
     -e DD_TRIGGER_PUSHOVER_1_RETRY="60" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

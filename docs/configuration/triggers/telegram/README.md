@@ -24,7 +24,7 @@ The `telegram` trigger lets you send realtime notifications using [Telegram](htt
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_TELEGRAM_1_BOTTOKEN=0123456789:AApFzFLD0g0NVg8l0bZf55ex3sajC4Aw84Q
@@ -38,7 +38,7 @@ docker run \
   -e DD_TRIGGER_TELEGRAM_1_BOTTOKEN="0123456789:AApFzFLD0g0NVg8l0bZf55ex3sajC4Aw84Q" \
   -e DD_TRIGGER_TELEGRAM_1_CHATID="9876543210" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

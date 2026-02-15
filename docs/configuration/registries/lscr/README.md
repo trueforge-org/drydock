@@ -19,7 +19,7 @@ The `lscr` registry lets you configure [LSCR](https://fleet.linuxserver.io/) int
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_LSCR_PRIVATE_USERNAME=johndoe
@@ -33,7 +33,7 @@ docker run \
   -e DD_REGISTRY_LSCR_PRIVATE_USERNAME="johndoe" \
   -e DD_REGISTRY_LSCR_PRIVATE_TOKEN="xxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

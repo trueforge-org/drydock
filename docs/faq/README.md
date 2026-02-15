@@ -18,5 +18,5 @@ Add the `--security-opt seccomp=unconfined` option to your docker command
 Example
 
 ```bash
-docker run ... --security-opt seccomp=unconfined ghcr.io/codeswhat/drydock
+docker run ... --security-opt seccomp=unconfined codeswhat/drydock
 ```

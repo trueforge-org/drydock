@@ -27,7 +27,7 @@ The `ntfy` trigger lets you send container update notifications via [Ntfy](https
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_NTFY_THRESHOLD=minor
@@ -41,7 +41,7 @@ docker run \
   -e DD_TRIGGER_NTFY_THRESHOLD="minor" \
   -e DD_TRIGGER_NTFY_SH_TOPIC="xxxxyyyyzzzz" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -53,7 +53,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_NTFY_PRIVATE_URL=http://ntfy.local
@@ -71,6 +71,6 @@ docker run \
   -e DD_TRIGGER_NTFY_PRIVATE_AUTH_USER="john" \
   -e DD_TRIGGER_NTFY_PRIVATE_AUTH_PASSWORD="doe" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

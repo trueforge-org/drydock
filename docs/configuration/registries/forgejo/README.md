@@ -22,7 +22,7 @@ The `forgejo` registry lets you configure a self-hosted [Forgejo](https://forgej
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_FORGEJO_PRIVATE_URL=https://forgejo.acme.com
@@ -38,6 +38,6 @@ docker run \
   -e "DD_REGISTRY_FORGEJO_PRIVATE_LOGIN=john" \
   -e "DD_REGISTRY_FORGEJO_PRIVATE_PASSWORD=doe" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

@@ -36,7 +36,7 @@ The `mqtt` trigger lets you send container update notifications to an MQTT broke
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_MQTT_MOSQUITTO_URL=mqtt://localhost:1883
@@ -48,7 +48,7 @@ services:
 docker run \
     -e DD_TRIGGER_MQTT_MOSQUITTO_URL="mqtt://localhost:1883" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -60,7 +60,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_MQTT_MOSQUITTO_URL=mqtts://localhost:8883
@@ -82,7 +82,7 @@ docker run \
     -e DD_TRIGGER_MQTT_MOSQUITTO_TLS_CLIENTCERT="/drydock/mqtt/client-cert.pem" \
     -e DD_TRIGGER_MQTT_MOSQUITTO_TLS_CACHAIN="/drydock/mqtt/ca.pem" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -94,7 +94,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_MQTT_MAQIATTO_URL=tcp://maqiatto.com:1883
@@ -112,7 +112,7 @@ docker run \
     -e DD_TRIGGER_MQTT_MAQIATTO_PASSWORD="mysecretpassword" \
     -e DD_TRIGGER_MQTT_MAQIATTO_TOPIC="john@doe.com/drydock/image" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -151,7 +151,7 @@ drydock can be easily integrated into [Home-Assistant](https://www.home-assistan
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_MQTT_MOSQUITTO_URL=mqtt://localhost:1883
@@ -167,7 +167,7 @@ docker run \
     -e DD_TRIGGER_MQTT_MOSQUITTO_HASS_ENABLED="true" \
     -e DD_TRIGGER_MQTT_MOSQUITTO_HASS_DISCOVERY="true" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

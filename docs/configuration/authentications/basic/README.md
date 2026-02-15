@@ -24,7 +24,7 @@ Use single quotes in Bash commands \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_AUTH_BASIC_JOHN_USER=john
@@ -46,7 +46,7 @@ docker run \
   -e DD_AUTH_BASIC_BOB_USER="bob" \
   -e DD_AUTH_BASIC_BOB_HASH='{SHA}tjm75MZa6ep5tCaHAehlaoDJWxQ=' \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

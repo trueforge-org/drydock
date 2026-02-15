@@ -21,7 +21,7 @@ The `ghcr` registry lets you configure [GHCR](https://docs.github.com/en/package
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_GHCR_PRIVATE_USERNAME=john@doe
@@ -35,7 +35,7 @@ docker run \
   -e DD_REGISTRY_GHCR_PRIVATE_USERNAME="john@doe" \
   -e DD_REGISTRY_GHCR_PRIVATE_TOKEN="xxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

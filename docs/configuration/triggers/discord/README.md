@@ -24,7 +24,7 @@ The `discord` trigger lets you send realtime notifications using [Discord](https
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_DISCORD_1_URL=https://discord.com/api/webhooks/123/456
@@ -38,7 +38,7 @@ docker run \
   -e DD_TRIGGER_DISCORD_1_URL="https://discord.com/api/webhooks/123/456" \
   -e DD_TRIGGER_DISCORD_1_BOTUSERNAME="drydock" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

@@ -24,7 +24,7 @@ You can use it to configure health checks performed by your container orchestrat
 services:
 
   drydock:
-    image: ghcr.io/codeswhat/drydock:latest
+    image: codeswhat/drydock:latest
     ...
     healthcheck:
       test: curl --fail http://localhost:${DD_SERVER_PORT:-3000}/health || exit 1

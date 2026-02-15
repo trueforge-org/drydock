@@ -22,7 +22,7 @@ The `custom` registry lets you configure a self-hosted [Docker Registry](https:/
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_CUSTOM_PRIVATE_URL=http://localhost:5000
@@ -34,7 +34,7 @@ services:
 docker run \
   -e "DD_REGISTRY_CUSTOM_PRIVATE_URL=http://localhost:5000" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -45,7 +45,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_CUSTOM_PRIVATE_URL=http://localhost:5000
@@ -61,7 +61,7 @@ docker run \
   -e "DD_REGISTRY_CUSTOM_PRIVATE_LOGIN=john" \
   -e "DD_REGISTRY_CUSTOM_PRIVATE_PASSWORD=doe" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -72,7 +72,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_CUSTOM_PRIVATE1_URL=http://localhost:5000
@@ -94,6 +94,6 @@ docker run \
   -e "DD_REGISTRY_CUSTOM_PRIVATE2_LOGIN=jane" \
   -e "DD_REGISTRY_CUSTOM_PRIVATE2_PASSWORD=doe" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

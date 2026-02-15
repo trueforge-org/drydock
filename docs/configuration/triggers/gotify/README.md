@@ -32,7 +32,7 @@ The `gotify` trigger lets you send container update notifications via [Gotify](h
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_GOTIFY_LOCAL_URL=http://gotify.localhost
@@ -46,6 +46,6 @@ docker run \
   -e DD_TRIGGER_GOTIFY_LOCAL_URL="http://gotify.localhost" \
   -e DD_TRIGGER_GOTIFY_LOCAL_TOKEN="AWp8A.TbBO3xpn4" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

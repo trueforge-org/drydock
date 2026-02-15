@@ -24,7 +24,7 @@ The `docr` registry lets you configure [DigitalOcean Container Registry](https:/
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_DOCR_PRIVATE_TOKEN=dop_v1_xxxxxxxxxxxxx
@@ -36,7 +36,7 @@ services:
 docker run \
   -e "DD_REGISTRY_DOCR_PRIVATE_TOKEN=dop_v1_xxxxxxxxxxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -48,7 +48,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_DOCR_PRIVATE_LOGIN=doctl
@@ -62,7 +62,7 @@ docker run \
   -e "DD_REGISTRY_DOCR_PRIVATE_LOGIN=doctl" \
   -e "DD_REGISTRY_DOCR_PRIVATE_PASSWORD=dop_v1_xxxxxxxxxxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -86,5 +86,5 @@ use:
 docker run \
   -e "DD_REGISTRY_DOCR_PRIVATE_AUTH=ZG9jdGw6ZG9wX3YxX3h4eHh4eHh4eHh4" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```

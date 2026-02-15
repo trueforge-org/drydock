@@ -69,7 +69,7 @@ identity_providers:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_AUTH_OIDC_AUTHELIA_CLIENTID=my-drydock-client-id
@@ -85,7 +85,7 @@ docker run \
   -e DD_AUTH_OIDC_AUTHELIA_CLIENTSECRET="this-is-a-very-secure-secret" \
   -e DD_AUTH_OIDC_AUTHELIA_DISCOVERY="https://<your_authelia_public_domain>/.well-known/openid-configuration" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -108,7 +108,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_AUTH_OIDC_AUTH0_CLIENTID=<paste the Client ID from auth0 application settings>
@@ -124,7 +124,7 @@ docker run \
   -e DD_AUTH_OIDC_AUTH0_CLIENTSECRET="<paste the Client Secret from auth0 application settings>" \
   -e DD_AUTH_OIDC_AUTH0_DISCOVERY="https://<paste the domain from auth0 application settings>/.well-known/openid-configuration" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -159,7 +159,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_AUTH_OIDC_AUTHENTIK_CLIENTID=<paste the Client ID from authentik drydock_oidc provider>
@@ -177,6 +177,6 @@ docker run \
   -e DD_AUTH_OIDC_AUTHENTIK_DISCOVERY="<authentik_url>/application/o/<authentik_application_name>/.well-known/openid-configuration" \
   -e DD_AUTH_OIDC_AUTHENTIK_REDIRECT=true # optional (to skip internal login page) \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

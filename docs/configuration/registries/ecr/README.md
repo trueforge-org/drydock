@@ -21,7 +21,7 @@ The `ecr` registry lets you configure [ECR](https://aws.amazon.com/ecr/) integra
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_ECR_PRIVATE_ACCESSKEYID=xxx
@@ -37,7 +37,7 @@ docker run \
   -e DD_REGISTRY_ECR_PRIVATE_SECRETACCESSKEY="xxx" \
   -e DD_REGISTRY_ECR_PRIVATE_REGION="eu-west-1" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

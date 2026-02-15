@@ -24,7 +24,7 @@ The `slack` trigger lets you post image update notifications to a Slack channel.
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_TRIGGER_SLACK_TEST_TOKEN=xoxp-743817063446-xxx
@@ -38,6 +38,6 @@ docker run \
     -e DD_TRIGGER_SLACK_TEST_TOKEN="xoxp-743817063446-xxx" \
     -e DD_TRIGGER_SLACK_TEST_CHANNEL="drydock" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

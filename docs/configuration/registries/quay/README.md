@@ -22,7 +22,7 @@ The `quay` registry lets you configure [QUAY](https://quay.io/) integration.
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_QUAY_PRIVATE_NAMESPACE=mynamespace
@@ -38,7 +38,7 @@ docker run \
   -e DD_REGISTRY_QUAY_PRIVATE_ACCOUNT="myaccount" \
   -e DD_REGISTRY_QUAY_PRIVATE_TOKEN="BA8JI3Y2BWQDH849RYT3YD5J0J6CYEORYTQMMJK364B4P88VPTJIAI704L0BBP8D6CYE4P88V" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

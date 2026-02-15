@@ -52,7 +52,7 @@ Example using `group_add`:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     group_add:
       - "${COMPOSE_FILES_GID}"
     volumes:
@@ -71,7 +71,7 @@ services:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     volumes:
     - /etc/my-services/docker-compose.yml:/drydock/docker-compose.yml
@@ -86,7 +86,7 @@ docker run \
   -v /etc/my-services/docker-compose.yml:/drydock/docker-compose.yml
   -e "DD_TRIGGER_DOCKERCOMPOSE_EXAMPLE_FILE=/drydock/docker-compose.yml" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 
 ### **Label**

@@ -58,7 +58,7 @@ All implemented triggers, in addition to their specific configuration, also supp
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_SMTP_GMAIL_SIMPLETITLE=Container $${container.name} can be updated
@@ -72,6 +72,6 @@ docker run \
   -e 'DD_TRIGGER_SMTP_GMAIL_SIMPLETITLE=Container ${container.name} can be updated' \
   -e 'DD_TRIGGER_SMTP_GMAIL_SIMPLEBODY=Container ${name} can be updated from ${local.substring(0, 15)} to ${remote.substring(0, 15)}'
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

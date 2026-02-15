@@ -12,7 +12,7 @@ Using a socket proxy is the most secure way to expose the Docker API. The proxy 
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     container_name: drydock
     depends_on:
       - socket-proxy
@@ -43,7 +43,7 @@ The simplest setup — mount the Docker socket directly. Works out of the box on
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     container_name: drydock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -59,12 +59,12 @@ services:
 docker run -d --name drydock \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   -p 3000:3000 \
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
 ?> Please notice that this CE build is currently published on Github Container Registry \
-\- Github Container Registry: `ghcr.io/codeswhat/drydock`
+\- Github Container Registry: `codeswhat/drydock`
 
 ## Open the UI
 

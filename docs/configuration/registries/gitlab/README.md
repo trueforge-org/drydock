@@ -22,7 +22,7 @@ The `gitlab` registry lets you configure [GITLAB](https://docs.gitlab.com/ee/use
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_GITLAB_PUBLIC_TOKEN=xxxxx
@@ -34,7 +34,7 @@ services:
 docker run \
   -e DD_REGISTRY_GITLAB_PUBLIC_TOKEN="xxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -46,7 +46,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_GITLAB_PRIVATE_URL=https://registry.mygitlab.acme.com
@@ -62,7 +62,7 @@ docker run \
   -e DD_REGISTRY_GITLAB_PRIVATE_AUTHURL="https://mygitlab.acme.com"
   -e DD_REGISTRY_GITLAB_PRIVATE_TOKEN="xxxxx" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

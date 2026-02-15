@@ -88,7 +88,7 @@ watcher='local'
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_COMMAND_LOCAL_CMD=echo $${display_name} can be updated to $${update_kind_remote_value}
@@ -100,7 +100,7 @@ services:
 docker run \
   -e DD_TRIGGER_COMMAND_LOCAL_CMD=echo ${display_name} can be updated to ${update_kind_remote_value} \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -112,7 +112,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_TRIGGER_COMMAND_LOCAL_CMD=bash -c /drydock/trigger.sh
@@ -127,6 +127,6 @@ docker run \
   -e DD_TRIGGER_COMMAND_LOCAL_CMD=DD_TRIGGER_COMMAND_LOCAL_CMD=bash -c /drydock/trigger.sh \
   -v ${PWD}/drydock/trigger.sh:/drydock/trigger.sh
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

@@ -19,7 +19,7 @@ You can adjust the log level with env var DD_LOG_LEVEL.
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_LOG_LEVEL=debug
@@ -28,7 +28,7 @@ services:
 ### **Docker (Debug Level)**
 
 ```bash
-docker run -e DD_LOG_LEVEL=debug ... ghcr.io/codeswhat/drydock
+docker run -e DD_LOG_LEVEL=debug ... codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -38,7 +38,7 @@ docker run -e DD_LOG_LEVEL=debug ... ghcr.io/codeswhat/drydock
 ### **Docker (JSON Format)**
 
 ```bash
-docker run -e DD_LOG_FORMAT=json ... ghcr.io/codeswhat/drydock
+docker run -e DD_LOG_FORMAT=json ... codeswhat/drydock
 ```
 
 ### **Docker Compose (JSON Format)**
@@ -46,7 +46,7 @@ docker run -e DD_LOG_FORMAT=json ... ghcr.io/codeswhat/drydock
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_LOG_FORMAT=json

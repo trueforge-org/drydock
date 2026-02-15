@@ -69,7 +69,7 @@ services:
 
   # drydock self tracking :)
   drydock:
-    image: ghcr.io/codeswhat/drydock:latest
+    image: codeswhat/drydock:latest
     container_name: drydock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

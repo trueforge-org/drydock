@@ -29,7 +29,7 @@ The `kafka` trigger lets you publish container update notifications to a Kafka t
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_TRIGGER_KAFKA_KARAKFA_BROKERS=ark-01.srvs.cloudkafka.com:9094,ark-02.srvs.cloudkafka.com:9094,ark-03.srvs.cloudkafka.com:9094
@@ -51,7 +51,7 @@ docker run \
     -e DD_TRIGGER_KAFKA_KARAKFA_AUTHENTICATION_PASSWORD="my-secret" \
     -e DD_TRIGGER_KAFKA_KARAKFA_AUTHENTICATION_TYPE="SCRAM-SHA-256" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

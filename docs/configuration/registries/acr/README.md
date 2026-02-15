@@ -19,7 +19,7 @@ The `acr`registry lets you configure [ACR](https://azure.microsoft.com/services/
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_ACR_PRIVATE_CLIENTID=7c0195aa-112d-4ac3-be24-6664a13f3d2b
@@ -33,7 +33,7 @@ docker run \
   -e DD_REGISTRY_ACR_PRIVATE_CLIENTID=7c0195aa-112d-4ac3-be24-6664a13f3d2b \
   -e DD_REGISTRY_ACR_PRIVATE_CLIENTSECRET=SBgHNi3zA5K.f9.f9ft~_hpqbS~.pk.t_i \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

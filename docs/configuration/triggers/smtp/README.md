@@ -28,7 +28,7 @@ The `smtp` trigger lets you send emails with smtp.
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_TRIGGER_SMTP_GMAIL_HOST=smtp.gmail.com
@@ -52,7 +52,7 @@ docker run \
     -e DD_TRIGGER_SMTP_GMAIL_TO="jane.doe@gmail.com" \
     -e DD_TRIGGER_SMTP_GMAIL_TLS_ENABLED="true" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

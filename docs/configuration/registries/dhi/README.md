@@ -26,7 +26,7 @@ Supported credentials:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_DHI_PUBLIC_LOGIN=mydockerid
@@ -40,7 +40,7 @@ docker run \
   -e DD_REGISTRY_DHI_PUBLIC_LOGIN="mydockerid" \
   -e DD_REGISTRY_DHI_PUBLIC_PASSWORD="my-token-or-password" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -52,7 +52,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_DHI_PUBLIC_AUTH=bXlkb2NrZXJpZDpteS10b2tlbi1vci1wYXNzd29yZA==
@@ -64,6 +64,6 @@ services:
 docker run \
   -e DD_REGISTRY_DHI_PUBLIC_AUTH="bXlkb2NrZXJpZDpteS10b2tlbi1vci1wYXNzd29yZA==" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

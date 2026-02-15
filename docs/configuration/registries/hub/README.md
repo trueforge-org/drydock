@@ -43,7 +43,7 @@ Don't forget to configure authentication if you're using [Docker Hub Private Rep
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_HUB_PUBLIC_LOGIN=mylogin
@@ -57,7 +57,7 @@ docker run \
   -e DD_REGISTRY_HUB_PUBLIC_LOGIN="mylogin"
   -e DD_REGISTRY_HUB_PUBLIC_PASSWORD="fb4d5db9-e64d-3648-8846-74d0846e55de"
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -83,7 +83,7 @@ For example,
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_HUB_PUBLIC_AUTH=am9obmRvZToyYzFiZDg3Mi1lZmI2LTRmM2EtODFhYS03MjQ1MThhMGE1OTI=
@@ -95,6 +95,6 @@ services:
 docker run \
   -e DD_REGISTRY_HUB_PUBLIC_AUTH="am9obmRvZToyYzFiZDg3Mi1lZmI2LTRmM2EtODFhYS03MjQ1MThhMGE1OTI="
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

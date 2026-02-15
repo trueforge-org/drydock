@@ -65,7 +65,7 @@ If you face [quota related errors](https://docs.docker.com/docker-hub/download-r
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_WATCHER_LOCAL_CRON=0 1 * * *
@@ -77,7 +77,7 @@ services:
 docker run \
     -e DD_WATCHER_LOCAL_CRON="0 1 * * *" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -89,7 +89,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_WATCHER_LOCAL_WATCHALL=true
@@ -101,7 +101,7 @@ services:
 docker run \
     -e DD_WATCHER_LOCAL_WATCHALL="true" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -113,7 +113,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_WATCHER_MYREMOTEHOST_HOST=myremotehost
@@ -125,7 +125,7 @@ services:
 docker run \
     -e DD_WATCHER_MYREMOTEHOST_HOST="myremotehost" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -137,7 +137,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_WATCHER_MYREMOTEHOST_HOST=myremotehost
@@ -157,7 +157,7 @@ docker run \
     -e DD_WATCHER_MYREMOTEHOST_AUTH_TYPE="BEARER" \
     -e DD_WATCHER_MYREMOTEHOST_AUTH_BEARER="my-secret-token" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -169,7 +169,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         - DD_WATCHER_MYREMOTEHOST_HOST=myremotehost
@@ -196,7 +196,7 @@ docker run \
     -v /my-host/my-certs/ca.pem:/certs/cert.pem:ro \
     -v /my-host/my-certs/ca.pem:/certs/key.pem:ro \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -215,7 +215,7 @@ Set the `DD_RUN_AS_ROOT` environment variable to skip Drydock's privilege drop a
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
@@ -233,7 +233,7 @@ A socket proxy runs as a separate container with access to the Docker socket and
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     depends_on:
       - socket-proxy
     environment:
@@ -269,7 +269,7 @@ services:
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
         -  DD_WATCHER_LOCAL_SOCKET=/var/run/docker.sock
@@ -285,7 +285,7 @@ docker run \
     -e  DD_WATCHER_MYREMOTEHOST1_HOST="myremotehost1" \
     -e  DD_WATCHER_MYREMOTEHOST2_HOST="myremotehost2" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -318,7 +318,7 @@ Looking for ready-to-copy presets for common containers? See [Popular IMGSET Pre
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     environment:
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_IMAGE=ghcr.io/home-assistant/home-assistant
       - DD_WATCHER_LOCAL_IMGSET_HOMEASSISTANT_TAG_INCLUDE=^\\d+\\.\\d+\\.\\d+$$
@@ -361,7 +361,7 @@ Configure drydock to disable WATCHBYDEFAULT feature.
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_WATCHER_LOCAL_WATCHBYDEFAULT=false
@@ -373,7 +373,7 @@ services:
 docker run \
     -e DD_WATCHER_LOCAL_WATCHBYDEFAULT="false" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 

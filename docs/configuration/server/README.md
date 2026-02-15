@@ -27,7 +27,7 @@ You can adjust the server configuration with the following environment variables
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_SERVER_ENABLED=false
@@ -39,7 +39,7 @@ services:
 docker run \
   -e DD_SERVER_ENABLED=false \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -51,7 +51,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_SERVER_PORT=8080
@@ -63,7 +63,7 @@ services:
 docker run \
   -e DD_SERVER_PORT=8080 \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
 
@@ -75,7 +75,7 @@ docker run \
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_SERVER_TLS_ENABLED=true
@@ -91,6 +91,6 @@ docker run \
   -e "DD_SERVER_TLS_KEY=/drydock_certs/server.key" \
   -e "DD_SERVER_TLS_CERT=/drydock_certs/server.crt" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->

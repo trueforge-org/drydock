@@ -22,7 +22,7 @@ The `gitea` registry lets you configure a self-hosted [Gitea](https://gitea.com)
 ```yaml
 services:
   drydock:
-    image: ghcr.io/codeswhat/drydock
+    image: codeswhat/drydock
     ...
     environment:
       - DD_REGISTRY_GITEA_PRIVATE_URL=https://gitea.acme.com
@@ -38,6 +38,6 @@ docker run \
   -e "DD_REGISTRY_GITEA_PRIVATE_LOGIN=john" \
   -e "DD_REGISTRY_GITEA_PRIVATE_PASSWORD=doe" \
   ...
-  ghcr.io/codeswhat/drydock
+  codeswhat/drydock
 ```
 <!-- tabs:end -->
