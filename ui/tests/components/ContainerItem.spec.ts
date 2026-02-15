@@ -95,6 +95,15 @@ const BASE_SECURITY_SCAN = {
   vulnerabilities: [],
 };
 
+const BASE_SIGNATURE_VERIFICATION = {
+  verifier: 'cosign',
+  image: 'repo/image:1.1.0',
+  verifiedAt: '2026-01-10T12:00:00.000Z',
+  status: 'verified',
+  keyless: true,
+  signatures: 1,
+};
+
 const createContainer = (overrides: any = {}) => {
   const imageOverrides = overrides.image ?? {};
   const container: any = {
@@ -540,6 +549,80 @@ describe('ContainerItem', () => {
       `Scanned at ${new Date(passedScan.scannedAt).toLocaleString()}. Critical: 0, High: 0, Medium: 1, Low: 2, Unknown: 1`,
     );
     expect(wrapper.text()).toContain('safe');
+  });
+
+  it('shows no signature chip state when no verification is recorded', () => {
+    expect(wrapper.vm.signatureVerification).toBeUndefined();
+    expect(wrapper.vm.hasSignatureVerification).toBe(false);
+    expect(wrapper.vm.signatureChipColor).toBe('info');
+    expect(wrapper.vm.signatureChipLabel).toBe('no sig');
+    expect(wrapper.vm.signatureTooltipDescription).toBe('No signature verification result');
+  });
+
+  it('computes signature chip and tooltip for verified images', async () => {
+    await wrapper.setProps({
+      container: createContainer({
+        security: {
+          signature: BASE_SIGNATURE_VERIFICATION,
+        },
+      }),
+    });
+
+    expect(wrapper.vm.hasSignatureVerification).toBe(true);
+    expect(wrapper.vm.signatureChipColor).toBe('success');
+    expect(wrapper.vm.signatureChipLabel).toBe('signed');
+    expect(wrapper.vm.signatureTooltipDescription).toBe(
+      `Verified at ${new Date(BASE_SIGNATURE_VERIFICATION.verifiedAt).toLocaleString()}. 1 signature (keyless)`,
+    );
+    expect(wrapper.text()).toContain('signed');
+  });
+
+  it('computes signature chip and tooltip for unverified images', async () => {
+    const unverifiedSignature = {
+      ...BASE_SIGNATURE_VERIFICATION,
+      status: 'unverified',
+      keyless: false,
+      signatures: 0,
+      error: 'no matching signatures',
+    };
+    await wrapper.setProps({
+      container: createContainer({
+        security: {
+          signature: unverifiedSignature,
+        },
+      }),
+    });
+
+    expect(wrapper.vm.hasSignatureVerification).toBe(true);
+    expect(wrapper.vm.signatureChipColor).toBe('error');
+    expect(wrapper.vm.signatureChipLabel).toBe('unsigned');
+    expect(wrapper.vm.signatureTooltipDescription).toBe(
+      `No valid image signature found at ${new Date(unverifiedSignature.verifiedAt).toLocaleString()}: no matching signatures`,
+    );
+    expect(wrapper.text()).toContain('unsigned');
+  });
+
+  it('computes signature chip and tooltip for signature errors', async () => {
+    const errorSignature = {
+      ...BASE_SIGNATURE_VERIFICATION,
+      status: 'error',
+      error: 'cosign command failed',
+    };
+    await wrapper.setProps({
+      container: createContainer({
+        security: {
+          signature: errorSignature,
+        },
+      }),
+    });
+
+    expect(wrapper.vm.hasSignatureVerification).toBe(true);
+    expect(wrapper.vm.signatureChipColor).toBe('warning');
+    expect(wrapper.vm.signatureChipLabel).toBe('sig error');
+    expect(wrapper.vm.signatureTooltipDescription).toBe(
+      `Signature verification failed at ${new Date(errorSignature.verifiedAt).toLocaleString()}: cosign command failed`,
+    );
+    expect(wrapper.text()).toContain('sig error');
   });
 
   it('applies update policy and emits success notification', async () => {

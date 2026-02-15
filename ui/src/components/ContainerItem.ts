@@ -207,8 +207,14 @@ export default defineComponent({
     securityScan() {
       return this.container.security?.scan;
     },
+    signatureVerification() {
+      return this.container.security?.signature;
+    },
     hasSecurityScan() {
       return Boolean(this.securityScan?.scannedAt);
+    },
+    hasSignatureVerification() {
+      return Boolean(this.signatureVerification?.verifiedAt);
     },
     vulnerabilityChipColor() {
       const scanStatus = this.securityScan?.status;
@@ -257,6 +263,56 @@ export default defineComponent({
         return `Blocked at ${scannedAt}. Critical: ${critical}, High: ${high}, Medium: ${medium}, Low: ${low}, Unknown: ${unknown}`;
       }
       return `Scanned at ${scannedAt}. Critical: ${critical}, High: ${high}, Medium: ${medium}, Low: ${low}, Unknown: ${unknown}`;
+    },
+    signatureChipColor() {
+      const signatureStatus = this.signatureVerification?.status;
+      if (signatureStatus === 'unverified') {
+        return 'error';
+      }
+      if (signatureStatus === 'error') {
+        return 'warning';
+      }
+      if (signatureStatus === 'verified') {
+        return 'success';
+      }
+      return 'info';
+    },
+    signatureChipLabel() {
+      const signatureStatus = this.signatureVerification?.status;
+      if (signatureStatus === 'unverified') {
+        return 'unsigned';
+      }
+      if (signatureStatus === 'error') {
+        return 'sig error';
+      }
+      if (signatureStatus === 'verified') {
+        return 'signed';
+      }
+      return 'no sig';
+    },
+    signatureTooltipDescription() {
+      if (!this.hasSignatureVerification) {
+        return 'No signature verification result';
+      }
+      const verifiedAt = this.signatureVerification?.verifiedAt
+        ? this.$filters.dateTime(this.signatureVerification.verifiedAt)
+        : 'unknown';
+      const signatureStatus = this.signatureVerification?.status || 'unknown';
+      if (signatureStatus === 'error') {
+        return `Signature verification failed at ${verifiedAt}: ${
+          this.signatureVerification?.error || 'unknown error'
+        }`;
+      }
+      if (signatureStatus === 'unverified') {
+        return `No valid image signature found at ${verifiedAt}: ${
+          this.signatureVerification?.error || 'signature missing or invalid'
+        }`;
+      }
+      const signatures = this.signatureVerification?.signatures || 0;
+      const verificationMode = this.signatureVerification?.keyless ? 'keyless' : 'public-key';
+      return `Verified at ${verifiedAt}. ${signatures} signature${
+        signatures === 1 ? '' : 's'
+      } (${verificationMode})`;
     },
   },
 

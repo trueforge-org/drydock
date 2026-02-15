@@ -109,6 +109,25 @@
               <span class="text-caption">{{ vulnerabilityTooltipDescription }}</span>
             </v-tooltip>
           </span>
+          <span v-if="smAndUp && hasSignatureVerification" class="d-flex align-center">
+            <v-tooltip location="bottom">
+              <template v-slot:activator="{ props }">
+                <v-chip
+                  label
+                  size="x-small"
+                  variant="outlined"
+                  :color="signatureChipColor"
+                  :aria-label="signatureTooltipDescription"
+                  class="flex-shrink-0"
+                  v-bind="props"
+                >
+                  <v-icon start size="small">fas fa-certificate</v-icon>
+                  {{ signatureChipLabel }}
+                </v-chip>
+              </template>
+              <span class="text-caption">{{ signatureTooltipDescription }}</span>
+            </v-tooltip>
+          </span>
 
           <span
             v-if="smAndUp && oldestFirst"
