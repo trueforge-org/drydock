@@ -38,6 +38,7 @@
         <v-btn
           variant="text"
           size="small"
+          class="updates-toggle"
           @click="updateAvailableLocal = !updateAvailableLocal; emitUpdateAvailableChanged()"
         >
           <v-icon start size="small">{{ updateAvailableLocal ? 'fas fa-square-check' : 'far fa-square' }}</v-icon>
@@ -187,6 +188,14 @@
 
   .filter-toolbar {
     flex-wrap: wrap;
+  }
+
+  .filter-actions {
+    width: 100%;
+  }
+
+  .updates-toggle {
+    margin-left: auto;
   }
 }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <v-container class="dashboard-container">
     <!-- Row 1: Stat cards -->
-    <v-row class="mb-2">
+    <v-row class="mb-2 stat-row">
       <v-col cols="12" sm="6" md="3">
         <v-card elevation="1" class="stat-card" to="/containers" rounded="lg">
           <div class="d-flex align-center pa-4" style="gap: 14px">
@@ -298,9 +298,21 @@
 }
 
 @media (max-width: 599px) {
-  .dashboard-container .v-row > .v-col {
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
+  .dashboard-container {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .stat-row {
+    margin: -5px -8px !important;
+  }
+
+  .stat-row > [class*="v-col"] {
+    padding: 5px 8px !important;
+  }
+
+  .stat-card .d-flex.pa-4 {
+    padding: 10px 12px !important;
   }
 }
 
