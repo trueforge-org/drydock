@@ -1,13 +1,17 @@
 import { execFile } from 'node:child_process';
 import {
   getSecurityConfiguration,
+  SECURITY_SBOM_FORMAT_VALUES as SECURITY_SBOM_FORMATS,
   SECURITY_SEVERITY_VALUES as SECURITY_SEVERITIES,
+  type SecuritySbomFormat,
   type SecuritySeverity,
 } from '../configuration/index.js';
 import log from '../log/index.js';
 
-export { SECURITY_SEVERITIES, type SecuritySeverity };
+export { SECURITY_SEVERITIES, SECURITY_SBOM_FORMATS, type SecuritySeverity, type SecuritySbomFormat };
 export type SecurityScanStatus = 'passed' | 'blocked' | 'error';
+export type SecuritySignatureStatus = 'verified' | 'unverified' | 'error';
+export type SecuritySbomStatus = 'generated' | 'error';
 
 export interface ContainerVulnerabilitySummary {
   unknown: number;
@@ -40,12 +44,36 @@ export interface ContainerSecurityScan {
   error?: string;
 }
 
+export interface ContainerSignatureVerification {
+  verifier: 'cosign';
+  image: string;
+  verifiedAt: string;
+  status: SecuritySignatureStatus;
+  keyless: boolean;
+  signatures: number;
+  error?: string;
+}
+
+export interface ContainerSecuritySbom {
+  generator: 'trivy';
+  image: string;
+  generatedAt: string;
+  status: SecuritySbomStatus;
+  formats: SecuritySbomFormat[];
+  documents: Partial<Record<SecuritySbomFormat, unknown>>;
+  error?: string;
+}
+
 export interface ScanImageOptions {
   image: string;
   auth?: {
     username?: string;
     password?: string;
   };
+}
+
+interface GenerateSbomOptions extends ScanImageOptions {
+  formats?: SecuritySbomFormat[];
 }
 
 interface TrivyRawVulnerability {
@@ -68,7 +96,14 @@ interface TrivyRawOutput {
 }
 
 const MAX_TRIVY_OUTPUT_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_COSIGN_OUTPUT_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_STORED_VULNERABILITIES = 500;
+const COSIGN_UNVERIFIED_PATTERNS = [
+  'no matching signatures',
+  'no signatures found',
+  'signature verification failed',
+  'invalid signature',
+];
 
 function createEmptySummary(): ContainerVulnerabilitySummary {
   return {
@@ -131,49 +166,31 @@ function parseTrivyOutput(trivyOutput: string): ContainerVulnerability[] {
   return vulnerabilities;
 }
 
+function parseJsonOutput(value: string): unknown {
+  return JSON.parse(value);
+}
+
 function toTrivyTimeout(durationMs: number) {
   const timeoutSeconds = Math.max(1, Math.ceil(durationMs / 1000));
   return `${timeoutSeconds}s`;
 }
 
-function runTrivyCommand(
-  options: ScanImageOptions,
-  configuration: ReturnType<typeof getSecurityConfiguration>,
-): Promise<string> {
-  const trivyCommand = configuration.trivy.command || 'trivy';
-  const args = [
-    'image',
-    '--quiet',
-    '--format',
-    'json',
-    '--scanners',
-    'vuln',
-    '--severity',
-    SECURITY_SEVERITIES.join(','),
-    '--timeout',
-    toTrivyTimeout(configuration.trivy.timeout),
-  ];
-
-  if (configuration.trivy.server) {
-    args.push('--server', configuration.trivy.server);
-  }
-
-  args.push(options.image);
-
-  const env = { ...process.env };
-  if (options.auth?.password !== undefined) {
-    env.TRIVY_USERNAME = options.auth.username ?? '';
-    env.TRIVY_PASSWORD = options.auth.password;
-  }
-
+function runCommand(options: {
+  command: string;
+  args: string[];
+  timeout: number;
+  maxBuffer: number;
+  env?: NodeJS.ProcessEnv;
+  commandName: string;
+}): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
-      trivyCommand,
-      args,
+      options.command,
+      options.args,
       {
-        maxBuffer: MAX_TRIVY_OUTPUT_BYTES,
-        timeout: configuration.trivy.timeout,
-        env,
+        maxBuffer: options.maxBuffer,
+        timeout: options.timeout,
+        env: options.env || process.env,
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -181,13 +198,117 @@ function runTrivyCommand(
           const stderrValue = `${stderr || ''}`.trim();
           const errorMessage = stderrValue || error.message;
           reject(
-            new Error(`Trivy command failed (exit=${exitCode}): ${errorMessage || 'unknown error'}`),
+            new Error(
+              `${options.commandName} command failed (exit=${exitCode}): ${
+                errorMessage || 'unknown error'
+              }`,
+            ),
           );
           return;
         }
         resolve(`${stdout || ''}`);
       },
     );
+  });
+}
+
+function buildTrivyEnvironment(options: ScanImageOptions) {
+  const env = { ...process.env };
+  if (options.auth?.password !== undefined) {
+    env.TRIVY_USERNAME = options.auth.username ?? '';
+    env.TRIVY_PASSWORD = options.auth.password;
+  }
+  return env;
+}
+
+function buildTrivyArgs(
+  configuration: ReturnType<typeof getSecurityConfiguration>,
+  outputFormat: 'json' | SecuritySbomFormat,
+) {
+  const args = [
+    'image',
+    '--quiet',
+    '--format',
+    outputFormat,
+    '--timeout',
+    toTrivyTimeout(configuration.trivy.timeout),
+  ];
+
+  if (outputFormat === 'json') {
+    args.push('--scanners', 'vuln', '--severity', SECURITY_SEVERITIES.join(','));
+  }
+
+  if (configuration.trivy.server) {
+    args.push('--server', configuration.trivy.server);
+  }
+
+  return args;
+}
+
+function runTrivyVulnerabilityCommand(
+  options: ScanImageOptions,
+  configuration: ReturnType<typeof getSecurityConfiguration>,
+): Promise<string> {
+  const trivyCommand = configuration.trivy.command || 'trivy';
+  const args = [...buildTrivyArgs(configuration, 'json'), options.image];
+
+  return runCommand({
+    command: trivyCommand,
+    args,
+    timeout: configuration.trivy.timeout,
+    maxBuffer: MAX_TRIVY_OUTPUT_BYTES,
+    env: buildTrivyEnvironment(options),
+    commandName: 'Trivy',
+  });
+}
+
+function runTrivySbomCommand(
+  options: ScanImageOptions,
+  configuration: ReturnType<typeof getSecurityConfiguration>,
+  format: SecuritySbomFormat,
+): Promise<string> {
+  const trivyCommand = configuration.trivy.command || 'trivy';
+  const args = [...buildTrivyArgs(configuration, format), options.image];
+
+  return runCommand({
+    command: trivyCommand,
+    args,
+    timeout: configuration.trivy.timeout,
+    maxBuffer: MAX_TRIVY_OUTPUT_BYTES,
+    env: buildTrivyEnvironment(options),
+    commandName: 'Trivy',
+  });
+}
+
+function runCosignVerifyCommand(
+  options: ScanImageOptions,
+  configuration: ReturnType<typeof getSecurityConfiguration>,
+): Promise<string> {
+  const cosignCommand = configuration.signature.cosign.command || 'cosign';
+  const args = ['verify', '--output', 'json'];
+  if (configuration.signature.cosign.key) {
+    args.push('--key', configuration.signature.cosign.key);
+  }
+  if (configuration.signature.cosign.identity) {
+    args.push('--certificate-identity', configuration.signature.cosign.identity);
+  }
+  if (configuration.signature.cosign.issuer) {
+    args.push('--certificate-oidc-issuer', configuration.signature.cosign.issuer);
+  }
+  if (options.auth?.username) {
+    args.push('--registry-username', options.auth.username);
+  }
+  if (options.auth?.password) {
+    args.push('--registry-password', options.auth.password);
+  }
+  args.push(options.image);
+
+  return runCommand({
+    command: cosignCommand,
+    args,
+    timeout: configuration.signature.cosign.timeout,
+    maxBuffer: MAX_COSIGN_OUTPUT_BYTES,
+    commandName: 'Cosign',
   });
 }
 
@@ -217,6 +338,98 @@ function mapToErrorResult(
   };
 }
 
+function mapToSignatureResult(
+  image: string,
+  configuration: ReturnType<typeof getSecurityConfiguration>,
+  status: SecuritySignatureStatus,
+  signatures = 0,
+  error?: string,
+): ContainerSignatureVerification {
+  return {
+    verifier: 'cosign',
+    image,
+    verifiedAt: new Date().toISOString(),
+    status,
+    keyless: configuration.signature.cosign.key === '',
+    signatures,
+    ...(error ? { error } : {}),
+  };
+}
+
+function mapToSbomErrorResult(
+  image: string,
+  formats: SecuritySbomFormat[],
+  errorMessage: string,
+): ContainerSecuritySbom {
+  return {
+    generator: 'trivy',
+    image,
+    generatedAt: new Date().toISOString(),
+    status: 'error',
+    formats,
+    documents: {},
+    error: errorMessage,
+  };
+}
+
+function resolveSbomFormats(
+  requestedFormats: SecuritySbomFormat[] | undefined,
+  configuredFormats: SecuritySbomFormat[],
+): SecuritySbomFormat[] {
+  const source = Array.isArray(requestedFormats) && requestedFormats.length > 0
+    ? requestedFormats
+    : configuredFormats;
+  const deduplicated = Array.from(new Set(source));
+  const validFormats = deduplicated.filter((format): format is SecuritySbomFormat =>
+    SECURITY_SBOM_FORMATS.includes(format as SecuritySbomFormat),
+  );
+  if (validFormats.length > 0) {
+    return validFormats;
+  }
+  return ['spdx-json'];
+}
+
+function parseCosignSignaturesCount(rawOutput: string): number {
+  const output = rawOutput.trim();
+  if (output === '') {
+    return 0;
+  }
+
+  try {
+    const parsed = parseJsonOutput(output);
+    if (Array.isArray(parsed)) {
+      return parsed.length;
+    }
+    if (parsed && typeof parsed === 'object') {
+      return 1;
+    }
+  } catch {
+    // Cosign can emit JSON objects per line; parse line by line as a fallback.
+  }
+
+  const lines = output.split('\n').map((line) => line.trim()).filter(Boolean);
+  let signaturesCount = 0;
+  lines.forEach((line) => {
+    try {
+      const parsed = parseJsonOutput(line);
+      if (parsed && typeof parsed === 'object') {
+        signaturesCount += 1;
+      }
+    } catch {
+      // Ignore malformed lines and keep the successful count.
+    }
+  });
+  return signaturesCount;
+}
+
+function classifyCosignFailure(errorMessage: string): SecuritySignatureStatus {
+  const normalizedMessage = errorMessage.toLowerCase();
+  if (COSIGN_UNVERIFIED_PATTERNS.some((pattern) => normalizedMessage.includes(pattern))) {
+    return 'unverified';
+  }
+  return 'error';
+}
+
 /**
  * Run vulnerability scan for an image using the configured scanner.
  * Currently supports Trivy only.
@@ -242,7 +455,7 @@ export async function scanImageForVulnerabilities(
   });
 
   try {
-    const trivyOutput = await runTrivyCommand(options, configuration);
+    const trivyOutput = await runTrivyVulnerabilityCommand(options, configuration);
     const vulnerabilities = parseTrivyOutput(trivyOutput);
     const blockingCount = getBlockingCount(vulnerabilities, blockSeverities);
     const summary = buildSummary(vulnerabilities);
@@ -269,3 +482,101 @@ export async function scanImageForVulnerabilities(
   }
 }
 
+/**
+ * Verify image signatures with cosign.
+ * Returns `unverified` when signatures are missing or invalid,
+ * and `error` when the verification process itself fails.
+ */
+export async function verifyImageSignature(
+  options: ScanImageOptions,
+): Promise<ContainerSignatureVerification> {
+  const configuration = getSecurityConfiguration();
+  if (!configuration.signature.verify) {
+    return mapToSignatureResult(
+      options.image,
+      configuration,
+      'error',
+      0,
+      'Signature verification is disabled',
+    );
+  }
+
+  const logSecurity = log.child({
+    component: 'security.signature',
+    verifier: 'cosign',
+    image: options.image,
+  });
+
+  try {
+    const cosignOutput = await runCosignVerifyCommand(options, configuration);
+    const signatures = parseCosignSignaturesCount(cosignOutput);
+    const signaturesCount = signatures > 0 ? signatures : 1;
+    logSecurity.info(`Signature verification passed (${signaturesCount} signatures)`);
+    return mapToSignatureResult(options.image, configuration, 'verified', signaturesCount);
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown signature verification error';
+    const status = classifyCosignFailure(errorMessage);
+    logSecurity.warn(`Signature verification ${status} (${errorMessage})`);
+    return mapToSignatureResult(options.image, configuration, status, 0, errorMessage);
+  }
+}
+
+/**
+ * Generate SBOM documents using Trivy.
+ * Supported formats: spdx-json, cyclonedx.
+ */
+export async function generateImageSbom(
+  options: GenerateSbomOptions,
+): Promise<ContainerSecuritySbom> {
+  const configuration = getSecurityConfiguration();
+  const formats = resolveSbomFormats(options.formats, configuration.sbom.formats);
+
+  if (!configuration.enabled || configuration.scanner !== 'trivy') {
+    return mapToSbomErrorResult(options.image, formats, 'Security scanner is disabled or misconfigured');
+  }
+
+  const logSecurity = log.child({
+    component: 'security.sbom',
+    generator: 'trivy',
+    image: options.image,
+    formats: formats.join(','),
+  });
+
+  const generatedDocuments: Partial<Record<SecuritySbomFormat, unknown>> = {};
+  const generatedFormats: SecuritySbomFormat[] = [];
+  const errors: string[] = [];
+
+  for (const format of formats) {
+    try {
+      const sbomOutput = await runTrivySbomCommand(options, configuration, format);
+      generatedDocuments[format] = parseJsonOutput(sbomOutput);
+      generatedFormats.push(format);
+    } catch (error: any) {
+      errors.push(`${format}: ${error?.message || 'Unknown SBOM generation error'}`);
+    }
+  }
+
+  if (generatedFormats.length === 0) {
+    const errorMessage = errors.join('; ') || 'SBOM generation failed';
+    logSecurity.warn(errorMessage);
+    return mapToSbomErrorResult(options.image, formats, errorMessage);
+  }
+
+  const sbomResult: ContainerSecuritySbom = {
+    generator: 'trivy',
+    image: options.image,
+    generatedAt: new Date().toISOString(),
+    status: 'generated',
+    formats: generatedFormats,
+    documents: generatedDocuments,
+  };
+
+  if (errors.length > 0) {
+    sbomResult.error = errors.join('; ');
+    logSecurity.warn(`SBOM generation partially failed (${sbomResult.error})`);
+  } else {
+    logSecurity.info(`SBOM generation finished (${generatedFormats.join(', ')})`);
+  }
+
+  return sbomResult;
+}

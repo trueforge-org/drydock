@@ -4,6 +4,7 @@ import { createMockResponse } from '../test/helpers.js';
 const { mockRouter } = vi.hoisted(() => ({
   mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn(), delete: vi.fn(), patch: vi.fn() },
 }));
+const mockGenerateImageSbom = vi.hoisted(() => vi.fn());
 
 vi.mock('express', () => ({
   default: { Router: vi.fn(() => mockRouter) },
@@ -33,6 +34,11 @@ vi.mock('../configuration', () => ({
 
 vi.mock('./component', () => ({
   mapComponentsToList: vi.fn(() => []),
+}));
+
+vi.mock('../security/scan', () => ({
+  generateImageSbom: (...args: unknown[]) => mockGenerateImageSbom(...args),
+  SECURITY_SBOM_FORMATS: ['spdx-json', 'cyclonedx'],
 }));
 
 vi.mock('../triggers/providers/Trigger', () => ({
@@ -134,6 +140,16 @@ function getUpdatedPolicy() {
 describe('Container Router', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockGenerateImageSbom.mockResolvedValue({
+      generator: 'trivy',
+      image: 'registry.example.com/test/app:1.2.3',
+      generatedAt: '2026-02-15T12:00:00.000Z',
+      status: 'generated',
+      formats: ['spdx-json'],
+      documents: {
+        'spdx-json': { SPDXID: 'SPDXRef-DOCUMENT' },
+      },
+    });
   });
 
   describe('init', () => {
@@ -156,6 +172,7 @@ describe('Container Router', () => {
       expect(router.patch).toHaveBeenCalledWith('/:id/update-policy', expect.any(Function));
       expect(router.post).toHaveBeenCalledWith('/:id/watch', expect.any(Function));
       expect(router.get).toHaveBeenCalledWith('/:id/vulnerabilities', expect.any(Function));
+      expect(router.get).toHaveBeenCalledWith('/:id/sbom', expect.any(Function));
       expect(router.get).toHaveBeenCalledWith('/:id/logs', expect.any(Function));
     });
   });
@@ -243,6 +260,206 @@ describe('Container Router', () => {
       handler({ params: { id: 'c1' } }, res);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(scan);
+    });
+  });
+
+  describe('getContainerSbom', () => {
+    test('should return 404 when container not found', async () => {
+      storeContainer.getContainer.mockReturnValue(undefined);
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'missing' }, query: {} }, res);
+      expect(res.sendStatus).toHaveBeenCalledWith(404);
+    });
+
+    test('should return 400 for unsupported sbom format', async () => {
+      storeContainer.getContainer.mockReturnValue({ id: 'c1' });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: { format: 'foo' } }, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Unsupported SBOM format'),
+        }),
+      );
+    });
+
+    test('should return existing sbom document when available in container security state', async () => {
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        security: {
+          sbom: {
+            generator: 'trivy',
+            image: 'registry.example.com/test/app:1.2.3',
+            generatedAt: '2026-02-15T12:00:00.000Z',
+            status: 'generated',
+            formats: ['spdx-json'],
+            documents: {
+              'spdx-json': { SPDXID: 'SPDXRef-DOCUMENT' },
+            },
+          },
+        },
+      });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: {} }, res);
+      expect(mockGenerateImageSbom).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          format: 'spdx-json',
+          document: { SPDXID: 'SPDXRef-DOCUMENT' },
+        }),
+      );
+    });
+
+    test('should generate and persist sbom when not cached', async () => {
+      registry.getState.mockReturnValue({
+        watcher: {},
+        trigger: {},
+        registry: {
+          hub: {
+            getImageFullName: vi.fn(() => 'my-registry/test/app:1.2.3'),
+            getAuthPull: vi.fn(async () => ({ username: 'user', password: 'token' })),
+          },
+        },
+      });
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        image: {
+          registry: { name: 'hub', url: 'my-registry' },
+          name: 'test/app',
+          tag: { value: '1.2.3' },
+        },
+        security: {},
+      });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: { format: 'spdx-json' } }, res);
+      expect(mockGenerateImageSbom).toHaveBeenCalledWith(
+        expect.objectContaining({
+          image: 'my-registry/test/app:1.2.3',
+          auth: { username: 'user', password: 'token' },
+          formats: ['spdx-json'],
+        }),
+      );
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          security: expect.objectContaining({
+            sbom: expect.objectContaining({
+              status: 'generated',
+            }),
+          }),
+        }),
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('should return 500 when generated sbom is invalid', async () => {
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        image: {
+          registry: { name: 'hub', url: 'my-registry' },
+          name: 'test/app',
+          tag: { value: '1.2.3' },
+        },
+      });
+      mockGenerateImageSbom.mockResolvedValue({
+        generator: 'trivy',
+        image: 'my-registry/test/app:1.2.3',
+        generatedAt: '2026-02-15T12:00:00.000Z',
+        status: 'error',
+        formats: ['spdx-json'],
+        documents: {},
+        error: 'scanner unavailable',
+      });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: {} }, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('scanner unavailable'),
+        }),
+      );
+    });
+
+    test('should fallback to composed image name when registry helper is missing', async () => {
+      registry.getState.mockReturnValue({
+        watcher: {},
+        trigger: {},
+        registry: {},
+      });
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        image: {
+          registry: { name: 'hub', url: 'fallback-registry' },
+          name: 'test/app',
+          tag: { value: '1.2.3' },
+        },
+      });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: {} }, res);
+      expect(mockGenerateImageSbom).toHaveBeenCalledWith(
+        expect.objectContaining({
+          image: 'fallback-registry/test/app:1.2.3',
+        }),
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('should continue sbom generation when registry auth lookup throws', async () => {
+      registry.getState.mockReturnValue({
+        watcher: {},
+        trigger: {},
+        registry: {
+          hub: {
+            getAuthPull: vi.fn(async () => {
+              throw new Error('auth lookup failed');
+            }),
+          },
+        },
+      });
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        image: {
+          registry: { name: 'hub', url: 'fallback-registry' },
+          name: 'test/app',
+          tag: { value: '1.2.3' },
+        },
+      });
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: {} }, res);
+      expect(mockGenerateImageSbom).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auth: undefined,
+        }),
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('should return 500 when sbom generation throws', async () => {
+      storeContainer.getContainer.mockReturnValue({
+        id: 'c1',
+        image: {
+          registry: { name: 'hub', url: 'my-registry' },
+          name: 'test/app',
+          tag: { value: '1.2.3' },
+        },
+      });
+      mockGenerateImageSbom.mockRejectedValue(new Error('generator crashed'));
+      const handler = getHandler('get', '/:id/sbom');
+      const res = createResponse();
+      await handler({ params: { id: 'c1' }, query: {} }, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('generator crashed'),
+        }),
+      );
     });
   });
 

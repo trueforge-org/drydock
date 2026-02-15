@@ -1,7 +1,11 @@
 import { flatten as flat } from 'flat';
 import joi from 'joi';
 import { snakeCase } from 'snake-case';
-import type { ContainerSecurityScan } from '../security/scan.js';
+import type {
+  ContainerSecuritySbom,
+  ContainerSecurityScan,
+  ContainerSignatureVerification,
+} from '../security/scan.js';
 import * as tag from '../tag/index.js';
 
 const { parse: parseSemver, diff: diffSemver, transform: transformTag } = tag;
@@ -52,6 +56,8 @@ export interface ContainerUpdatePolicy {
 
 export interface ContainerSecurityState {
   scan?: ContainerSecurityScan;
+  signature?: ContainerSignatureVerification;
+  sbom?: ContainerSecuritySbom;
 }
 
 export interface Container {
@@ -143,6 +149,24 @@ const schema = joi.object({
           }),
         )
         .required(),
+      error: joi.string(),
+    }),
+    signature: joi.object({
+      verifier: joi.string().valid('cosign').required(),
+      image: joi.string().required(),
+      verifiedAt: joi.string().isoDate().required(),
+      status: joi.string().valid('verified', 'unverified', 'error').required(),
+      keyless: joi.boolean().required(),
+      signatures: joi.number().integer().min(0).required(),
+      error: joi.string(),
+    }),
+    sbom: joi.object({
+      generator: joi.string().valid('trivy').required(),
+      image: joi.string().required(),
+      generatedAt: joi.string().isoDate().required(),
+      status: joi.string().valid('generated', 'error').required(),
+      formats: joi.array().items(joi.string().valid('spdx-json', 'cyclonedx')).required(),
+      documents: joi.object().required(),
       error: joi.string(),
     }),
   }),

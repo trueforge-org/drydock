@@ -16,7 +16,9 @@ vi.mock('../configuration/index.js', async () => {
   };
 });
 
-vi.mock('../log/index.js', () => ({ default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) } }));
+vi.mock('../log/index.js', () => ({
+  default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
+}));
 
 vi.mock('node:child_process', async () => {
   const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
@@ -31,7 +33,7 @@ vi.mock('node:child_process', async () => {
   };
 });
 
-import { scanImageForVulnerabilities } from './scan.js';
+import { generateImageSbom, scanImageForVulnerabilities, verifyImageSignature } from './scan.js';
 
 function createEnabledConfiguration() {
   return {
@@ -42,6 +44,20 @@ function createEnabledConfiguration() {
       server: '',
       command: 'trivy',
       timeout: 120000,
+    },
+    signature: {
+      verify: true,
+      cosign: {
+        command: 'cosign',
+        timeout: 60000,
+        key: '',
+        identity: '',
+        issuer: '',
+      },
+    },
+    sbom: {
+      enabled: true,
+      formats: ['spdx-json'],
     },
   };
 }
@@ -144,13 +160,7 @@ test('scanImageForVulnerabilities should parse trivy output and block by severit
   );
   expect(execFileMock).toHaveBeenCalledWith(
     'trivy',
-    expect.arrayContaining([
-      'image',
-      '--format',
-      'json',
-      '--server',
-      'http://trivy:4954',
-    ]),
+    expect.arrayContaining(['image', '--format', 'json', '--server', 'http://trivy:4954']),
     expect.objectContaining({
       env: expect.objectContaining({
         TRIVY_USERNAME: 'user',
@@ -178,4 +188,253 @@ test('scanImageForVulnerabilities should return error result when trivy command 
 
   expect(scanResult.status).toBe('error');
   expect(scanResult.error).toContain('failed to scan');
+});
+
+test('verifyImageSignature should return error when disabled', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    signature: {
+      verify: false,
+      cosign: {
+        command: 'cosign',
+        timeout: 60000,
+        key: '',
+        identity: '',
+        issuer: '',
+      },
+    },
+  });
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toContain('disabled');
+});
+
+test('verifyImageSignature should return verified when cosign succeeds', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    signature: {
+      verify: true,
+      cosign: {
+        command: 'cosign',
+        timeout: 60000,
+        key: '/keys/cosign.pub',
+        identity: 'maintainer@example.com',
+        issuer: 'https://token.actions.githubusercontent.com',
+      },
+    },
+  });
+  const execFileMock = vi.fn((command, args, options, callback) => {
+    callback(null, '{"critical":{"identity":{"docker-reference":"x"}}}', '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  const result = await verifyImageSignature({
+    image: 'registry.example.com/app:1.2.3',
+    auth: {
+      username: 'user',
+      password: 'token',
+    },
+  });
+
+  expect(result.status).toBe('verified');
+  expect(result.signatures).toBe(1);
+  expect(execFileMock).toHaveBeenCalledWith(
+    'cosign',
+    expect.arrayContaining([
+      'verify',
+      '--output',
+      'json',
+      '--key',
+      '/keys/cosign.pub',
+      '--certificate-identity',
+      'maintainer@example.com',
+      '--certificate-oidc-issuer',
+      'https://token.actions.githubusercontent.com',
+      '--registry-username',
+      'user',
+      '--registry-password',
+      'token',
+      'registry.example.com/app:1.2.3',
+    ]),
+    expect.any(Object),
+    expect.any(Function),
+  );
+});
+
+test('verifyImageSignature should parse cosign json array output', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    callback(null, '[{"sig":1},{"sig":2}]', '');
+    return { exitCode: 0 };
+  };
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('verified');
+  expect(result.signatures).toBe(2);
+});
+
+test('verifyImageSignature should parse line-delimited cosign output', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    callback(null, '{"sig":1}\nnot-json\n{"sig":2}', '');
+    return { exitCode: 0 };
+  };
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('verified');
+  expect(result.signatures).toBe(2);
+});
+
+test('verifyImageSignature should handle empty cosign output', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    callback(null, '', '');
+    return { exitCode: 0 };
+  };
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('verified');
+  expect(result.signatures).toBe(1);
+});
+
+test('verifyImageSignature should classify signature failures as unverified', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    const error = new Error('command failed') as NodeJS.ErrnoException;
+    error.code = '1';
+    callback(error, '', 'no matching signatures: no signatures found for image');
+    return { exitCode: 1 };
+  };
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('unverified');
+  expect(result.signatures).toBe(0);
+});
+
+test('verifyImageSignature should classify unknown failures as error', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    const error = new Error('command failed') as NodeJS.ErrnoException;
+    error.code = '1';
+    callback(error, '', 'dial tcp timeout');
+    return { exitCode: 1 };
+  };
+
+  const result = await verifyImageSignature({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toContain('dial tcp timeout');
+});
+
+test('generateImageSbom should return error when scanner disabled', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    enabled: false,
+    scanner: '',
+  });
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toContain('disabled');
+});
+
+test('generateImageSbom should generate configured formats', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    sbom: {
+      enabled: true,
+      formats: ['spdx-json', 'cyclonedx'],
+    },
+  });
+
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    const formatIndex = args.indexOf('--format');
+    const format = args[formatIndex + 1];
+    callback(null, JSON.stringify({ bomFormat: format, metadata: { component: 'app' } }), '');
+    return { exitCode: 0 };
+  };
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('generated');
+  expect(result.formats).toEqual(['spdx-json', 'cyclonedx']);
+  expect(result.documents['spdx-json']).toEqual(
+    expect.objectContaining({ bomFormat: 'spdx-json' }),
+  );
+  expect(result.documents.cyclonedx).toEqual(expect.objectContaining({ bomFormat: 'cyclonedx' }));
+});
+
+test('generateImageSbom should keep generated status when one format fails', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    sbom: {
+      enabled: true,
+      formats: ['spdx-json', 'cyclonedx'],
+    },
+  });
+
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    const formatIndex = args.indexOf('--format');
+    const format = args[formatIndex + 1];
+    if (format === 'cyclonedx') {
+      const error = new Error('failed') as NodeJS.ErrnoException;
+      error.code = '1';
+      callback(error, '', 'network error');
+      return { exitCode: 1 };
+    }
+    callback(null, JSON.stringify({ bomFormat: format, metadata: { component: 'app' } }), '');
+    return { exitCode: 0 };
+  };
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('generated');
+  expect(result.formats).toEqual(['spdx-json']);
+  expect(result.error).toContain('cyclonedx');
+});
+
+test('generateImageSbom should fallback to spdx-json when configured formats are invalid', async () => {
+  mockGetSecurityConfiguration.mockReturnValue({
+    ...createEnabledConfiguration(),
+    sbom: {
+      enabled: true,
+      formats: ['invalid-format'],
+    },
+  });
+  const execFileMock = vi.fn((command, args, options, callback) => {
+    callback(null, JSON.stringify({ bomFormat: 'spdx-json' }), '');
+    return { exitCode: 0 };
+  });
+  childProcessControl.execFileImpl = execFileMock;
+
+  const result = await generateImageSbom({ image: 'registry.example.com/app:1.2.3' });
+
+  expect(result.status).toBe('generated');
+  expect(result.formats).toEqual(['spdx-json']);
+  expect(execFileMock).toHaveBeenCalledWith(
+    'trivy',
+    expect.arrayContaining(['--format', 'spdx-json']),
+    expect.any(Object),
+    expect.any(Function),
+  );
+});
+
+test('generateImageSbom should return error when all formats fail', async () => {
+  childProcessControl.execFileImpl = (command, args, options, callback) => {
+    const error = new Error('failed') as NodeJS.ErrnoException;
+    error.code = '1';
+    callback(error, '', 'trivy server unavailable');
+    return { exitCode: 1 };
+  };
+
+  const result = await generateImageSbom({
+    image: 'registry.example.com/app:1.2.3',
+    formats: ['spdx-json'],
+  });
+
+  expect(result.status).toBe('error');
+  expect(result.error).toContain('unavailable');
 });

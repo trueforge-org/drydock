@@ -6,6 +6,11 @@ import { getServerConfiguration } from '../configuration/index.js';
 import logger from '../log/index.js';
 import { sanitizeLogParam } from '../log/sanitize.js';
 import * as registry from '../registry/index.js';
+import {
+  generateImageSbom,
+  SECURITY_SBOM_FORMATS,
+  type SecuritySbomFormat,
+} from '../security/scan.js';
 import * as storeContainer from '../store/container.js';
 import Trigger from '../triggers/providers/Trigger.js';
 import { mapComponentsToList } from './component.js';
@@ -139,6 +144,40 @@ function getEmptyVulnerabilityResponse() {
   };
 }
 
+function resolveSbomFormat(rawFormat: unknown): SecuritySbomFormat | undefined {
+  const format = `${rawFormat || 'spdx-json'}`.toLowerCase();
+  if (SECURITY_SBOM_FORMATS.includes(format as SecuritySbomFormat)) {
+    return format as SecuritySbomFormat;
+  }
+  return undefined;
+}
+
+function getContainerImageFullName(container) {
+  const registryState = registry.getState().registry || {};
+  const containerRegistry = registryState[container.image.registry.name];
+  if (containerRegistry && typeof containerRegistry.getImageFullName === 'function') {
+    return containerRegistry.getImageFullName(container.image, container.image.tag.value);
+  }
+  return `${container.image.registry.url}/${container.image.name}:${container.image.tag.value}`;
+}
+
+async function getContainerRegistryAuth(container) {
+  try {
+    const registryState = registry.getState().registry || {};
+    const containerRegistry = registryState[container.image.registry.name];
+    if (containerRegistry && typeof containerRegistry.getAuthPull === 'function') {
+      return await containerRegistry.getAuthPull();
+    }
+  } catch (e: any) {
+    log.warn(
+      `Unable to retrieve registry auth for SBOM generation (container=${sanitizeLogParam(
+        container.id,
+      )}): ${sanitizeLogParam(e.message)}`,
+    );
+  }
+  return undefined;
+}
+
 /**
  * Get latest vulnerability scan result for a container.
  * @param req
@@ -156,6 +195,76 @@ export function getContainerVulnerabilities(req, res) {
     return;
   }
   res.status(200).json(container.security.scan);
+}
+
+export async function getContainerSbom(req, res) {
+  const { id } = req.params;
+  const sbomFormat = resolveSbomFormat(req.query.format);
+  if (!sbomFormat) {
+    res.status(400).json({
+      error: `Unsupported SBOM format. Supported values: ${SECURITY_SBOM_FORMATS.join(', ')}`,
+    });
+    return;
+  }
+
+  const container = storeContainer.getContainer(id);
+  if (!container) {
+    res.sendStatus(404);
+    return;
+  }
+
+  const existingSbom = container.security?.sbom;
+  const existingSbomDocument = existingSbom?.documents?.[sbomFormat];
+  if (existingSbom?.status === 'generated' && existingSbomDocument) {
+    res.status(200).json({
+      generator: existingSbom.generator,
+      image: existingSbom.image,
+      generatedAt: existingSbom.generatedAt,
+      format: sbomFormat,
+      document: existingSbomDocument,
+      error: existingSbom.error,
+    });
+    return;
+  }
+
+  try {
+    const image = getContainerImageFullName(container);
+    const auth = await getContainerRegistryAuth(container);
+    const sbomResult = await generateImageSbom({
+      image,
+      auth,
+      formats: [sbomFormat],
+    });
+    const containerToStore = {
+      ...container,
+      security: {
+        ...(container.security || {}),
+        sbom: sbomResult,
+      },
+    };
+    storeContainer.updateContainer(containerToStore);
+
+    const generatedDocument = sbomResult.documents?.[sbomFormat];
+    if (sbomResult.status !== 'generated' || !generatedDocument) {
+      res.status(500).json({
+        error: `Error generating SBOM (${sbomResult.error || 'unknown SBOM error'})`,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      generator: sbomResult.generator,
+      image: sbomResult.image,
+      generatedAt: sbomResult.generatedAt,
+      format: sbomFormat,
+      document: generatedDocument,
+      error: sbomResult.error,
+    });
+  } catch (e: any) {
+    res.status(500).json({
+      error: `Error generating SBOM (${e.message})`,
+    });
+  }
 }
 
 /**
@@ -560,6 +669,7 @@ export function init() {
   router.patch('/:id/update-policy', patchContainerUpdatePolicy);
   router.post('/:id/watch', watchContainer);
   router.get('/:id/vulnerabilities', getContainerVulnerabilities);
+  router.get('/:id/sbom', getContainerSbom);
   router.get('/:id/logs', getContainerLogs);
   return router;
 }

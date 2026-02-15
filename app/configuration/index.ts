@@ -6,9 +6,12 @@ import { resolveConfiguredPath } from '../runtime/paths.js';
 
 const VAR_FILE_SUFFIX = '__FILE';
 export const SECURITY_SEVERITY_VALUES = ['UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+export const SECURITY_SBOM_FORMAT_VALUES = ['spdx-json', 'cyclonedx'] as const;
 const DEFAULT_SECURITY_BLOCK_SEVERITY = 'CRITICAL,HIGH';
+const DEFAULT_SECURITY_SBOM_FORMATS = 'spdx-json';
 
 export type SecuritySeverity = (typeof SECURITY_SEVERITY_VALUES)[number];
+export type SecuritySbomFormat = (typeof SECURITY_SBOM_FORMAT_VALUES)[number];
 
 /*
  * Get a prop by path from environment variables.
@@ -297,6 +300,30 @@ function parseSecuritySeverityList(rawValue: string | undefined): SecuritySeveri
   return severitiesParsed;
 }
 
+function parseSecuritySbomFormatList(rawValue: string | undefined): SecuritySbomFormat[] {
+  const defaultSbomFormats = DEFAULT_SECURITY_SBOM_FORMATS.split(',').map(
+    (format) => format.trim() as SecuritySbomFormat,
+  );
+  if (!rawValue) {
+    return defaultSbomFormats;
+  }
+  const configuredFormats = rawValue
+    .split(',')
+    .map((format) => format.trim().toLowerCase())
+    .filter((format) => format !== '');
+  if (configuredFormats.length === 0) {
+    return defaultSbomFormats;
+  }
+  const deduplicated = Array.from(new Set(configuredFormats));
+  const formatsParsed = deduplicated.filter((format): format is SecuritySbomFormat =>
+    SECURITY_SBOM_FORMAT_VALUES.includes(format as SecuritySbomFormat),
+  );
+  if (formatsParsed.length === 0) {
+    return defaultSbomFormats;
+  }
+  return formatsParsed;
+}
+
 export function getSecurityConfiguration() {
   const configurationFromEnv = get('dd.security', ddEnvVars);
   const configurationSchema = joi.object().keys({
@@ -313,6 +340,26 @@ export function getSecurityConfiguration() {
         timeout: joi.number().integer().min(1000).default(120000),
       })
       .default({}),
+    verify: joi
+      .object({
+        signatures: joi.boolean().default(false),
+      })
+      .default({}),
+    cosign: joi
+      .object({
+        command: joi.string().default('cosign'),
+        timeout: joi.number().integer().min(1000).default(60000),
+        key: joi.string().allow('').default(''),
+        identity: joi.string().allow('').default(''),
+        issuer: joi.string().allow('').default(''),
+      })
+      .default({}),
+    sbom: joi
+      .object({
+        enabled: joi.boolean().default(false),
+        formats: joi.string().allow('').default(DEFAULT_SECURITY_SBOM_FORMATS),
+      })
+      .default({}),
   });
 
   const configurationToValidate = configurationSchema.validate(configurationFromEnv, {
@@ -326,6 +373,7 @@ export function getSecurityConfiguration() {
   const configuration = configurationToValidate.value;
   const scanner = configuration.scanner ? configuration.scanner.toLowerCase() : '';
   const blockSeverities = parseSecuritySeverityList(configuration.block?.severity);
+  const sbomFormats = parseSecuritySbomFormatList(configuration.sbom?.formats);
 
   return {
     enabled: scanner !== '',
@@ -335,6 +383,20 @@ export function getSecurityConfiguration() {
       server: configuration.trivy?.server || '',
       command: configuration.trivy?.command || 'trivy',
       timeout: configuration.trivy?.timeout || 120000,
+    },
+    signature: {
+      verify: Boolean(configuration.verify?.signatures),
+      cosign: {
+        command: configuration.cosign?.command || 'cosign',
+        timeout: configuration.cosign?.timeout || 60000,
+        key: configuration.cosign?.key || '',
+        identity: configuration.cosign?.identity || '',
+        issuer: configuration.cosign?.issuer || '',
+      },
+    },
+    sbom: {
+      enabled: Boolean(configuration.sbom?.enabled),
+      formats: sbomFormats,
     },
   };
 }

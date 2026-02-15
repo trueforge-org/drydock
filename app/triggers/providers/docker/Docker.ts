@@ -10,7 +10,11 @@ import {
 import { fullName } from '../../../model/container.js';
 import { getAuditCounter } from '../../../prometheus/audit.js';
 import { getState } from '../../../registry/index.js';
-import { scanImageForVulnerabilities } from '../../../security/scan.js';
+import {
+  generateImageSbom,
+  scanImageForVulnerabilities,
+  verifyImageSignature,
+} from '../../../security/scan.js';
 import * as auditStore from '../../../store/audit.js';
 import * as backupStore from '../../../store/backup.js';
 import * as storeContainer from '../../../store/container.js';
@@ -707,18 +711,19 @@ class Docker extends Trigger {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  async persistSecurityScanResult(container, scanResult, logContainer) {
+  async persistSecurityState(container, securityPatch, logContainer) {
     try {
+      const containerCurrent = storeContainer.getContainer(container.id);
       const containerWithSecurity = {
-        ...container,
+        ...(containerCurrent || container),
         security: {
-          ...(container.security || {}),
-          scan: scanResult,
+          ...((containerCurrent || container).security || {}),
+          ...securityPatch,
         },
       };
       storeContainer.updateContainer(containerWithSecurity);
     } catch (e: any) {
-      logContainer.warn(`Unable to persist security scan result (${e.message})`);
+      logContainer.warn(`Unable to persist security state (${e.message})`);
     }
   }
 
@@ -728,12 +733,69 @@ class Docker extends Trigger {
       return;
     }
 
+    if (securityConfiguration.signature.verify) {
+      logContainer.info(`Verifying image signature for candidate image ${context.newImage}`);
+      const signatureResult = await verifyImageSignature({
+        image: context.newImage,
+        auth: context.auth,
+      });
+      await this.persistSecurityState(container, { signature: signatureResult }, logContainer);
+
+      if (signatureResult.status !== 'verified') {
+        const details = `Image signature verification failed: ${
+          signatureResult.error || 'no valid signatures found'
+        }`;
+        this.recordSecurityAudit(
+          signatureResult.status === 'unverified'
+            ? 'security-signature-blocked'
+            : 'security-signature-failed',
+          container,
+          'error',
+          details,
+        );
+        throw new Error(details);
+      }
+
+      this.recordSecurityAudit(
+        'security-signature-verified',
+        container,
+        'success',
+        `Image signature verified (${signatureResult.signatures} signatures)`,
+      );
+    }
+
     logContainer.info(`Running security scan for candidate image ${context.newImage}`);
     const scanResult = await scanImageForVulnerabilities({
       image: context.newImage,
       auth: context.auth,
     });
-    await this.persistSecurityScanResult(container, scanResult, logContainer);
+    await this.persistSecurityState(container, { scan: scanResult }, logContainer);
+
+    if (securityConfiguration.sbom.enabled) {
+      logContainer.info(`Generating SBOM for candidate image ${context.newImage}`);
+      const sbomResult = await generateImageSbom({
+        image: context.newImage,
+        auth: context.auth,
+        formats: securityConfiguration.sbom.formats,
+      });
+      await this.persistSecurityState(container, { sbom: sbomResult }, logContainer);
+
+      if (sbomResult.status === 'error') {
+        this.recordSecurityAudit(
+          'security-sbom-failed',
+          container,
+          'error',
+          `SBOM generation failed: ${sbomResult.error || 'unknown SBOM error'}`,
+        );
+      } else {
+        this.recordSecurityAudit(
+          'security-sbom-generated',
+          container,
+          'success',
+          `SBOM generated (${sbomResult.formats.join(', ')})`,
+        );
+      }
+    }
 
     if (scanResult.status === 'error') {
       const details = `Security scan failed: ${scanResult.error || 'unknown scanner error'}`;
