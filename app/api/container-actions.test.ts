@@ -379,7 +379,12 @@ describe('Container Actions Router', () => {
 
   describe('updateContainer', () => {
     test('should update container successfully', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       const updatedContainer = { ...container, image: { name: 'nginx:latest' } };
       mockGetContainer.mockReturnValueOnce(container).mockReturnValueOnce(updatedContainer);
       const mockTriggerFn = vi.fn().mockResolvedValue(undefined);
@@ -394,7 +399,10 @@ describe('Container Actions Router', () => {
       expect(mockTriggerFn).toHaveBeenCalledWith(container);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ message: 'Container updated successfully', container: updatedContainer }),
+        expect.objectContaining({
+          message: 'Container updated successfully',
+          container: updatedContainer,
+        }),
       );
     });
 
@@ -410,7 +418,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should return 400 when no update available', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: false };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: false,
+      };
       mockGetContainer.mockReturnValue(container);
 
       const handler = getHandler('post', '/:id/update');
@@ -425,7 +438,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should return 404 when no docker trigger found', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       mockGetState.mockReturnValue({ trigger: {} });
 
@@ -452,7 +470,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should return 500 when trigger throws error', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       const mockTriggerFn = vi.fn().mockRejectedValue(new Error('pull failed'));
       const trigger = { type: 'docker', trigger: mockTriggerFn };
@@ -470,7 +493,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should insert audit entry on success', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       const mockTriggerFn = vi.fn().mockResolvedValue(undefined);
       const trigger = { type: 'docker', trigger: mockTriggerFn };
@@ -491,7 +519,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should insert audit entry on error', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       const mockTriggerFn = vi.fn().mockRejectedValue(new Error('Docker error'));
       const trigger = { type: 'docker', trigger: mockTriggerFn };
@@ -512,7 +545,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should increment counters on success', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       const mockTriggerFn = vi.fn().mockResolvedValue(undefined);
       const trigger = { type: 'docker', trigger: mockTriggerFn };
@@ -533,7 +571,12 @@ describe('Container Actions Router', () => {
     });
 
     test('should stringify non-Error trigger failures', async () => {
-      const container = { id: 'c1', name: 'nginx', image: { name: 'nginx' }, updateAvailable: true };
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { name: 'nginx' },
+        updateAvailable: true,
+      };
       mockGetContainer.mockReturnValue(container);
       const mockTriggerFn = vi.fn().mockRejectedValue('update failed as string');
       const trigger = { type: 'docker', trigger: mockTriggerFn };

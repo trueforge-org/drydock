@@ -135,7 +135,9 @@ async function updateContainer(req: Request, res: Response) {
     const updatedContainer = storeContainer.getContainer(id);
     recordAuditEvent({ action: 'container-update', container, status: 'success' });
     getContainerActionsCounter()?.inc({ action: 'container-update' });
-    res.status(200).json({ message: 'Container updated successfully', container: updatedContainer });
+    res
+      .status(200)
+      .json({ message: 'Container updated successfully', container: updatedContainer });
   } catch (e: unknown) {
     handleContainerActionError({
       error: e,

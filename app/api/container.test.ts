@@ -16,6 +16,8 @@ vi.mock('express', () => ({
 
 vi.mock('nocache', () => ({ default: vi.fn(() => 'nocache-middleware') }));
 
+vi.mock('express-rate-limit', () => ({ default: vi.fn(() => 'rate-limit-middleware') }));
+
 vi.mock('../store/container', () => ({
   getContainers: vi.fn(() => []),
   getContainer: vi.fn(),
@@ -74,6 +76,7 @@ vi.mock('./sse', () => ({
 
 import { getAgent } from '../agent/manager.js';
 import { getSecurityConfiguration, getServerConfiguration } from '../configuration/index.js';
+import rateLimit from 'express-rate-limit';
 import * as registry from '../registry/index.js';
 import * as storeContainer from '../store/container.js';
 import Trigger from '../triggers/providers/Trigger.js';
@@ -87,7 +90,7 @@ function createResponse() {
 function getHandler(method, path) {
   containerRouter.init();
   const call = mockRouter[method].mock.calls.find((c) => c[0] === path);
-  return call[1];
+  return call[call.length - 1];
 }
 
 /** Helper: invoke deleteContainer with a given container id and return the response mock */
@@ -190,8 +193,19 @@ describe('Container Router', () => {
       expect(router.post).toHaveBeenCalledWith('/:id/watch', expect.any(Function));
       expect(router.get).toHaveBeenCalledWith('/:id/vulnerabilities', expect.any(Function));
       expect(router.get).toHaveBeenCalledWith('/:id/sbom', expect.any(Function));
-      expect(router.post).toHaveBeenCalledWith('/:id/scan', expect.any(Function));
+      expect(router.post).toHaveBeenCalledWith(
+        '/:id/scan',
+        'rate-limit-middleware',
+        expect.any(Function),
+      );
       expect(router.get).toHaveBeenCalledWith('/:id/logs', expect.any(Function));
+    });
+
+    test('should configure scan rate-limit key generator fallback', () => {
+      containerRouter.init();
+      const rateLimitOptions = rateLimit.mock.calls[0][0];
+      expect(rateLimitOptions.keyGenerator({ ip: '192.168.1.10' })).toBe('192.168.1.10');
+      expect(rateLimitOptions.keyGenerator({})).toBe('unknown');
     });
   });
 
