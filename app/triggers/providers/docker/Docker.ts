@@ -18,6 +18,7 @@ import {
 import * as auditStore from '../../../store/audit.js';
 import * as backupStore from '../../../store/backup.js';
 import * as storeContainer from '../../../store/container.js';
+import { cacheSecurityState } from '../../../store/container.js';
 import { runHook } from '../../hooks/HookRunner.js';
 import Trigger from '../Trigger.js';
 import { startHealthMonitor } from './HealthMonitor.js';
@@ -722,6 +723,7 @@ class Docker extends Trigger {
         },
       };
       storeContainer.updateContainer(containerWithSecurity);
+      cacheSecurityState(container.watcher, container.name, containerWithSecurity.security);
     } catch (e: any) {
       logContainer.warn(`Unable to persist security state (${e.message})`);
     }

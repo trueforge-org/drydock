@@ -329,3 +329,96 @@ test('deleteContainer should delete doc and emit an event', async () => {
   container.deleteContainer(containerExample);
   expect(spyEvent).toHaveBeenCalled();
 });
+
+test('insertContainer should pick up cached security state when container has none', async () => {
+  const collection = {
+    findOne: () => {},
+    insert: () => {},
+  };
+  const db = {
+    getCollection: () => collection,
+    addCollection: () => null,
+  };
+  const securityData = {
+    scan: {
+      scanner: 'trivy',
+      image: 'registry/image:1.2.3',
+      scannedAt: new Date().toISOString(),
+      status: 'passed',
+      blockSeverities: [],
+      blockingCount: 0,
+      summary: { unknown: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      vulnerabilities: [],
+    },
+  };
+  container.createCollections(db);
+  container.cacheSecurityState('test', 'test', securityData);
+  const result = container.insertContainer(createContainerFixture());
+  expect(result.security).toEqual(securityData);
+});
+
+test('insertContainer should clear cached security state after consuming it', async () => {
+  const collection = {
+    findOne: () => {},
+    insert: () => {},
+  };
+  const db = {
+    getCollection: () => collection,
+    addCollection: () => null,
+  };
+  const securityData = {
+    scan: {
+      scanner: 'trivy',
+      image: 'registry/image:1.2.3',
+      scannedAt: new Date().toISOString(),
+      status: 'passed',
+      blockSeverities: [],
+      blockingCount: 0,
+      summary: { unknown: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      vulnerabilities: [],
+    },
+  };
+  container.createCollections(db);
+  container.cacheSecurityState('test', 'test', securityData);
+  container.insertContainer(createContainerFixture());
+  expect(container.getCachedSecurityState('test', 'test')).toBeUndefined();
+});
+
+test('insertContainer should not overwrite explicit security state with cache', async () => {
+  const collection = {
+    findOne: () => {},
+    insert: () => {},
+  };
+  const db = {
+    getCollection: () => collection,
+    addCollection: () => null,
+  };
+  const cachedSecurity = {
+    scan: {
+      scanner: 'trivy',
+      image: 'registry/image:old',
+      scannedAt: new Date().toISOString(),
+      status: 'passed',
+      blockSeverities: [],
+      blockingCount: 0,
+      summary: { unknown: 0, low: 0, medium: 0, high: 0, critical: 0 },
+      vulnerabilities: [],
+    },
+  };
+  const explicitSecurity = {
+    scan: {
+      scanner: 'trivy',
+      image: 'registry/image:new',
+      scannedAt: new Date().toISOString(),
+      status: 'blocked',
+      blockSeverities: ['CRITICAL'],
+      blockingCount: 1,
+      summary: { unknown: 0, low: 0, medium: 0, high: 0, critical: 1 },
+      vulnerabilities: [{ id: 'CVE-999', severity: 'CRITICAL' }],
+    },
+  };
+  container.createCollections(db);
+  container.cacheSecurityState('test', 'test', cachedSecurity);
+  const result = container.insertContainer(createContainerFixture({ security: explicitSecurity }));
+  expect(result.security).toEqual(explicitSecurity);
+});

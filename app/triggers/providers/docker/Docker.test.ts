@@ -47,6 +47,7 @@ vi.mock('../../../security/scan.js', () => ({
 vi.mock('../../../store/container.js', () => ({
   getContainer: vi.fn(),
   updateContainer: vi.fn((container) => container),
+  cacheSecurityState: vi.fn(),
 }));
 
 vi.mock('../../../store/backup', () => ({

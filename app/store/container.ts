@@ -12,6 +12,21 @@ import { initCollection } from './util.js';
 
 let containers;
 
+// Security state cache: keyed by "{watcher}_{name}" to survive container recreation
+const securityStateCache = new Map();
+
+export function cacheSecurityState(watcher, name, security) {
+  securityStateCache.set(`${watcher}_${name}`, security);
+}
+
+export function getCachedSecurityState(watcher, name) {
+  return securityStateCache.get(`${watcher}_${name}`);
+}
+
+export function clearCachedSecurityState(watcher, name) {
+  securityStateCache.delete(`${watcher}_${name}`);
+}
+
 /**
  * Create container collections.
  * @param db
@@ -25,6 +40,11 @@ export function createCollections(db) {
  * @param container
  */
 export function insertContainer(container) {
+  const cachedSecurity = getCachedSecurityState(container.watcher, container.name);
+  if (cachedSecurity && !container.security) {
+    container.security = cachedSecurity;
+    clearCachedSecurityState(container.watcher, container.name);
+  }
   const containerToSave = validateContainer(container);
   containers.insert({
     data: containerToSave,
