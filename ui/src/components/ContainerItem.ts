@@ -9,14 +9,13 @@ import ContainerRollback from '@/components/ContainerRollback.vue';
 import ContainerTriggers from '@/components/ContainerTriggers.vue';
 import ContainerUpdate from '@/components/ContainerUpdate.vue';
 import IconRenderer from '@/components/IconRenderer.vue';
+import { refreshContainer, scanContainer, updateContainerPolicy } from '@/services/container';
 import {
-  getContainerTriggers,
-  refreshContainer,
-  runTrigger,
-  scanContainer,
-  updateContainerPolicy,
-} from '@/services/container';
-import { restartContainer, startContainer, stopContainer } from '@/services/container-actions';
+  restartContainer,
+  startContainer,
+  stopContainer,
+  updateContainer,
+} from '@/services/container-actions';
 import { getEffectiveDisplayIcon } from '@/services/image-icon';
 import { getRegistryProviderIcon } from '@/services/registry';
 
@@ -384,34 +383,11 @@ export default defineComponent({
     async updateContainerNow() {
       this.isUpdatingContainer = true;
       try {
-        const triggers = await getContainerTriggers(this.container.id);
-        if (!Array.isArray(triggers) || triggers.length === 0) {
-          this.$eventBus.emit('notify', 'No triggers associated to this container', 'warning');
-          return;
+        const result = await updateContainer(this.container.id);
+        if (result.container) {
+          this.$emit('container-refreshed', result.container);
         }
-
-        const triggerErrors = [];
-        for (const trigger of triggers) {
-          const result = await runTrigger({
-            containerId: this.container.id,
-            triggerType: trigger.type,
-            triggerName: trigger.name,
-            triggerAgent: trigger.agent,
-          });
-          if (result?.error) {
-            triggerErrors.push(`${trigger.type}.${trigger.name}`);
-          }
-        }
-
-        if (triggerErrors.length > 0) {
-          throw new Error(`some triggers failed (${triggerErrors.join(', ')})`);
-        }
-
-        this.$eventBus.emit(
-          'notify',
-          `Update triggered (${triggers.length} trigger${triggers.length > 1 ? 's' : ''})`,
-        );
-        await this.refreshContainerNow(false);
+        this.$eventBus.emit('notify', 'Container updated');
       } catch (e: any) {
         this.$eventBus.emit(
           'notify',
@@ -480,11 +456,7 @@ export default defineComponent({
         this.$emit('container-refreshed', containerScanned);
         this.$eventBus.emit('notify', 'Security scan completed');
       } catch (e: any) {
-        this.$eventBus.emit(
-          'notify',
-          `Error when running security scan (${e.message})`,
-          'error',
-        );
+        this.$eventBus.emit('notify', `Error when running security scan (${e.message})`, 'error');
       } finally {
         this.isScanningContainer = false;
       }

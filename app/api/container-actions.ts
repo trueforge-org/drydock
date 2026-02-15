@@ -103,6 +103,54 @@ async function restartContainer(req: Request, res: Response) {
 }
 
 /**
+ * Update a container by pulling the new image and recreating the container.
+ */
+async function updateContainer(req: Request, res: Response) {
+  const serverConfiguration = getServerConfiguration();
+  if (!serverConfiguration.feature.containeractions) {
+    res.sendStatus(403);
+    return;
+  }
+
+  const { id } = req.params;
+  const container = storeContainer.getContainer(id);
+  if (!container) {
+    res.sendStatus(404);
+    return;
+  }
+
+  if (!container.updateAvailable) {
+    res.status(400).json({ error: 'No update available for this container' });
+    return;
+  }
+
+  const trigger = findDockerTriggerForContainer(registry.getState().trigger, container);
+  if (!trigger) {
+    res.status(404).json({ error: NO_DOCKER_TRIGGER_FOUND_ERROR });
+    return;
+  }
+
+  try {
+    await trigger.trigger(container);
+    const updatedContainer = storeContainer.getContainer(id);
+    recordAuditEvent({ action: 'container-update', container, status: 'success' });
+    getContainerActionsCounter()?.inc({ action: 'container-update' });
+    res.status(200).json({ message: 'Container updated successfully', container: updatedContainer });
+  } catch (e: unknown) {
+    handleContainerActionError({
+      error: e,
+      action: 'container-update',
+      actionLabel: 'updating',
+      id,
+      container,
+      log,
+      res,
+    });
+    getContainerActionsCounter()?.inc({ action: 'container-update' });
+  }
+}
+
+/**
  * Init Router.
  * @returns {*}
  */
@@ -111,5 +159,6 @@ export function init() {
   router.post('/:id/start', startContainer);
   router.post('/:id/stop', stopContainer);
   router.post('/:id/restart', restartContainer);
+  router.post('/:id/update', updateContainer);
   return router;
 }

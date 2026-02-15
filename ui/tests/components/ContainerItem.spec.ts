@@ -2,33 +2,29 @@ import { mount } from '@vue/test-utils';
 import ContainerItem from '@/components/ContainerItem';
 
 const {
-  mockGetContainerTriggers,
   mockRefreshContainer,
-  mockRunTrigger,
   mockScanContainer,
   mockUpdateContainerPolicy,
   mockStartContainer,
   mockStopContainer,
   mockRestartContainer,
+  mockUpdateContainer,
   mockGetEffectiveDisplayIcon,
   mockGetRegistryProviderIcon,
 } = vi.hoisted(() => ({
-  mockGetContainerTriggers: vi.fn(),
   mockRefreshContainer: vi.fn(),
-  mockRunTrigger: vi.fn(),
   mockScanContainer: vi.fn(),
   mockUpdateContainerPolicy: vi.fn(),
   mockStartContainer: vi.fn(),
   mockStopContainer: vi.fn(),
   mockRestartContainer: vi.fn(),
+  mockUpdateContainer: vi.fn(),
   mockGetEffectiveDisplayIcon: vi.fn(),
   mockGetRegistryProviderIcon: vi.fn(),
 }));
 
 vi.mock('@/services/container', () => ({
-  getContainerTriggers: mockGetContainerTriggers,
   refreshContainer: mockRefreshContainer,
-  runTrigger: mockRunTrigger,
   scanContainer: mockScanContainer,
   updateContainerPolicy: mockUpdateContainerPolicy,
 }));
@@ -37,6 +33,7 @@ vi.mock('@/services/container-actions', () => ({
   startContainer: mockStartContainer,
   stopContainer: mockStopContainer,
   restartContainer: mockRestartContainer,
+  updateContainer: mockUpdateContainer,
 }));
 
 vi.mock('@/services/image-icon', () => ({
@@ -158,14 +155,13 @@ describe('ContainerItem', () => {
   let wrapper: any;
 
   beforeEach(() => {
-    mockGetContainerTriggers.mockReset();
     mockRefreshContainer.mockReset();
-    mockRunTrigger.mockReset();
     mockScanContainer.mockReset();
     mockUpdateContainerPolicy.mockReset();
     mockStartContainer.mockReset();
     mockStopContainer.mockReset();
     mockRestartContainer.mockReset();
+    mockUpdateContainer.mockReset();
     mockGetEffectiveDisplayIcon.mockReset();
     mockGetRegistryProviderIcon.mockReset();
 
@@ -176,13 +172,12 @@ describe('ContainerItem', () => {
       provider === 'hub' ? 'fab fa-docker' : 'fas fa-cube',
     );
     mockRefreshContainer.mockResolvedValue(createContainer({ id: 'refreshed' }));
-    mockGetContainerTriggers.mockResolvedValue([]);
-    mockRunTrigger.mockResolvedValue({});
     mockUpdateContainerPolicy.mockResolvedValue(createContainer({ id: 'policy-updated' }));
     mockScanContainer.mockResolvedValue(createContainer({ id: 'scanned' }));
     mockStartContainer.mockResolvedValue({ container: createContainer({ id: 'started' }) });
     mockStopContainer.mockResolvedValue({ container: createContainer({ id: 'stopped' }) });
     mockRestartContainer.mockResolvedValue({ container: createContainer({ id: 'restarted' }) });
+    mockUpdateContainer.mockResolvedValue({ container: createContainer({ id: 'updated' }) });
 
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -741,84 +736,35 @@ describe('ContainerItem', () => {
     expect(wrapper.vm.isRefreshingContainer).toBe(false);
   });
 
-  it('warns when no triggers are configured for update now', async () => {
-    mockGetContainerTriggers.mockResolvedValueOnce([]);
+  it('updates container and emits refreshed event on success', async () => {
+    const updated = createContainer({ id: 'updated' });
+    mockUpdateContainer.mockResolvedValueOnce({ container: updated });
 
     await wrapper.vm.updateContainerNow();
 
-    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
-      'notify',
-      'No triggers associated to this container',
-      'warning',
-    );
+    expect(mockUpdateContainer).toHaveBeenCalledWith('test-container-id');
+    expect(wrapper.emitted('container-refreshed')?.at(-1)).toEqual([updated]);
+    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith('notify', 'Container updated');
     expect(wrapper.vm.isUpdatingContainer).toBe(false);
   });
 
-  it('runs triggers and refreshes container after successful update', async () => {
-    mockGetContainerTriggers.mockResolvedValueOnce([
-      { type: 'slack', name: 'primary', agent: 'node1' },
-      { type: 'smtp', name: 'fallback', agent: 'node2' },
-    ]);
-    mockRunTrigger.mockResolvedValue({});
-    const refreshSpy = vi.spyOn(wrapper.vm, 'refreshContainerNow').mockResolvedValue(undefined);
+  it('updates container without refreshed emit when payload has no container', async () => {
+    mockUpdateContainer.mockResolvedValueOnce({});
 
     await wrapper.vm.updateContainerNow();
 
-    expect(mockRunTrigger).toHaveBeenCalledTimes(2);
-    expect(mockRunTrigger).toHaveBeenCalledWith({
-      containerId: 'test-container-id',
-      triggerType: 'slack',
-      triggerName: 'primary',
-      triggerAgent: 'node1',
-    });
-    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
-      'notify',
-      'Update triggered (2 triggers)',
-    );
-    expect(refreshSpy).toHaveBeenCalledWith(false);
+    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith('notify', 'Container updated');
     expect(wrapper.vm.isUpdatingContainer).toBe(false);
   });
 
-  it('uses singular trigger label when only one trigger is executed', async () => {
-    mockGetContainerTriggers.mockResolvedValueOnce([
-      { type: 'slack', name: 'primary', agent: 'node1' },
-    ]);
-    mockRunTrigger.mockResolvedValueOnce({});
-    const refreshSpy = vi.spyOn(wrapper.vm, 'refreshContainerNow').mockResolvedValue(undefined);
+  it('handles update container errors', async () => {
+    mockUpdateContainer.mockRejectedValueOnce(new Error('update failed'));
 
     await wrapper.vm.updateContainerNow();
 
     expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
       'notify',
-      'Update triggered (1 trigger)',
-    );
-    expect(refreshSpy).toHaveBeenCalledWith(false);
-  });
-
-  it('reports trigger failures while updating container', async () => {
-    mockGetContainerTriggers.mockResolvedValueOnce([
-      { type: 'slack', name: 'primary', agent: 'node1' },
-    ]);
-    mockRunTrigger.mockResolvedValueOnce({ error: 'failed' });
-
-    await wrapper.vm.updateContainerNow();
-
-    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
-      'notify',
-      'Error when trying to update container (some triggers failed (slack.primary))',
-      'error',
-    );
-    expect(wrapper.vm.isUpdatingContainer).toBe(false);
-  });
-
-  it('handles trigger retrieval errors while updating container', async () => {
-    mockGetContainerTriggers.mockRejectedValueOnce(new Error('trigger lookup failed'));
-
-    await wrapper.vm.updateContainerNow();
-
-    expect(wrapper.vm.$eventBus.emit).toHaveBeenCalledWith(
-      'notify',
-      'Error when trying to update container (trigger lookup failed)',
+      'Error when trying to update container (update failed)',
       'error',
     );
     expect(wrapper.vm.isUpdatingContainer).toBe(false);
@@ -1197,6 +1143,45 @@ describe('ContainerItem', () => {
     expect(wrapper.vm.signatureTooltipDescription).toBe('No signature verification result');
   });
 
+  it('uses unknown scannedAt fallback when forced through computed context', () => {
+    const filters = { dateTime: vi.fn((value: string) => new Date(value).toLocaleString()) };
+    const description = (ContainerItem as any).computed.vulnerabilityTooltipDescription.call({
+      hasSecurityScan: true,
+      securityScan: {
+        status: 'passed',
+        scannedAt: undefined,
+        summary: {
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          unknown: 0,
+        },
+      },
+      $filters: filters,
+    });
+
+    expect(description).toContain('Scanned at unknown.');
+    expect(filters.dateTime).not.toHaveBeenCalled();
+  });
+
+  it('uses unknown verifiedAt fallback when forced through computed context', () => {
+    const filters = { dateTime: vi.fn((value: string) => new Date(value).toLocaleString()) };
+    const description = (ContainerItem as any).computed.signatureTooltipDescription.call({
+      hasSignatureVerification: true,
+      signatureVerification: {
+        status: 'verified',
+        verifiedAt: undefined,
+        signatures: 2,
+        keyless: true,
+      },
+      $filters: filters,
+    });
+
+    expect(description).toContain('Verified at unknown. 2 signatures (keyless)');
+    expect(filters.dateTime).not.toHaveBeenCalled();
+  });
+
   it('falls back signature status to unknown when status is falsy', async () => {
     const sigNoStatus = {
       ...BASE_SIGNATURE_VERIFICATION,
@@ -1216,6 +1201,24 @@ describe('ContainerItem', () => {
     // signatureTooltipDescription: status || 'unknown' => 'unknown', then falls through to verified path
     expect(wrapper.vm.signatureTooltipDescription).toContain(
       `Verified at ${new Date(sigNoStatus.verifiedAt).toLocaleString()}`,
+    );
+  });
+
+  it('defaults signatures count to 0 when signature count is missing', async () => {
+    const sigNoCount = {
+      ...BASE_SIGNATURE_VERIFICATION,
+      status: 'verified',
+    };
+    delete (sigNoCount as any).signatures;
+
+    await wrapper.setProps({
+      container: createContainer({
+        security: { signature: sigNoCount },
+      }),
+    });
+
+    expect(wrapper.vm.signatureTooltipDescription).toBe(
+      `Verified at ${new Date(sigNoCount.verifiedAt).toLocaleString()}. 0 signatures (keyless)`,
     );
   });
 
