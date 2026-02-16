@@ -2028,7 +2028,7 @@ describe('Docker Watcher', () => {
       expect(result.created).toBe('2023-01-01');
     });
 
-    test('should handle digest watching with v1 manifest', async () => {
+    test('should handle digest watching with v1 manifest using repo digest', async () => {
       await docker.register('watcher', 'docker', 'test', {});
       const container = {
         image: {
@@ -2050,13 +2050,10 @@ describe('Docker Watcher', () => {
         registry: { hub: mockRegistry },
       });
       const mockLogChild = { error: vi.fn() };
-      const mockImageInspect = { Config: { Image: 'sha256:legacy123' } };
-      mockImage.inspect.mockResolvedValue(mockImageInspect);
 
       await docker.findNewVersion(container, mockLogChild);
 
-      expect(mockImage.inspect).toHaveBeenCalled();
-      expect(container.image.digest.value).toBe('sha256:legacy123');
+      expect(container.image.digest.value).toBe('sha256:abc123');
     });
 
     test('should use tag candidate for digest lookup when digest watch is true and candidates exist', async () => {
@@ -3723,8 +3720,8 @@ describe('Docker Watcher', () => {
     });
   });
 
-  describe('Additional Coverage - v1 manifest with empty Config.Image', () => {
-    test('should set digest value to undefined when Config.Image is empty string', async () => {
+  describe('Additional Coverage - v1 manifest digest uses repo digest', () => {
+    test('should set digest value from repo digest for v1 manifests', async () => {
       await docker.register('watcher', 'docker', 'test', {});
       const container = {
         image: {
@@ -3744,7 +3741,32 @@ describe('Docker Watcher', () => {
       };
       registry.getState.mockReturnValue({ registry: { hub: mockRegistry } });
       const mockLogChild = { error: vi.fn() };
-      mockImage.inspect.mockResolvedValue({ Config: { Image: '' } });
+
+      await docker.findNewVersion(container, mockLogChild);
+
+      expect(container.image.digest.value).toBe('sha256:abc123');
+    });
+
+    test('should set digest value to undefined when repo digest is missing', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      const container = {
+        image: {
+          id: 'image123',
+          registry: { name: 'hub' },
+          tag: { value: '1.0.0' },
+          digest: { watch: true, repo: undefined },
+        },
+      };
+      const mockRegistry = {
+        getTags: vi.fn().mockResolvedValue(['1.0.0']),
+        getImageManifestDigest: vi.fn().mockResolvedValue({
+          digest: 'sha256:def456',
+          created: '2023-01-01',
+          version: 1,
+        }),
+      };
+      registry.getState.mockReturnValue({ registry: { hub: mockRegistry } });
+      const mockLogChild = { error: vi.fn() };
 
       await docker.findNewVersion(container, mockLogChild);
 
