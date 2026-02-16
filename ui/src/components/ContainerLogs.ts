@@ -1,6 +1,7 @@
 import { defineComponent, nextTick, onMounted, type PropType, ref, watch } from 'vue';
 import {
   LOG_AUTO_FETCH_INTERVALS,
+  toLogErrorMessage,
   useAutoFetchLogs,
   useLogViewport,
 } from '@/composables/useLogViewerBehavior';
@@ -13,13 +14,6 @@ type ContainerLogTarget = {
 type ContainerLogsResponse = {
   logs?: unknown;
 };
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 export default defineComponent({
   props: {
@@ -51,7 +45,7 @@ export default defineComponent({
           scrollToBottom();
         }
       } catch (e: unknown) {
-        error.value = toErrorMessage(e);
+        error.value = toLogErrorMessage(e);
       } finally {
         loading.value = false;
       }

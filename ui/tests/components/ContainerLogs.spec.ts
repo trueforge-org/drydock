@@ -274,4 +274,40 @@ describe('ContainerLogs', () => {
     expect(wrapper.vm.scrollBlocked).toBe(false);
     wrapper.unmount();
   });
+
+  it('resume button clears scroll lock and jumps to bottom', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'line 1\nline 2\nline 3' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+
+    const pre = wrapper.find('pre');
+    expect(pre.exists()).toBe(true);
+
+    Object.defineProperty(pre.element, 'scrollHeight', {
+      configurable: true,
+      value: 400,
+    });
+    Object.defineProperty(pre.element, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    });
+
+    pre.element.scrollTop = 150;
+    wrapper.vm.scrollBlocked = true;
+    await wrapper.vm.$nextTick();
+
+    const resumeButton = wrapper
+      .findAll('.v-btn')
+      .find((button) => button.text().includes('Resume'));
+    expect(resumeButton).toBeDefined();
+    await resumeButton?.trigger('click');
+
+    expect(wrapper.vm.scrollBlocked).toBe(false);
+    expect(pre.element.scrollTop).toBe(400);
+    wrapper.unmount();
+  });
 });

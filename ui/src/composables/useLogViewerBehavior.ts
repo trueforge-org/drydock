@@ -13,6 +13,13 @@ export const LOG_AUTO_FETCH_INTERVALS: AutoFetchIntervalOption[] = [
   { title: '30s', value: 30 },
 ];
 
+export function toLogErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 function isNearBottom(element: HTMLElement): boolean {
   const thresholdPx = 16;
   return element.scrollHeight - element.scrollTop - element.clientHeight <= thresholdPx;

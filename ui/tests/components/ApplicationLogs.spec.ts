@@ -197,34 +197,6 @@ describe('ApplicationLogs', () => {
     });
   });
 
-  describe('formattedLogs', () => {
-    it('formats entries into readable log lines', async () => {
-      mockGetLogEntries.mockResolvedValue(mockEntries);
-
-      const wrapper = mount(ApplicationLogs);
-      await flushPromises();
-
-      const formatted = wrapper.vm.formattedLogs;
-      expect(formatted).toContain('[INFO ]');
-      expect(formatted).toContain('[ERROR]');
-      expect(formatted).toContain('[server]');
-      expect(formatted).toContain('[docker]');
-      expect(formatted).toContain('Server started');
-      expect(formatted).toContain('Connection failed');
-      wrapper.unmount();
-    });
-
-    it('returns empty string when no entries', async () => {
-      mockGetLogEntries.mockResolvedValue([]);
-
-      const wrapper = mount(ApplicationLogs);
-      await flushPromises();
-
-      expect(wrapper.vm.formattedLogs).toBe('');
-      wrapper.unmount();
-    });
-  });
-
   describe('fetchEntries with level=all', () => {
     it('passes undefined level when level is all', async () => {
       mockGetLogEntries.mockResolvedValue([]);

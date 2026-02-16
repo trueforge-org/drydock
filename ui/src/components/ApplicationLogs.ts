@@ -1,6 +1,7 @@
 import { computed, defineComponent, nextTick, onMounted, ref, watch } from 'vue';
 import {
   LOG_AUTO_FETCH_INTERVALS,
+  toLogErrorMessage,
   useAutoFetchLogs,
   useLogViewport,
 } from '@/composables/useLogViewerBehavior';
@@ -26,13 +27,6 @@ type SourceItem = {
     disabled: boolean;
   };
 };
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 export default defineComponent({
   props: {
@@ -65,15 +59,6 @@ export default defineComponent({
       return items;
     });
 
-    const formattedLogs = computed<string>(function formatLogLines() {
-      return entries.value
-        .map(
-          (entry) =>
-            `${new Date(entry.timestamp).toISOString()} [${entry.level.toUpperCase().padEnd(5)}] [${entry.component}] ${entry.msg}`,
-        )
-        .join('\n');
-    });
-
     const fetchAgents = async function fetchAgents(): Promise<void> {
       try {
         agents.value = await getAgents();
@@ -96,7 +81,7 @@ export default defineComponent({
           scrollToBottom();
         }
       } catch (e: unknown) {
-        error.value = toErrorMessage(e);
+        error.value = toLogErrorMessage(e);
       } finally {
         loading.value = false;
       }
@@ -144,7 +129,6 @@ export default defineComponent({
       autoFetchItems: LOG_AUTO_FETCH_INTERVALS,
       agents,
       sourceItems,
-      formattedLogs,
       scrollBlocked,
       logPre,
       fetchEntries,
