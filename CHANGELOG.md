@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **v1 manifest digest watch using image ID instead of repo digest** — Fixed `handleDigestWatch()` incorrectly reading `Config.Image` (the local image ID) as the digest for v1 manifest images, causing perpetual false "update available" notifications. Now uses the repo digest from `RepoDigests` instead. ([getwud/wud#934](https://github.com/getwud/wud/issues/934))
+- **Discord trigger broken after request→axios migration** — Fixed `sendMessage()` using `request`-style properties (`uri`, `body`) instead of axios properties (`url`, `data`), causing "Invalid URL" errors on all Discord webhook calls. ([getwud/wud#933](https://github.com/getwud/wud/issues/933))
+
 ## [1.3.1] — 2026-02-15
 
 ### Fixed
