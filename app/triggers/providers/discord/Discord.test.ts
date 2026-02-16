@@ -82,8 +82,8 @@ describe('Discord Trigger', () => {
     await discord.sendMessage('Test Title', 'Test Body');
     expect(axios).toHaveBeenCalledWith({
       method: 'POST',
-      uri: 'https://discord.com/api/webhooks/123/abc',
-      body: {
+      url: 'https://discord.com/api/webhooks/123/abc',
+      data: {
         username: 'CustomBot',
         embeds: [
           {

@@ -77,8 +77,8 @@ class Discord extends Trigger {
 
     const options = {
       method: 'POST',
-      uri,
-      body,
+      url: uri,
+      data: body,
     };
     const response = await axios(options);
     return response.data;
