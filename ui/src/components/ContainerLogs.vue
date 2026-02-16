@@ -9,17 +9,44 @@
         hide-details
         style="max-width: 120px"
       />
+      <v-select
+        v-model="autoFetchSeconds"
+        :items="autoFetchItems"
+        item-title="title"
+        item-value="value"
+        label="Auto fetch"
+        density="compact"
+        hide-details
+        style="max-width: 140px"
+      />
       <v-btn
         icon
         size="small"
         variant="text"
+        :loading="loading"
         @click="fetchLogs"
       >
         <v-icon>fas fa-arrows-rotate</v-icon>
       </v-btn>
+      <v-chip
+        v-if="scrollBlocked"
+        size="small"
+        color="warning"
+        variant="tonal"
+      >
+        Scroll locked
+      </v-chip>
+      <v-btn
+        v-if="scrollBlocked"
+        size="small"
+        variant="text"
+        @click="resumeAutoScroll"
+      >
+        Resume
+      </v-btn>
     </div>
 
-    <div v-if="loading" class="d-flex justify-center pa-4">
+    <div v-if="loading && !logs" class="d-flex justify-center pa-4">
       <v-progress-circular indeterminate color="primary" />
     </div>
 
@@ -29,7 +56,9 @@
 
     <pre
       v-else-if="logs"
+      ref="logPre"
       class="pa-3 ma-2"
+      @scroll="handleLogScroll"
       style="
         background-color: #1e1e1e;
         color: #d4d4d4;

@@ -16,7 +16,12 @@ const mockContainer = {
 
 describe('ContainerLogs', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mockGetContainerLogs.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows loading state initially', async () => {
@@ -172,6 +177,76 @@ describe('ContainerLogs', () => {
     await flushPromises();
 
     expect(mockGetContainerLogs).toHaveBeenCalledWith('test-container-id', 100);
+    wrapper.unmount();
+  });
+
+  it('auto-fetches logs on interval', async () => {
+    vi.useFakeTimers();
+    mockGetContainerLogs.mockResolvedValue({ logs: 'logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('stops auto-fetching when interval is disabled', async () => {
+    vi.useFakeTimers();
+    mockGetContainerLogs.mockResolvedValue({ logs: 'logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+
+    wrapper.vm.autoFetchSeconds = 0;
+    await wrapper.vm.$nextTick();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    await flushPromises();
+
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('locks and unlocks auto-scroll based on scroll position', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'line 1\nline 2\nline 3' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+
+    const pre = wrapper.find('pre');
+    expect(pre.exists()).toBe(true);
+
+    Object.defineProperty(pre.element, 'scrollHeight', {
+      configurable: true,
+      value: 400,
+    });
+    Object.defineProperty(pre.element, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    });
+
+    pre.element.scrollTop = 150;
+    await pre.trigger('scroll');
+    expect(wrapper.vm.scrollBlocked).toBe(true);
+
+    pre.element.scrollTop = 300;
+    await pre.trigger('scroll');
+    expect(wrapper.vm.scrollBlocked).toBe(false);
     wrapper.unmount();
   });
 });
