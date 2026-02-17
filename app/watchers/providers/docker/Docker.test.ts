@@ -308,7 +308,12 @@ describe('Docker Watcher', () => {
           .slice(-2, -1)[0] || '';
         const sanitizedFolder = parentFolder.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
         const sanitizedContainer = containerName.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
-        return Promise.resolve(`dockercompose.${sanitizedFolder}-${sanitizedContainer}`);
+        
+        // Only use folder prefix if parent folder exists
+        if (sanitizedFolder && sanitizedFolder !== 'container') {
+          return Promise.resolve(`dockercompose.${sanitizedFolder}-${sanitizedContainer}`);
+        }
+        return Promise.resolve(`dockercompose.${sanitizedContainer}`);
       }
       return Promise.resolve(`dockercompose.${containerName}`);
     });
