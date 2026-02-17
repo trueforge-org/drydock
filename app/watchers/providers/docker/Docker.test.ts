@@ -2551,6 +2551,28 @@ describe('Docker Watcher', () => {
       expect(result.triggerInclude).toBe('dockercompose.tmp-test-container-wud');
     });
 
+    test('should auto-include dockercompose trigger from docker compose project labels', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-compose-project'],
+          Labels: {
+            'com.docker.compose.project.working_dir': '/opt/stacks/myapp',
+            'com.docker.compose.project.config_files': 'compose.yaml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-compose-project',
+        '/opt/stacks/myapp/compose.yaml',
+        {},
+      );
+      expect(result.triggerInclude).toBe('dockercompose.myapp-test-container-compose-project');
+    });
+
     test('should pass compose trigger options from labels', async () => {
       const container = await setupContainerDetailTest(docker, {
         container: {
