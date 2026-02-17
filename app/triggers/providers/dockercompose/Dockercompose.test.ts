@@ -458,19 +458,32 @@ describe('Dockercompose Trigger', () => {
     expect(dockerTriggerSpy).toHaveBeenCalledWith(container1);
   });
 
-  test('processComposeFile should handle digest images with @ in compose file', async () => {
+  test('processComposeFile should update digest-only image references in compose file', async () => {
     trigger.configuration.dryrun = false;
     trigger.configuration.backup = false;
 
-    const container = makeContainer({ tagValue: 'latest' });
+    const container = makeContainer({
+      tagValue: 'latest',
+      updateKind: 'digest',
+      remoteValue: 'sha256:deadbeef',
+    });
 
     vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
       makeCompose({ nginx: { image: 'nginx@sha256:abc123' } }),
     );
 
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx@sha256:abc123',
+    );
+
     await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
 
-    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No containers found'));
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx@sha256:deadbeef',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
   });
 
   test('processComposeFile should handle null image in mapCurrentVersionToUpdateVersion', async () => {
@@ -489,24 +502,200 @@ describe('Dockercompose Trigger', () => {
     expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('image is missing'));
   });
 
-  test('processComposeFile should treat image with digest reference as up to date', async () => {
+  test('processComposeFile should update tag and digest image references in compose file', async () => {
     trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
     const container = makeContainer({
-      tagValue: 'latest',
+      tagValue: '1.0.0',
       updateKind: 'digest',
       remoteValue: 'sha256:deadbeef',
     });
 
     vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
-      makeCompose({ nginx: { image: 'nginx@sha256:abc123' } }),
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
     );
 
-    const dockerTriggerSpy = vi.spyOn(Docker.prototype, 'trigger').mockResolvedValue();
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx:1.0.0@sha256:abc123',
+    );
 
     await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
 
-    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No containers found'));
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx:1.0.0@sha256:deadbeef',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+  });
+
+  test('processComposeFile should keep digest pinning for tag updates when remote digest is known', async () => {
+    trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
+    const container = makeContainer({
+      tagValue: '1.0.0',
+      updateKind: 'tag',
+      remoteValue: '1.1.0',
+      result: {
+        digest: 'sha256:newdigest',
+      },
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+    );
+
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx:1.0.0@sha256:abc123',
+    );
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx:1.1.0@sha256:newdigest',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+  });
+
+  test('processComposeFile should skip update when compose is digest-pinned but tag update has no remote digest', async () => {
+    trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
+    const container = makeContainer({
+      tagValue: '1.0.0',
+      updateKind: 'tag',
+      remoteValue: '1.1.0',
+      result: {},
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+    );
+
+    const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+      spyOnProcessComposeHelpers(trigger, 'image: nginx:1.0.0@sha256:abc123');
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(getComposeFileSpy).not.toHaveBeenCalled();
+    expect(writeComposeFileSpy).not.toHaveBeenCalled();
     expect(dockerTriggerSpy).not.toHaveBeenCalled();
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('digest-pinned'));
+  });
+
+  describe('processComposeFile update matrix (update kind × compose image format)', () => {
+    test('[tag update] + [compose tag] should rewrite tag', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'tag',
+        remoteValue: '1.1.0',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.1.0',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
+
+    test('[tag update] + [compose tag@digest] should rewrite tag and keep digest pinning', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'tag',
+        remoteValue: '1.1.0',
+        result: {
+          digest: 'sha256:newdigest',
+        },
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0@sha256:abc123',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.1.0@sha256:newdigest',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
+
+    test('[digest update] + [compose tag] should be up to date (no rewrite)', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'digest',
+        remoteValue: 'sha256:newdigest',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0' } }),
+      );
+
+      const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+        spyOnProcessComposeHelpers(trigger, 'image: nginx:1.0.0');
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(getComposeFileSpy).not.toHaveBeenCalled();
+      expect(writeComposeFileSpy).not.toHaveBeenCalled();
+      expect(dockerTriggerSpy).not.toHaveBeenCalled();
+      expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
+    });
+
+    test('[digest update] + [compose tag@digest] should rewrite digest', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'digest',
+        remoteValue: 'sha256:deadbeef',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0@sha256:abc123',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.0.0@sha256:deadbeef',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
   });
 
   test('processComposeFile should handle mapCurrentVersionToUpdateVersion returning undefined', async () => {
