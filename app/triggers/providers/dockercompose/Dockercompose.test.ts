@@ -4,9 +4,12 @@ import fs from 'node:fs/promises';
 import { getState } from '../../../registry/index.js';
 import Docker from '../docker/Docker.js';
 import Dockercompose, {
+  testable_buildUpdatedComposeImage,
+  testable_normalizeImageWithoutDigest,
   testable_normalizeImplicitLatest,
   testable_normalizePostStartEnvironmentValue,
   testable_normalizePostStartHooks,
+  testable_splitDigestReference,
 } from './Dockercompose.js';
 
 vi.mock('../../../registry', () => ({
@@ -458,19 +461,32 @@ describe('Dockercompose Trigger', () => {
     expect(dockerTriggerSpy).toHaveBeenCalledWith(container1);
   });
 
-  test('processComposeFile should handle digest images with @ in compose file', async () => {
+  test('processComposeFile should update digest-only image references in compose file', async () => {
     trigger.configuration.dryrun = false;
     trigger.configuration.backup = false;
 
-    const container = makeContainer({ tagValue: 'latest' });
+    const container = makeContainer({
+      tagValue: 'latest',
+      updateKind: 'digest',
+      remoteValue: 'sha256:deadbeef',
+    });
 
     vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
       makeCompose({ nginx: { image: 'nginx@sha256:abc123' } }),
     );
 
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx@sha256:abc123',
+    );
+
     await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
 
-    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No containers found'));
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx@sha256:deadbeef',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
   });
 
   test('processComposeFile should handle null image in mapCurrentVersionToUpdateVersion', async () => {
@@ -489,24 +505,226 @@ describe('Dockercompose Trigger', () => {
     expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('image is missing'));
   });
 
-  test('processComposeFile should treat image with digest reference as up to date', async () => {
+  test('processComposeFile should update tag and digest image references in compose file', async () => {
     trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
     const container = makeContainer({
-      tagValue: 'latest',
+      tagValue: '1.0.0',
       updateKind: 'digest',
       remoteValue: 'sha256:deadbeef',
     });
 
     vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
-      makeCompose({ nginx: { image: 'nginx@sha256:abc123' } }),
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
     );
 
-    const dockerTriggerSpy = vi.spyOn(Docker.prototype, 'trigger').mockResolvedValue();
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx:1.0.0@sha256:abc123',
+    );
 
     await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
 
-    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('No containers found'));
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx:1.0.0@sha256:deadbeef',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+  });
+
+  test('processComposeFile should keep digest pinning for tag updates when remote digest is known', async () => {
+    trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
+    const container = makeContainer({
+      tagValue: '1.0.0',
+      updateKind: 'tag',
+      remoteValue: '1.1.0',
+      result: {
+        digest: 'sha256:newdigest',
+      },
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+    );
+
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx:1.0.0@sha256:abc123',
+    );
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx:1.1.0@sha256:newdigest',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+  });
+
+  test('processComposeFile should skip update when compose is digest-pinned but tag update has no remote digest', async () => {
+    trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
+    const container = makeContainer({
+      tagValue: '1.0.0',
+      updateKind: 'tag',
+      remoteValue: '1.1.0',
+      result: {},
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+    );
+
+    const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+      spyOnProcessComposeHelpers(trigger, 'image: nginx:1.0.0@sha256:abc123');
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(getComposeFileSpy).not.toHaveBeenCalled();
+    expect(writeComposeFileSpy).not.toHaveBeenCalled();
     expect(dockerTriggerSpy).not.toHaveBeenCalled();
+    expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('digest-pinned'));
+  });
+
+  describe('processComposeFile update matrix (update kind × compose image format)', () => {
+    test('[tag update] + [compose tag] should rewrite tag', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'tag',
+        remoteValue: '1.1.0',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.1.0',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
+
+    test('[tag update] + [compose tag@digest] should rewrite tag and keep digest pinning', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'tag',
+        remoteValue: '1.1.0',
+        result: {
+          digest: 'sha256:newdigest',
+        },
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0@sha256:abc123',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.1.0@sha256:newdigest',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
+
+    test('[digest update] + [compose tag] should be up to date (no rewrite)', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'digest',
+        remoteValue: 'sha256:newdigest',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0' } }),
+      );
+
+      const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+        spyOnProcessComposeHelpers(trigger, 'image: nginx:1.0.0');
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(getComposeFileSpy).not.toHaveBeenCalled();
+      expect(writeComposeFileSpy).not.toHaveBeenCalled();
+      expect(dockerTriggerSpy).not.toHaveBeenCalled();
+      expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
+    });
+
+    test('[digest update] + [compose tag@digest] should rewrite digest', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'digest',
+        remoteValue: 'sha256:deadbeef',
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx:1.0.0@sha256:abc123' } }),
+      );
+
+      const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+        trigger,
+        'image: nginx:1.0.0@sha256:abc123',
+      );
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(writeComposeFileSpy).toHaveBeenCalledWith(
+        '/opt/drydock/test/stack.yml',
+        'image: nginx:1.0.0@sha256:deadbeef',
+      );
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+    });
+
+    test('[tag update] + [compose digest-only] should skip update', async () => {
+      trigger.configuration.dryrun = false;
+      trigger.configuration.backup = false;
+
+      const container = makeContainer({
+        tagValue: '1.0.0',
+        updateKind: 'tag',
+        remoteValue: '2.0.0',
+        labels: { 'com.docker.compose.service': 'nginx' },
+      });
+
+      vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+        makeCompose({ nginx: { image: 'nginx@sha256:abc123' } }),
+      );
+
+      const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+        spyOnProcessComposeHelpers(trigger, 'image: nginx@sha256:abc123');
+
+      await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+      expect(getComposeFileSpy).not.toHaveBeenCalled();
+      expect(writeComposeFileSpy).not.toHaveBeenCalled();
+      expect(dockerTriggerSpy).not.toHaveBeenCalled();
+      expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('digest-pinned'));
+    });
   });
 
   test('processComposeFile should handle mapCurrentVersionToUpdateVersion returning undefined', async () => {
@@ -1118,5 +1336,162 @@ describe('Dockercompose Trigger', () => {
     const circular: any = {};
     circular.self = circular;
     expect(testable_normalizePostStartEnvironmentValue(circular)).toBe('');
+  });
+
+  test('splitDigestReference should handle missing image defensively', () => {
+    expect(testable_splitDigestReference(undefined)).toEqual({
+      imageWithoutDigest: undefined,
+      digest: undefined,
+    });
+  });
+
+  test('splitDigestReference should handle image without digest', () => {
+    expect(testable_splitDigestReference('nginx:1.0.0')).toEqual({
+      imageWithoutDigest: 'nginx:1.0.0',
+      digest: undefined,
+    });
+  });
+
+  test('splitDigestReference should split image with digest', () => {
+    expect(testable_splitDigestReference('nginx:1.0.0@sha256:abc123')).toEqual({
+      imageWithoutDigest: 'nginx:1.0.0',
+      digest: 'sha256:abc123',
+    });
+  });
+
+  test('splitDigestReference should handle digest-only image (no tag)', () => {
+    expect(testable_splitDigestReference('nginx@sha256:abc123')).toEqual({
+      imageWithoutDigest: 'nginx',
+      digest: 'sha256:abc123',
+    });
+  });
+
+  test('splitDigestReference should handle image with registry prefix and digest', () => {
+    expect(testable_splitDigestReference('registry.io/nginx:1.0.0@sha256:abc123')).toEqual({
+      imageWithoutDigest: 'registry.io/nginx:1.0.0',
+      digest: 'sha256:abc123',
+    });
+  });
+
+  test('splitDigestReference should handle empty string', () => {
+    expect(testable_splitDigestReference('')).toEqual({
+      imageWithoutDigest: '',
+      digest: undefined,
+    });
+  });
+
+  test('normalizeImageWithoutDigest should handle null/undefined', () => {
+    expect(testable_normalizeImageWithoutDigest(undefined)).toBe(undefined);
+    expect(testable_normalizeImageWithoutDigest(null)).toBe(null);
+  });
+
+  test('normalizeImageWithoutDigest should strip digest and normalize', () => {
+    expect(testable_normalizeImageWithoutDigest('nginx@sha256:abc123')).toBe('nginx:latest');
+    expect(testable_normalizeImageWithoutDigest('nginx:1.0.0@sha256:abc123')).toBe('nginx:1.0.0');
+  });
+
+  test('normalizeImageWithoutDigest should handle image without digest', () => {
+    expect(testable_normalizeImageWithoutDigest('nginx:1.0.0')).toBe('nginx:1.0.0');
+    expect(testable_normalizeImageWithoutDigest('nginx')).toBe('nginx:latest');
+  });
+
+  test('normalizeImageWithoutDigest should handle registry prefix', () => {
+    expect(testable_normalizeImageWithoutDigest('registry.io/nginx:1.0.0@sha256:abc123')).toBe(
+      'registry.io/nginx:1.0.0',
+    );
+    expect(testable_normalizeImageWithoutDigest('registry.io/nginx@sha256:abc123')).toBe(
+      'registry.io/nginx:latest',
+    );
+  });
+
+  test('buildUpdatedComposeImage should return fallback for non-digest current image', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0',
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      undefined,
+    );
+    expect(result).toEqual({
+      image: 'nginx:2.0.0',
+      keptPinned: false,
+    });
+  });
+
+  test('buildUpdatedComposeImage should skip update when digest-pinned but no replacement digest', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0@sha256:abc123',
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      undefined,
+    );
+    expect(result).toEqual({
+      image: undefined,
+      keptPinned: false,
+    });
+  });
+
+  test('buildUpdatedComposeImage should preserve digest pinning for tag updates', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0@sha256:abc123',
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      'sha256:newdigest',
+    );
+    expect(result).toEqual({
+      image: 'nginx:2.0.0@sha256:newdigest',
+      keptPinned: true,
+    });
+  });
+
+  test('buildUpdatedComposeImage should use update digest for digest updates', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0@sha256:abc123',
+      'nginx:1.0.0',
+      { kind: 'digest', remoteValue: 'sha256:deadbeef' },
+      undefined,
+    );
+    expect(result).toEqual({
+      image: 'nginx:1.0.0@sha256:deadbeef',
+      keptPinned: true,
+    });
+  });
+
+  test('buildUpdatedComposeImage should handle digest-only images', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx@sha256:abc123',
+      'nginx:latest',
+      { kind: 'digest', remoteValue: 'sha256:newdigest' },
+      undefined,
+    );
+    expect(result).toEqual({
+      image: 'nginx@sha256:newdigest',
+      keptPinned: true,
+    });
+  });
+
+  test('buildUpdatedComposeImage should handle null/undefined current image', () => {
+    const result = testable_buildUpdatedComposeImage(
+      undefined,
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      undefined,
+    );
+    expect(result).toEqual({
+      image: 'nginx:2.0.0',
+      keptPinned: false,
+    });
+  });
+
+  test('buildUpdatedComposeImage should handle registry prefix with digest pinning', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'registry.io/nginx:1.0.0@sha256:abc123',
+      'registry.io/nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      'sha256:newdigest',
+    );
+    expect(result).toEqual({
+      image: 'registry.io/nginx:2.0.0@sha256:newdigest',
+      keptPinned: true,
+    });
   });
 });

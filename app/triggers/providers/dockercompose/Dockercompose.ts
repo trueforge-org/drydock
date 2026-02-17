@@ -5,6 +5,58 @@ import { getState } from '../../../registry/index.js';
 import { resolveConfiguredPath } from '../../../runtime/paths.js';
 import Docker from '../docker/Docker.js';
 
+function splitDigestReference(image) {
+  if (!image) {
+    return {
+      imageWithoutDigest: image,
+      digest: undefined,
+    };
+  }
+
+  const separatorIndex = image.indexOf('@');
+  if (separatorIndex === -1) {
+    return {
+      imageWithoutDigest: image,
+      digest: undefined,
+    };
+  }
+
+  return {
+    imageWithoutDigest: image.slice(0, separatorIndex),
+    digest: image.slice(separatorIndex + 1),
+  };
+}
+
+function normalizeImageWithoutDigest(image) {
+  const { imageWithoutDigest } = splitDigestReference(image);
+  return normalizeImplicitLatest(imageWithoutDigest);
+}
+
+function buildUpdatedComposeImage(currentImage, fallbackImage, updateKind, remoteDigest) {
+  if (!currentImage?.includes('@')) {
+    return {
+      image: fallbackImage,
+      keptPinned: false,
+    };
+  }
+
+  const digestToPin =
+    updateKind?.kind === 'digest' ? updateKind?.remoteValue : (remoteDigest ?? undefined);
+  if (!digestToPin) {
+    return {
+      image: undefined,
+      keptPinned: false,
+    };
+  }
+
+  const imageToPin = updateKind?.kind === 'digest' ? currentImage : fallbackImage;
+  const { imageWithoutDigest } = splitDigestReference(imageToPin);
+  return {
+    image: `${imageWithoutDigest}@${digestToPin}`,
+    keptPinned: true,
+  };
+}
+
 function getServiceKey(compose, container, currentImage) {
   const composeServiceName = container.labels?.['com.docker.compose.service'];
   if (composeServiceName && compose.services?.[composeServiceName]) {
@@ -16,11 +68,15 @@ function getServiceKey(compose, container, currentImage) {
       return false;
     }
     const normalizedServiceImage = normalizeImplicitLatest(serviceImage);
+    const normalizedServiceImageWithoutDigest = normalizeImageWithoutDigest(serviceImage);
+    const normalizedImageToMatchWithoutDigest = normalizeImageWithoutDigest(imageToMatch);
     return (
       serviceImage === imageToMatch ||
       normalizedServiceImage === imageToMatch ||
+      normalizedServiceImageWithoutDigest === normalizedImageToMatchWithoutDigest ||
       serviceImage.includes(imageToMatch) ||
-      normalizedServiceImage.includes(imageToMatch)
+      normalizedServiceImage.includes(imageToMatch) ||
+      normalizedServiceImageWithoutDigest.includes(normalizedImageToMatchWithoutDigest)
     );
   };
 
@@ -444,8 +500,21 @@ class Dockercompose extends Docker {
       return undefined;
     }
 
-    const updateImage = this.getNewImageFullName(registry, container);
     const currentImage = serviceToUpdate.image;
+    const digestAwareUpdate = buildUpdatedComposeImage(
+      currentImage,
+      this.getNewImageFullName(registry, container),
+      container.updateKind,
+      container.result?.digest,
+    );
+    const updateImage = digestAwareUpdate.image;
+
+    if (currentImage.includes('@') && !digestAwareUpdate.keptPinned) {
+      this.log.warn(
+        `Skip update for service ${serviceKeyToUpdate} (container ${container.name}) because compose image is digest-pinned and no replacement digest is available`,
+      );
+      return undefined;
+    }
 
     return {
       service: serviceKeyToUpdate,
@@ -510,6 +579,9 @@ class Dockercompose extends Docker {
 export default Dockercompose;
 
 export {
+  splitDigestReference as testable_splitDigestReference,
+  normalizeImageWithoutDigest as testable_normalizeImageWithoutDigest,
+  buildUpdatedComposeImage as testable_buildUpdatedComposeImage,
   getServiceKey as testable_getServiceKey,
   normalizeImplicitLatest as testable_normalizeImplicitLatest,
   normalizePostStartHooks as testable_normalizePostStartHooks,

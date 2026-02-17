@@ -115,7 +115,7 @@ async function runRemoteTrigger(req, res) {
       !localProxyTrigger.mustTrigger(containerToTrigger)
     ) {
       log.warn(
-        `Remote trigger conditions not met (agent=${sanitizeLogParam(agentName)}, type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(containerToTrigger.id || 'unknown')})`,
+        `Remote trigger conditions not met (agent=${sanitizeLogParam(agentName)}, type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(containerToTrigger.id)})`,
       );
       res.status(400).json({
         error: `Trigger conditions not met for ${triggerType}.${triggerName} on agent ${agentName} (check include/exclude and requireinclude settings)`,

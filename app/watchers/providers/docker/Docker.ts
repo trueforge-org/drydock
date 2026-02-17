@@ -2721,6 +2721,7 @@ export default Docker;
 
 export {
   appendTriggerId as testable_appendTriggerId,
+  removeTriggerId as testable_removeTriggerId,
   getLabel as testable_getLabel,
   getCurrentPrefix as testable_getCurrentPrefix,
   filterBySegmentCount as testable_filterBySegmentCount,
