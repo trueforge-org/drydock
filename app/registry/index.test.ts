@@ -337,6 +337,29 @@ test('ensureDockercomposeTriggerForContainer should handle paths without parent 
   expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
 });
 
+test('ensureDockercomposeTriggerForContainer should set trigger configuration when provided', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer(
+    'my-service',
+    '/home/user/myapp/docker-compose.yml',
+    {
+      backup: 'true',
+      prune: 'false',
+      dryrun: 'true',
+      auto: 'false',
+      threshold: 'minor',
+    },
+  );
+
+  expect(triggerId).toBe('dockercompose.myapp-my-service');
+  expect(registry.getState().trigger[triggerId].configuration).toMatchObject({
+    backup: true,
+    prune: false,
+    dryrun: true,
+    auto: false,
+    threshold: 'minor',
+  });
+});
+
 test('sanitizeComponentName should handle empty string', () => {
   const result = registry.testable_sanitizeComponentName('');
   expect(result).toBe('container');

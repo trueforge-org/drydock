@@ -34,7 +34,12 @@ import {
 } from '../../../tag/index.js';
 import Watcher from '../../Watcher.js';
 import {
+  ddComposeAuto,
+  ddComposeBackup,
+  ddComposeDryrun,
   ddComposeFile,
+  ddComposePrune,
+  ddComposeThreshold,
   ddDisplayIcon,
   ddDisplayName,
   ddInspectTagPath,
@@ -48,9 +53,14 @@ import {
   ddTriggerInclude,
   ddWatch,
   ddWatchDigest,
+  wudComposeAuto,
+  wudComposeBackup,
+  wudComposeDryrun,
   wudDisplayIcon,
   wudDisplayName,
   wudComposeFile,
+  wudComposePrune,
+  wudComposeThreshold,
   wudInspectTagPath,
   wudLinkTemplate,
   wudRegistryLookupImage,
@@ -170,6 +180,37 @@ function appendTriggerId(triggerInclude: string | undefined, triggerId: string |
     return triggerId;
   }
   return `${triggerInclude},${triggerId}`;
+}
+
+function getDockercomposeTriggerConfigurationFromLabels(labels: Record<string, string>) {
+  const dockercomposeConfig: Record<string, string> = {};
+
+  const backup = getLabel(labels, ddComposeBackup, wudComposeBackup);
+  if (backup !== undefined) {
+    dockercomposeConfig.backup = backup;
+  }
+
+  const prune = getLabel(labels, ddComposePrune, wudComposePrune);
+  if (prune !== undefined) {
+    dockercomposeConfig.prune = prune;
+  }
+
+  const dryrun = getLabel(labels, ddComposeDryrun, wudComposeDryrun);
+  if (dryrun !== undefined) {
+    dockercomposeConfig.dryrun = dryrun;
+  }
+
+  const auto = getLabel(labels, ddComposeAuto, wudComposeAuto);
+  if (auto !== undefined) {
+    dockercomposeConfig.auto = auto;
+  }
+
+  const threshold = getLabel(labels, ddComposeThreshold, wudComposeThreshold);
+  if (threshold !== undefined) {
+    dockercomposeConfig.threshold = threshold;
+  }
+
+  return dockercomposeConfig;
 }
 
 interface ResolvedImgset {
@@ -2432,12 +2473,18 @@ class Docker extends Watcher {
     const containerName = getContainerName(container);
     let triggerIncludeUpdated = resolvedConfig.triggerInclude;
     const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
+    const dockercomposeTriggerConfiguration =
+      getDockercomposeTriggerConfigurationFromLabels(containerLabels);
     if (composeFilePath) {
       let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
       if (!dockercomposeTriggerId) {
         try {
           dockercomposeTriggerId =
-            await registry.ensureDockercomposeTriggerForContainer(containerName, composeFilePath);
+            await registry.ensureDockercomposeTriggerForContainer(
+              containerName,
+              composeFilePath,
+              dockercomposeTriggerConfiguration,
+            );
           this.composeTriggersByContainer[containerId] = dockercomposeTriggerId;
         } catch (e: any) {
           this.ensureLogger();
