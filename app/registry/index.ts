@@ -288,6 +288,7 @@ async function registerRegistries() {
     lscr: { public: '' },
     ocir: { public: '' },
     quay: { public: '' },
+    trueforge: { public: '' },
   };
   const registriesToRegister = {
     ...defaultRegistries,

@@ -160,6 +160,7 @@ test('registerRegistries should register all registries', async () => {
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
 });
 
@@ -179,6 +180,7 @@ test('registerRegistries should register all anonymous registries by default', a
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
 });
 
@@ -418,6 +420,7 @@ test('init should register all components', async () => {
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
   expect(Object.keys(registry.getState().trigger)).toEqual(['mock.mock1', 'mock.mock2']);
   expect(Object.keys(registry.getState().watcher)).toEqual(['docker.watcher1', 'docker.watcher2']);
