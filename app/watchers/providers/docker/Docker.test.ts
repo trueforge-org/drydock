@@ -298,6 +298,7 @@ describe('Docker Watcher', () => {
 
     // Setup registry mock
     registry.getState.mockReturnValue({ registry: {} });
+    registry.ensureDockercomposeTriggerForContainer.mockResolvedValue('dockercompose.test-container');
 
     // Setup event mock
     event.emitWatcherStart.mockImplementation(() => {});
@@ -2430,6 +2431,41 @@ describe('Docker Watcher', () => {
       expect(result.linkTemplate).toBe(
         'https://www.home-assistant.io/changelogs/core-${major}${minor}${patch}',
       );
+    });
+
+    test('should auto-include dockercompose trigger when dd.compose.file label is set', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container');
+      expect(result.triggerInclude).toBe('dockercompose.test-container');
+    });
+
+    test('should append dockercompose trigger when triggerInclude already exists', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container, {
+        triggerInclude: 'ntfy.default:major',
+      });
+
+      expect(result.triggerInclude).toBe('ntfy.default:major,dockercompose.test-container');
     });
 
     test('should apply imgset watchDigest when label is missing', async () => {

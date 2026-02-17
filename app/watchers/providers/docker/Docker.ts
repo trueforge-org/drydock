@@ -34,6 +34,7 @@ import {
 } from '../../../tag/index.js';
 import Watcher from '../../Watcher.js';
 import {
+  ddComposeFile,
   ddDisplayIcon,
   ddDisplayName,
   ddInspectTagPath,
@@ -49,6 +50,7 @@ import {
   ddWatchDigest,
   wudDisplayIcon,
   wudDisplayName,
+  wudComposeFile,
   wudInspectTagPath,
   wudLinkTemplate,
   wudRegistryLookupImage,
@@ -155,6 +157,20 @@ const OIDC_DEVICE_URL_PATHS = [
 ];
 const OIDC_DEVICE_POLL_INTERVAL_MS = 5000;
 const OIDC_DEVICE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+function appendTriggerId(triggerInclude: string | undefined, triggerId: string | undefined): string | undefined {
+  if (!triggerId) {
+    return triggerInclude;
+  }
+  const triggersIncluded = triggerInclude ? triggerInclude.split(/\s*,\s*/) : [];
+  if (triggersIncluded.includes(triggerId)) {
+    return triggerInclude;
+  }
+  if (!triggerInclude) {
+    return triggerId;
+  }
+  return `${triggerInclude},${triggerId}`;
+}
 
 interface ResolvedImgset {
   name: string;
@@ -953,6 +969,7 @@ class Docker extends Watcher {
   public remoteOidcRefreshToken?: string;
   public remoteOidcAccessTokenExpiresAt?: number;
   public remoteOidcDeviceCodeCompleted?: boolean;
+  public composeTriggersByContainer: Record<string, string> = {};
 
   ensureLogger() {
     if (!this.log) {
@@ -2133,6 +2150,13 @@ class Docker extends Watcher {
       (result): result is Container => !(result instanceof Error) && result != null,
     );
 
+    const currentContainerIds = containersToReturn.map((container) => container.id);
+    Object.keys(this.composeTriggersByContainer)
+      .filter((containerId) => !currentContainerIds.includes(containerId))
+      .forEach((containerId) => {
+        delete this.composeTriggersByContainer[containerId];
+      });
+
     // Prune old containers from the store
     try {
       const containersFromTheStore = storeContainer.getContainers({
@@ -2402,6 +2426,24 @@ class Docker extends Watcher {
       );
     }
     const containerName = getContainerName(container);
+    let triggerIncludeUpdated = resolvedConfig.triggerInclude;
+    if (containerLabels[ddComposeFile] || containerLabels[wudComposeFile]) {
+      let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
+      if (!dockercomposeTriggerId) {
+        try {
+          dockercomposeTriggerId =
+            await registry.ensureDockercomposeTriggerForContainer(containerName);
+          this.composeTriggersByContainer[containerId] = dockercomposeTriggerId;
+        } catch (e: any) {
+          this.ensureLogger();
+          this.log.warn(
+            `Unable to create dockercompose trigger for ${containerName} (${e.message})`,
+          );
+        }
+      }
+      triggerIncludeUpdated = appendTriggerId(resolvedConfig.triggerInclude, dockercomposeTriggerId);
+    }
+
     return normalizeContainer({
       id: containerId,
       name: containerName,
@@ -2417,7 +2459,7 @@ class Docker extends Watcher {
         resolvedConfig.displayName,
       ),
       displayIcon: resolvedConfig.displayIcon,
-      triggerInclude: resolvedConfig.triggerInclude,
+      triggerInclude: triggerIncludeUpdated,
       triggerExclude: resolvedConfig.triggerExclude,
       image: {
         id: image.Id,
