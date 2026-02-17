@@ -300,7 +300,8 @@ export async function ensureDockercomposeTriggerForContainer(
     const sanitizedFolder = sanitizeComponentName(parentFolder);
     const sanitizedContainer = sanitizeComponentName(containerName);
     
-    // Only use folder prefix if parent folder exists
+    // Only use folder prefix if parent folder exists and is not a default fallback value
+    // (sanitizeComponentName returns 'container' as default when input is empty/invalid)
     if (sanitizedFolder && sanitizedFolder !== CONTAINER_TRIGGER_DEFAULT_NAME) {
       triggerBaseName = `${sanitizedFolder}-${sanitizedContainer}`;
     } else {
