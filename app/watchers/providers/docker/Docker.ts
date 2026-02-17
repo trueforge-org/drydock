@@ -1242,6 +1242,8 @@ class Docker extends Watcher {
       }).length === 0;
     this.configuration.watchatstart = this.configuration.watchatstart && isWatcherStoreEmpty;
 
+    await this.ensureComposeTriggersFromStore();
+
     // watch at startup if enabled (after all components have been registered)
     if (this.configuration.watchatstart) {
       this.watchCronTimeout = setTimeout(this.watchFromCron.bind(this), START_WATCHER_DELAY_MS);
@@ -1254,6 +1256,49 @@ class Docker extends Watcher {
         this.listenDockerEvents.bind(this),
         START_WATCHER_DELAY_MS,
       );
+    }
+  }
+
+  async ensureComposeTriggersFromStore() {
+    const containersInStore = storeContainer.getContainers({
+      watcher: this.name,
+    });
+
+    for (const containerInStore of containersInStore) {
+      const containerLabels = containerInStore.labels || {};
+      const composeFilePath = getLabel(containerLabels, ddComposeFile, wudComposeFile);
+      if (!composeFilePath) {
+        continue;
+      }
+
+      let dockercomposeTriggerId = this.composeTriggersByContainer[containerInStore.id];
+      if (!dockercomposeTriggerId) {
+        try {
+          dockercomposeTriggerId = await registry.ensureDockercomposeTriggerForContainer(
+            containerInStore.name,
+            composeFilePath,
+            getDockercomposeTriggerConfigurationFromLabels(containerLabels),
+          );
+          this.composeTriggersByContainer[containerInStore.id] = dockercomposeTriggerId;
+        } catch (e: any) {
+          this.ensureLogger();
+          this.log.warn(
+            `Unable to create dockercompose trigger for ${containerInStore.name} (${e.message})`,
+          );
+          continue;
+        }
+      }
+
+      const triggerIncludeUpdated = appendTriggerId(
+        containerInStore.triggerInclude,
+        dockercomposeTriggerId,
+      );
+      if (triggerIncludeUpdated !== containerInStore.triggerInclude) {
+        storeContainer.updateContainer({
+          ...containerInStore,
+          triggerInclude: triggerIncludeUpdated,
+        });
+      }
     }
   }
 

@@ -592,6 +592,47 @@ describe('Docker Watcher', () => {
       expect(docker.configuration.watchatstart).toBe(false);
     });
 
+    test('should ensure compose trigger from persisted container state during init', async () => {
+      storeContainer.getContainers.mockReturnValue([
+        {
+          id: 'existing-compose',
+          name: 'web',
+          watcher: 'test',
+          labels: {
+            'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+            'dd.compose.auto': 'true',
+            'dd.compose.prune': 'false',
+          },
+          triggerInclude: 'ntfy.default:major',
+        },
+      ]);
+
+      await docker.register('watcher', 'docker', 'test', {
+        watchatstart: true,
+      });
+
+      await docker.init();
+
+      expect(docker.configuration.watchatstart).toBe(false);
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'web',
+        '/tmp/my-stack/docker-compose.yml',
+        {
+          auto: 'true',
+          prune: 'false',
+        },
+      );
+      expect(docker.composeTriggersByContainer['existing-compose']).toBe(
+        'dockercompose.my-stack-web',
+      );
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'existing-compose',
+          triggerInclude: 'ntfy.default:major,dockercompose.my-stack-web',
+        }),
+      );
+    });
+
     test('should keep watchatstart disabled when explicitly set to false', async () => {
       storeContainer.getContainers.mockReturnValue([]);
       await docker.register('watcher', 'docker', 'test', {

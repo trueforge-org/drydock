@@ -35,8 +35,20 @@ const REGISTRY_PROVIDER_ICONS = {
   docr: 'fab fa-digital-ocean',
 };
 
+function getRegistryProviderName(provider) {
+  return `${provider || ''}`.split('.')[0];
+}
+
+function getRegistryDisplayName(registryName) {
+  const [provider, name] = `${registryName || ''}`.split('.');
+  if (provider === 'custom' && name) {
+    return name;
+  }
+  return provider || '';
+}
+
 function getRegistryProviderIcon(provider) {
-  const providerName = `${provider || ''}`.split('.')[0];
+  const providerName = getRegistryProviderName(provider);
   return REGISTRY_PROVIDER_ICONS[providerName] || 'fas fa-cube';
 }
 
@@ -71,7 +83,7 @@ const REGISTRY_PROVIDER_COLORS = {
 };
 
 function getRegistryProviderColor(provider) {
-  return REGISTRY_PROVIDER_COLORS[provider.split('.')[0]] || '#6B7280';
+  return REGISTRY_PROVIDER_COLORS[getRegistryProviderName(provider)] || '#6B7280';
 }
 
 /**
@@ -83,4 +95,11 @@ async function getAllRegistries() {
   return response.json();
 }
 
-export { getRegistryIcon, getRegistryProviderIcon, getRegistryProviderColor, getAllRegistries };
+export {
+  getRegistryIcon,
+  getRegistryProviderName,
+  getRegistryDisplayName,
+  getRegistryProviderIcon,
+  getRegistryProviderColor,
+  getAllRegistries,
+};
