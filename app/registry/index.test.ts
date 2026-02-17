@@ -331,7 +331,8 @@ test('ensureDockercomposeTriggerForContainer should handle Windows paths', async
 
 test('ensureDockercomposeTriggerForContainer should handle paths without parent folder', async () => {
   const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', '/docker-compose.yml');
-  // When no parent folder is available, should fall back to container name only
+  // When path has no parent folder (slice(-2, -1)[0] returns undefined for single-segment paths),
+  // falls back to container name only
   expect(triggerId).toBe('dockercompose.my-service');
   expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
 });

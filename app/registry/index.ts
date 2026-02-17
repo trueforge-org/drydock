@@ -291,6 +291,8 @@ export async function ensureDockercomposeTriggerForContainer(
 
   if (composeFilePath) {
     // Extract parent folder name from compose file path
+    // slice(-2, -1)[0] gets the second-to-last path segment (the parent folder)
+    // Returns undefined for root-level files, which becomes empty string via || ''
     const parentFolder = composeFilePath
       .replace(/\\/g, '/') // normalize Windows paths
       .split('/')
