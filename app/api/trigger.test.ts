@@ -132,6 +132,27 @@ describe('Trigger Router', () => {
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
+    test('should run trigger when mustTrigger is not a function', async () => {
+      const mockTrigger = {
+        mustTrigger: true,
+        trigger: vi.fn().mockResolvedValue(undefined),
+      };
+      registry.getState.mockReturnValue({
+        trigger: { 'slack.default': mockTrigger },
+      });
+
+      const req = {
+        params: { type: 'slack', name: 'default' },
+        body: { id: 'c1' },
+      };
+      const res = createResponse();
+
+      await runTrigger(req, res);
+
+      expect(mockTrigger.trigger).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
     test('should set default updateKind when missing', async () => {
       const mockTrigger = {
         mustTrigger: vi.fn().mockReturnValue(true),
@@ -302,6 +323,36 @@ describe('Trigger Router', () => {
         trigger: {
           'my-agent.slack.default': {
             mustTrigger: vi.fn().mockReturnValue(true),
+          },
+        },
+      });
+
+      const handler = getRemoteTriggerHandler();
+      const req = {
+        params: { agent: 'my-agent', type: 'slack', name: 'default' },
+        body: { id: 'c1' },
+      };
+      const res = createResponse();
+
+      await handler(req, res);
+
+      expect(mockAgentClient.runRemoteTrigger).toHaveBeenCalledWith(
+        { id: 'c1' },
+        'slack',
+        'default',
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    test('should run remote trigger when local proxy mustTrigger is not a function', async () => {
+      const mockAgentClient = {
+        runRemoteTrigger: vi.fn().mockResolvedValue(undefined),
+      };
+      agent.getAgent.mockReturnValue(mockAgentClient);
+      registry.getState.mockReturnValue({
+        trigger: {
+          'my-agent.slack.default': {
+            mustTrigger: true,
           },
         },
       });

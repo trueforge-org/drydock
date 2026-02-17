@@ -1043,6 +1043,16 @@ describe('Container Router', () => {
       expect(getTriggersFromResponse(res)).toHaveLength(0);
     });
 
+    test('should keep non-docker local triggers for remote containers', async () => {
+      const res = await callGetContainerTriggers({ id: 'c1', agent: 'agent-1' }, [
+        { type: 'slack', name: 'default', configuration: {} },
+      ]);
+
+      const triggers = getTriggersFromResponse(res);
+      expect(triggers).toHaveLength(1);
+      expect(triggers[0].type).toBe('slack');
+    });
+
     test('should include triggers with matching include threshold', async () => {
       Trigger.parseIncludeOrIncludeTriggerString.mockReturnValue({
         id: 'slack.default',
