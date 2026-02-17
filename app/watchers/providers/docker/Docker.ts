@@ -2417,10 +2417,17 @@ class Docker extends Watcher {
   async addImageDetailsToContainer(container: any, labelOverrides: ContainerLabelOverrides = {}) {
     const containerId = container.Id;
     const containerLabels = container.Labels || {};
+    const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
+    const needsComposeTriggerCreation =
+      !!composeFilePath && !this.composeTriggersByContainer[containerId];
 
     // Is container already in store? just return it :)
     const containerInStore = storeContainer.getContainer(containerId);
-    if (containerInStore !== undefined && containerInStore.error === undefined) {
+    if (
+      containerInStore !== undefined &&
+      containerInStore.error === undefined &&
+      !needsComposeTriggerCreation
+    ) {
       this.ensureLogger();
       this.log.debug(`Container ${containerInStore.id} already in store`);
       return containerInStore;
@@ -2472,7 +2479,6 @@ class Docker extends Watcher {
     }
     const containerName = getContainerName(container);
     let triggerIncludeUpdated = resolvedConfig.triggerInclude;
-    const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
     const dockercomposeTriggerConfiguration =
       getDockercomposeTriggerConfigurationFromLabels(containerLabels);
     if (composeFilePath) {

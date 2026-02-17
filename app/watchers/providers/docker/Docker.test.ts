@@ -2337,6 +2337,30 @@ describe('Docker Watcher', () => {
       expect(result).toBe(existingContainer);
     });
 
+    test('should not short-circuit existing container when compose label needs trigger creation', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/existing-compose-container'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+      const existingContainer = { id: container.Id, error: undefined };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(result).not.toBe(existingContainer);
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'existing-compose-container',
+        '/tmp/docker-compose.yml',
+        {},
+      );
+      expect(result.triggerInclude).toBe('dockercompose.tmp-existing-compose-container');
+    });
+
     test('should add image details to new container', async () => {
       const container = await setupContainerDetailTest(docker, {
         container: { Image: 'nginx:1.0.0' },
