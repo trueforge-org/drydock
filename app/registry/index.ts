@@ -326,7 +326,10 @@ export async function ensureDockercomposeTriggerForContainer(
     kind: 'trigger',
     provider: 'dockercompose',
     name: triggerName,
-    configuration: triggerConfiguration,
+    configuration: {
+      ...triggerConfiguration,
+      requireinclude: true,
+    },
     componentPath: 'triggers/providers',
   });
 

@@ -20,6 +20,7 @@ const configurationValid = {
   mode: 'simple',
   auto: true,
   order: 100,
+  requireinclude: false,
   simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
 
   simplebody:
@@ -616,6 +617,43 @@ test('mustTrigger should support name-only include with threshold for hybrid tri
   // Major should be excluded because threshold is 'minor'
   expect(dockerTrigger.mustTrigger(containerMajor)).toBe(false);
   expect(discordTrigger.mustTrigger(containerMajor)).toBe(false);
+});
+
+test('mustTrigger should require explicit include when requireinclude is enabled', () => {
+  trigger.type = 'dockercompose';
+  trigger.name = 'scoped';
+  trigger.configuration = {
+    ...configurationValid,
+    requireinclude: true,
+  };
+
+  expect(
+    trigger.mustTrigger({
+      updateKind: {
+        kind: 'tag',
+        semverDiff: 'major',
+      },
+    }),
+  ).toBe(false);
+});
+
+test('mustTrigger should allow execution when requireinclude is enabled and trigger is explicitly included', () => {
+  trigger.type = 'dockercompose';
+  trigger.name = 'scoped';
+  trigger.configuration = {
+    ...configurationValid,
+    requireinclude: true,
+  };
+
+  expect(
+    trigger.mustTrigger({
+      triggerInclude: 'dockercompose.scoped',
+      updateKind: {
+        kind: 'tag',
+        semverDiff: 'major',
+      },
+    }),
+  ).toBe(true);
 });
 
 test('renderSimpleTitle should replace placeholders when called', async () => {

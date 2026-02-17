@@ -99,7 +99,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      - name: Start labeled workload container
+      - name: Start workload containers
         run: |
           docker run -d \
             --name dd-compose-label-test \
@@ -107,6 +107,11 @@ jobs:
             --label dd.compose.file=/tmp/ci-stack/docker-compose.yml \
             --label dd.compose.auto=true \
             --label dd.compose.prune=false \
+            alpine:3.21 sleep 600
+
+          docker run -d \
+            --name dd-compose-unlabeled-test \
+            --label dd.watch=true \
             alpine:3.21 sleep 600
 
       - name: Build drydock image
@@ -153,6 +158,16 @@ jobs:
             docker logs drydock-ci-trigger 2>&1 || true
             exit 1
           fi
+          if ! echo "$logs" | grep -Eq '"requireinclude":("true"|true)'; then
+            echo "Did not find scoped requireinclude=true configuration in logs"
+            docker logs drydock-ci-trigger 2>&1 || true
+            exit 1
+          fi
+          if echo "$logs" | grep -Eq 'trigger\.dockercompose\..*dd-compose-unlabeled-test'; then
+            echo "Unexpected dockercompose trigger registration for unlabeled container"
+            docker logs drydock-ci-trigger 2>&1 || true
+            exit 1
+          fi
 
       - name: Dump drydock logs on failure
         if: failure()
@@ -161,7 +176,7 @@ jobs:
       - name: Cleanup containers
         if: always()
         run: |
-          docker rm -f drydock-ci-trigger dd-compose-label-test >/dev/null 2>&1 || true
+          docker rm -f drydock-ci-trigger dd-compose-label-test dd-compose-unlabeled-test >/dev/null 2>&1 || true
 
   build:
     name: Build

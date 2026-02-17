@@ -357,7 +357,15 @@ test('ensureDockercomposeTriggerForContainer should set trigger configuration wh
     dryrun: true,
     auto: false,
     threshold: 'minor',
+    requireinclude: true,
   });
+});
+
+test('ensureDockercomposeTriggerForContainer should always scope trigger to explicitly included containers', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service');
+
+  expect(triggerId).toBe('dockercompose.my-service');
+  expect(registry.getState().trigger[triggerId].configuration.requireinclude).toBe(true);
 });
 
 test('sanitizeComponentName should handle empty string', () => {

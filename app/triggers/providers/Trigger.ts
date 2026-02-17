@@ -20,6 +20,7 @@ export interface TriggerConfiguration extends ComponentConfiguration {
   auto?: boolean;
   order?: number;
   threshold?: string;
+  requireinclude?: boolean;
   mode?: string;
   once?: boolean;
   disabletitle?: boolean;
@@ -257,6 +258,9 @@ class Trigger extends Component {
       return false;
     }
     const { triggerInclude, triggerExclude } = containerResult;
+    if (this.configuration.requireinclude && !triggerInclude) {
+      return false;
+    }
     return (
       this.isTriggerIncluded(containerResult, triggerInclude) &&
       !this.isTriggerExcluded(containerResult, triggerExclude)
@@ -337,6 +341,7 @@ class Trigger extends Component {
         ),
       batchtitle: this.joi.string().default('${containers.length} updates available'),
       resolvenotifications: this.joi.boolean().default(false),
+        requireinclude: this.joi.boolean().default(false),
     });
     const schemaValidated = schemaWithDefaultOptions.validate(configuration);
     if (schemaValidated.error) {
