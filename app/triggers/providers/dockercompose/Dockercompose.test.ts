@@ -7,6 +7,7 @@ import Dockercompose, {
   testable_normalizeImplicitLatest,
   testable_normalizePostStartEnvironmentValue,
   testable_normalizePostStartHooks,
+  testable_splitDigestReference,
 } from './Dockercompose.js';
 
 vi.mock('../../../registry', () => ({
@@ -1307,5 +1308,12 @@ describe('Dockercompose Trigger', () => {
     const circular: any = {};
     circular.self = circular;
     expect(testable_normalizePostStartEnvironmentValue(circular)).toBe('');
+  });
+
+  test('splitDigestReference should handle missing image defensively', () => {
+    expect(testable_splitDigestReference(undefined)).toEqual({
+      imageWithoutDigest: undefined,
+      digest: undefined,
+    });
   });
 });
