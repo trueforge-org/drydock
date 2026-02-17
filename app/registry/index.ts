@@ -281,7 +281,7 @@ function sanitizeComponentName(name: string): string {
 
 /**
  * Ensure a dockercompose trigger exists for a container name.
- * Name collision strategy: append a number to the trigger name.
+ * Name collision strategy: update the existing trigger configuration.
  */
 export async function ensureDockercomposeTriggerForContainer(
   containerName: string,
@@ -314,18 +314,10 @@ export async function ensureDockercomposeTriggerForContainer(
     triggerBaseName = sanitizeComponentName(containerName);
   }
 
-  let triggerName = triggerBaseName;
-  let conflictIndex = 2;
-
-  while (state.trigger[`dockercompose.${triggerName}`]) {
-    triggerName = `${triggerBaseName}-${conflictIndex}`;
-    conflictIndex += 1;
-  }
-
   const triggerRegistered = await registerComponent({
     kind: 'trigger',
     provider: 'dockercompose',
-    name: triggerName,
+    name: triggerBaseName,
     configuration: {
       ...triggerConfiguration,
       requireinclude: true,

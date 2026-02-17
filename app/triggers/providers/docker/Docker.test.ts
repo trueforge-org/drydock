@@ -11,6 +11,7 @@ const configurationValid = {
   once: true,
   auto: true,
   order: 100,
+  requireinclude: false,
   autoremovetimeout: 10000,
   backupcount: 3,
   simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',

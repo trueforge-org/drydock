@@ -307,20 +307,49 @@ test('ensureDockercomposeTriggerForContainer should create trigger with parent f
   expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
 });
 
-test('ensureDockercomposeTriggerForContainer should append a number when name conflicts', async () => {
+test('ensureDockercomposeTriggerForContainer should reuse existing trigger when name conflicts', async () => {
   const triggerId1 = await registry.ensureDockercomposeTriggerForContainer('my-service');
   const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service');
 
   expect(triggerId1).toBe('dockercompose.my-service');
-  expect(triggerId2).toBe('dockercompose.my-service-2');
+  expect(triggerId2).toBe('dockercompose.my-service');
+  expect(
+    Object.keys(registry.getState().trigger).filter((id) => id === 'dockercompose.my-service')
+      .length,
+  ).toBe(1);
 });
 
-test('ensureDockercomposeTriggerForContainer should append a number when name conflicts with compose path', async () => {
+test('ensureDockercomposeTriggerForContainer should reuse existing trigger when name conflicts with compose path', async () => {
   const triggerId1 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
   const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
 
   expect(triggerId1).toBe('dockercompose.myapp-my-service');
-  expect(triggerId2).toBe('dockercompose.myapp-my-service-2');
+  expect(triggerId2).toBe('dockercompose.myapp-my-service');
+  expect(
+    Object.keys(registry.getState().trigger).filter((id) => id === 'dockercompose.myapp-my-service')
+      .length,
+  ).toBe(1);
+});
+
+test('ensureDockercomposeTriggerForContainer should update configuration on existing trigger', async () => {
+  const triggerId1 = await registry.ensureDockercomposeTriggerForContainer(
+    'my-service',
+    '/home/user/myapp/docker-compose.yml',
+    { prune: 'false' },
+  );
+  const triggerId2 = await registry.ensureDockercomposeTriggerForContainer(
+    'my-service',
+    '/home/user/myapp/docker-compose.yml',
+    { prune: 'true', backup: 'true' },
+  );
+
+  expect(triggerId1).toBe('dockercompose.myapp-my-service');
+  expect(triggerId2).toBe('dockercompose.myapp-my-service');
+  expect(registry.getState().trigger[triggerId2].configuration).toMatchObject({
+    prune: true,
+    backup: true,
+    requireinclude: true,
+  });
 });
 
 test('ensureDockercomposeTriggerForContainer should handle Windows paths', async () => {

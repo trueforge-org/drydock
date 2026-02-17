@@ -18,6 +18,7 @@ const configurationValid = {
   once: true,
   auto: true,
   order: 100,
+  requireinclude: false,
   simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
 
   simplebody:

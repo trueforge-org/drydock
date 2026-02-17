@@ -23,6 +23,7 @@ const configurationValid = {
   once: true,
   auto: true,
   order: 100,
+  requireinclude: false,
   simpletitle: 'Test Title',
   simplebody: 'Test Body',
   batchtitle: 'Batch Title',

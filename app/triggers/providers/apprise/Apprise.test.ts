@@ -15,6 +15,7 @@ const configurationValid = {
   threshold: 'all',
   auto: true,
   order: 100,
+  requireinclude: false,
   once: true,
   mode: 'simple',
 
