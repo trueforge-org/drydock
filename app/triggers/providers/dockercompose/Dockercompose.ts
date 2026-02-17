@@ -580,6 +580,8 @@ export default Dockercompose;
 
 export {
   splitDigestReference as testable_splitDigestReference,
+  normalizeImageWithoutDigest as testable_normalizeImageWithoutDigest,
+  buildUpdatedComposeImage as testable_buildUpdatedComposeImage,
   getServiceKey as testable_getServiceKey,
   normalizeImplicitLatest as testable_normalizeImplicitLatest,
   normalizePostStartHooks as testable_normalizePostStartHooks,
