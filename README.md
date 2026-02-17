@@ -390,6 +390,24 @@ All triggers support **threshold filtering** (`all`, `major`, `minor`, `patch`) 
 
 </details>
 
+<details>
+<summary><strong>Docker Compose per-container labels</strong></summary>
+
+When using the Docker Compose trigger, container labels can override trigger settings per service.
+
+| Label (preferred) | Legacy label | Trigger env equivalent | Expected value |
+| --- | --- | --- | --- |
+| `dd.compose.file` | `wud.compose.file` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_FILE` | Compose file path |
+| `dd.compose.backup` | `wud.compose.backup` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_BACKUP` | `true` / `false` |
+| `dd.compose.prune` | `wud.compose.prune` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_PRUNE` | `true` / `false` |
+| `dd.compose.dryrun` | `wud.compose.dryrun` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_DRYRUN` | `true` / `false` |
+| `dd.compose.auto` | `wud.compose.auto` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_AUTO` | `true` / `false` |
+| `dd.compose.threshold` | `wud.compose.threshold` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_THRESHOLD` | `all` / `major` / `minor` / `patch` |
+
+`dd.*` labels take precedence when both `dd.*` and `wud.*` are present.
+
+</details>
+
 <h2 align="center" id="authentication">Authentication</h2>
 
 ---

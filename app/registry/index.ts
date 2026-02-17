@@ -286,6 +286,7 @@ function sanitizeComponentName(name: string): string {
 export async function ensureDockercomposeTriggerForContainer(
   containerName: string,
   composeFilePath?: string,
+  triggerConfiguration: Record<string, any> = {},
 ): Promise<string> {
   let triggerBaseName: string;
 
@@ -325,7 +326,7 @@ export async function ensureDockercomposeTriggerForContainer(
     kind: 'trigger',
     provider: 'dockercompose',
     name: triggerName,
-    configuration: {},
+    configuration: triggerConfiguration,
     componentPath: 'triggers/providers',
   });
 

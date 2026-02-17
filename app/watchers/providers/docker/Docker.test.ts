@@ -2504,7 +2504,11 @@ describe('Docker Watcher', () => {
 
       const result = await docker.addImageDetailsToContainer(container);
 
-      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container', '/tmp/docker-compose.yml');
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container',
+        '/tmp/docker-compose.yml',
+        {},
+      );
       expect(result.triggerInclude).toBe('dockercompose.tmp-test-container');
     });
 
@@ -2539,8 +2543,110 @@ describe('Docker Watcher', () => {
 
       const result = await docker.addImageDetailsToContainer(container);
 
-      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container-wud', '/tmp/docker-compose.yml');
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-wud',
+        '/tmp/docker-compose.yml',
+        {},
+      );
       expect(result.triggerInclude).toBe('dockercompose.tmp-test-container-wud');
+    });
+
+    test('should pass compose trigger options from labels', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-options'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+            'dd.compose.backup': 'true',
+            'dd.compose.prune': 'false',
+            'dd.compose.dryrun': 'true',
+            'dd.compose.auto': 'false',
+            'dd.compose.threshold': 'minor',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-options',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'true',
+          prune: 'false',
+          dryrun: 'true',
+          auto: 'false',
+          threshold: 'minor',
+        },
+      );
+    });
+
+    test('should pass compose trigger options from wud labels as fallback', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-options-wud'],
+          Labels: {
+            'wud.compose.file': '/tmp/docker-compose.yml',
+            'wud.compose.backup': 'false',
+            'wud.compose.prune': 'true',
+            'wud.compose.dryrun': 'false',
+            'wud.compose.auto': 'true',
+            'wud.compose.threshold': 'patch',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-options-wud',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'false',
+          prune: 'true',
+          dryrun: 'false',
+          auto: 'true',
+          threshold: 'patch',
+        },
+      );
+    });
+
+    test('should prefer dd compose trigger options over wud when both are set', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-options-precedence'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+            'dd.compose.backup': 'true',
+            'dd.compose.prune': 'false',
+            'dd.compose.dryrun': 'true',
+            'dd.compose.auto': 'false',
+            'dd.compose.threshold': 'minor',
+            'wud.compose.backup': 'false',
+            'wud.compose.prune': 'true',
+            'wud.compose.dryrun': 'false',
+            'wud.compose.auto': 'true',
+            'wud.compose.threshold': 'patch',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-options-precedence',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'true',
+          prune: 'false',
+          dryrun: 'true',
+          auto: 'false',
+          threshold: 'minor',
+        },
+      );
     });
 
     test('should continue when dockercompose trigger creation fails', async () => {
@@ -2564,7 +2670,7 @@ describe('Docker Watcher', () => {
         triggerInclude: 'ntfy.default:major',
       });
 
-      expect(ensureTriggerSpy).toHaveBeenCalledWith('test-container', '/tmp/docker-compose.yml');
+      expect(ensureTriggerSpy).toHaveBeenCalledWith('test-container', '/tmp/docker-compose.yml', {});
       // On failure, processing should continue and the original triggerInclude should be preserved.
       expect(result.triggerInclude).toBe('ntfy.default:major');
     });

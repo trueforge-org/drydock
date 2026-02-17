@@ -82,6 +82,36 @@ export const ddComposeFile = 'dd.compose.file';
 export const wudComposeFile = 'wud.compose.file';
 
 /**
+ * Optional dockercompose trigger backup mode (true | false).
+ */
+export const ddComposeBackup = 'dd.compose.backup';
+export const wudComposeBackup = 'wud.compose.backup';
+
+/**
+ * Optional dockercompose trigger prune mode (true | false).
+ */
+export const ddComposePrune = 'dd.compose.prune';
+export const wudComposePrune = 'wud.compose.prune';
+
+/**
+ * Optional dockercompose trigger dry-run mode (true | false).
+ */
+export const ddComposeDryrun = 'dd.compose.dryrun';
+export const wudComposeDryrun = 'wud.compose.dryrun';
+
+/**
+ * Optional dockercompose trigger auto mode (true | false).
+ */
+export const ddComposeAuto = 'dd.compose.auto';
+export const wudComposeAuto = 'wud.compose.auto';
+
+/**
+ * Optional dockercompose trigger threshold setting.
+ */
+export const ddComposeThreshold = 'dd.compose.threshold';
+export const wudComposeThreshold = 'wud.compose.threshold';
+
+/**
  * Optional list of triggers to exclude
  */
 export const ddTriggerExclude = 'dd.trigger.exclude';
