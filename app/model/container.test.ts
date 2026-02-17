@@ -713,6 +713,34 @@ test('addUpdateKindProperty should detect digest update', async () => {
   });
 });
 
+test('addUpdateKindProperty should prefer tag update over digest update', async () => {
+  const { testable_addUpdateKindProperty: addUpdateKindProperty } = container;
+  const containerObject = {
+    updateAvailable: true,
+    image: {
+      tag: {
+        value: '1.0.0',
+        semver: true,
+      },
+      digest: {
+        watch: true,
+        value: 'sha256:123465789',
+      },
+    },
+    result: {
+      tag: '1.0.1',
+      digest: 'sha256:987654321',
+    },
+  };
+  addUpdateKindProperty(containerObject);
+  expect(containerObject.updateKind).toEqual({
+    kind: 'tag',
+    localValue: '1.0.0',
+    remoteValue: '1.0.1',
+    semverDiff: 'patch',
+  });
+});
+
 test('addUpdateKindProperty should return unknown when no image or result', async () => {
   const { testable_addUpdateKindProperty: addUpdateKindProperty } = container;
   const containerObject = {};

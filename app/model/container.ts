@@ -333,7 +333,12 @@ function getRawUpdateKind(container: Container): ContainerUpdateKind {
     return unknownUpdateKind;
   }
 
-  // Digest watch mode takes precedence over tag-based updates.
+  // Prefer tag updates when both tag and digest updates are present.
+  const tagUpdate = getRawTagUpdate(container);
+  if (tagUpdate.kind === 'tag') {
+    return tagUpdate;
+  }
+
   if (
     container.image.digest?.watch &&
     container.image.digest.value !== undefined &&
@@ -341,7 +346,8 @@ function getRawUpdateKind(container: Container): ContainerUpdateKind {
   ) {
     return getRawDigestUpdate(container);
   }
-  return getRawTagUpdate(container);
+
+  return tagUpdate;
 }
 
 function hasRawUpdate(container: Container): boolean {
