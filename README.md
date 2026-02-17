@@ -404,6 +404,12 @@ When using the Docker Compose trigger, container labels can override trigger set
 | `dd.compose.auto` | `wud.compose.auto` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_AUTO` | `true` / `false` |
 | `dd.compose.threshold` | `wud.compose.threshold` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_THRESHOLD` | `all` / `major` / `minor` / `patch` |
 
+Behavior notes:
+
+- `dd.compose.file` / `wud.compose.file` causes drydock to create (or reuse) a scoped `dockercompose` trigger for that container.
+- That generated compose trigger is set with `requireinclude=true` and auto-appended to the container include list, so it only runs for explicitly associated containers.
+- If `dd.compose.auto` is omitted, normal trigger default applies (`auto=true`).
+
 `dd.*` labels take precedence when both `dd.*` and `wud.*` are present.
 
 </details>
