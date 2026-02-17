@@ -368,16 +368,25 @@ function isTriggerAgentCompatible(trigger, container) {
 
 function resolveTriggerAssociation(trigger, includedTriggers, excludedTriggers) {
   const triggerId = `${trigger.type}.${trigger.name}`;
-  const triggerToAssociate = { ...trigger };
+  const triggerToAssociate = {
+    ...trigger,
+    configuration: { ...(trigger.configuration || {}) },
+  };
+  const requireInclude = Boolean(triggerToAssociate.configuration.requireinclude);
 
+  let includedTrigger;
   if (includedTriggers) {
-    const includedTrigger = includedTriggers.find((tr) =>
+    includedTrigger = includedTriggers.find((tr) =>
       Trigger.doesReferenceMatchId(tr.id, triggerId),
     );
     if (!includedTrigger) {
       return undefined;
     }
     triggerToAssociate.configuration.threshold = includedTrigger.threshold;
+  }
+
+  if (requireInclude && !includedTrigger) {
+    return undefined;
   }
 
   if (
@@ -438,6 +447,12 @@ async function runTrigger(req, res) {
     const triggerToRun = getTriggers()[triggerId];
     if (triggerToRun) {
       try {
+        if (typeof triggerToRun.mustTrigger === 'function' && !triggerToRun.mustTrigger(containerToTrigger)) {
+          res.status(400).json({
+            error: `Trigger conditions not met for ${triggerType}.${triggerName} (check include/exclude and requireinclude settings)`,
+          });
+          return;
+        }
         await triggerToRun.trigger(containerToTrigger);
         log.info(
           `Trigger executed with success (type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(JSON.stringify(containerToTrigger), 500)})`,

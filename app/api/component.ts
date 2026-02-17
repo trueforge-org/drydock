@@ -20,11 +20,23 @@ export interface ApiComponent {
  * @returns {{id: *}}
  */
 export function mapComponentToItem(key, component): ApiComponent {
+  const configurationMasked = component.maskConfiguration();
+  const isTrigger = component.kind === 'trigger';
+  const requireIncludeConfigured = component.configuration?.requireinclude;
+
+  if (
+    isTrigger &&
+    requireIncludeConfigured !== undefined &&
+    configurationMasked?.requireinclude === undefined
+  ) {
+    configurationMasked.requireinclude = requireIncludeConfigured;
+  }
+
   return {
     id: key,
     type: component.type,
     name: component.name,
-    configuration: component.maskConfiguration(),
+    configuration: configurationMasked,
     agent: component.agent,
   };
 }

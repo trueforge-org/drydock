@@ -1058,6 +1058,18 @@ describe('Container Router', () => {
       expect(triggers).toHaveLength(1);
       expect(triggers[0].configuration.threshold).toBe('all');
     });
+
+    test('should exclude requireinclude triggers when container has no include list', async () => {
+      const res = await callGetContainerTriggers({ id: 'c1' }, [
+        { type: 'slack', name: 'default', configuration: { requireinclude: true } },
+        { type: 'email', name: 'default', configuration: { requireinclude: false } },
+      ]);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const triggers = getTriggersFromResponse(res);
+      expect(triggers).toHaveLength(1);
+      expect(triggers[0].type).toBe('email');
+    });
   });
 
   describe('runTrigger', () => {
@@ -1108,6 +1120,24 @@ describe('Container Router', () => {
       registry.getState.mockReturnValue({ watcher: {}, trigger: { 'slack.default': mockTrigger } });
       const res = await callRunTrigger({ id: 'c1', triggerType: 'slack', triggerName: 'default' });
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    test('should return 400 when trigger conditions are not met', async () => {
+      const mockTrigger = {
+        mustTrigger: vi.fn().mockReturnValue(false),
+        trigger: vi.fn(),
+      };
+      storeContainer.getContainer.mockReturnValue({ id: 'c1' });
+      registry.getState.mockReturnValue({ watcher: {}, trigger: { 'slack.default': mockTrigger } });
+      const res = await callRunTrigger({ id: 'c1', triggerType: 'slack', triggerName: 'default' });
+
+      expect(mockTrigger.trigger).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Trigger conditions not met'),
+        }),
+      );
     });
 
     test('should use triggerAgent in trigger id when provided', async () => {
