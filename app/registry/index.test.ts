@@ -160,6 +160,7 @@ test('registerRegistries should register all registries', async () => {
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
 });
 
@@ -179,6 +180,7 @@ test('registerRegistries should register all anonymous registries by default', a
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
 });
 
@@ -292,6 +294,91 @@ test('registerTriggers should warn when registration errors occur', async () => 
     ),
   );
 });
+
+test('ensureDockercomposeTriggerForContainer should create a trigger with container name only when no compose path', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service');
+  expect(triggerId).toBe('dockercompose.my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('ensureDockercomposeTriggerForContainer should create trigger with parent folder and container name', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+  expect(triggerId).toBe('dockercompose.myapp-my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('ensureDockercomposeTriggerForContainer should append a number when name conflicts', async () => {
+  const triggerId1 = await registry.ensureDockercomposeTriggerForContainer('my-service');
+  const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service');
+
+  expect(triggerId1).toBe('dockercompose.my-service');
+  expect(triggerId2).toBe('dockercompose.my-service-2');
+});
+
+test('ensureDockercomposeTriggerForContainer should append a number when name conflicts with compose path', async () => {
+  const triggerId1 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+  const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+
+  expect(triggerId1).toBe('dockercompose.myapp-my-service');
+  expect(triggerId2).toBe('dockercompose.myapp-my-service-2');
+});
+
+test('ensureDockercomposeTriggerForContainer should handle Windows paths', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', 'C:\\Users\\user\\myapp\\docker-compose.yml');
+  expect(triggerId).toBe('dockercompose.myapp-my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('ensureDockercomposeTriggerForContainer should handle paths without parent folder', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', '/docker-compose.yml');
+  // When path has no parent folder (slice(-2, -1)[0] returns undefined for single-segment paths),
+  // falls back to container name only
+  expect(triggerId).toBe('dockercompose.my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('sanitizeComponentName should handle empty string', () => {
+  const result = registry.testable_sanitizeComponentName('');
+  expect(result).toBe('container');
+});
+
+test('sanitizeComponentName should handle strings with only special characters', () => {
+  const result = registry.testable_sanitizeComponentName('@@@###$$$');
+  // Result should be composed only of safe characters for component names
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+});
+
+test('sanitizeComponentName should lowercase and trim mixed-case names with whitespace', () => {
+  const input = '  My-Component_Name  ';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be all lowercase
+  expect(result).toBe(result.toLowerCase());
+  // Should not have leading or trailing whitespace
+  expect(result.startsWith(' ')).toBe(false);
+  expect(result.endsWith(' ')).toBe(false);
+  expect(result).toBe('my-component_name');
+});
+
+test('sanitizeComponentName should handle various special characters', () => {
+  const input = 'Comp@#Name!$ With%Chars';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be lowercase and contain only safe characters
+  expect(result).toBe(result.toLowerCase());
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+  expect(result).toBe('comp--name---with-chars');
+});
+
+test('sanitizeComponentName should handle unicode and symbols robustly', () => {
+  const input = 'Üñïçødë-µ_Service!';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be lowercase and contain only safe characters
+  expect(result).toBe(result.toLowerCase());
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+});
+
 
 test('registerWatchers should register all watchers', async () => {
   watchers = {
@@ -418,6 +505,7 @@ test('init should register all components', async () => {
     'lscr.public',
     'ocir.public',
     'quay.public',
+    'trueforge.public',
   ]);
   expect(Object.keys(registry.getState().trigger)).toEqual(['mock.mock1', 'mock.mock2']);
   expect(Object.keys(registry.getState().watcher)).toEqual(['docker.watcher1', 'docker.watcher2']);

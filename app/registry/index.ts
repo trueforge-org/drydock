@@ -68,6 +68,8 @@ const state: RegistryState = {
   agent: {},
 };
 
+const CONTAINER_TRIGGER_DEFAULT_NAME = 'container';
+
 export function getState() {
   return state;
 }
@@ -269,6 +271,67 @@ async function registerTriggers(options: RegistrationOptions = {}) {
   }
 }
 
+function sanitizeComponentName(name: string): string {
+  const nameSanitized = `${name || ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-');
+  return nameSanitized || CONTAINER_TRIGGER_DEFAULT_NAME;
+}
+
+/**
+ * Ensure a dockercompose trigger exists for a container name.
+ * Name collision strategy: append a number to the trigger name.
+ */
+export async function ensureDockercomposeTriggerForContainer(
+  containerName: string,
+  composeFilePath?: string,
+): Promise<string> {
+  let triggerBaseName: string;
+
+  if (composeFilePath) {
+    // Extract parent folder name from compose file path
+    // slice(-2, -1)[0] gets the second-to-last path segment (the parent folder)
+    // Returns undefined for root-level files, which becomes empty string via || ''
+    const parentFolder = composeFilePath
+      .replace(/\\/g, '/') // normalize Windows paths
+      .split('/')
+      .filter((part) => part.length > 0)
+      .slice(-2, -1)[0] || ''; // Get the parent folder name
+    
+    const sanitizedFolder = sanitizeComponentName(parentFolder);
+    const sanitizedContainer = sanitizeComponentName(containerName);
+    
+    // Only use folder prefix if parent folder exists and is not a default fallback value
+    // (sanitizeComponentName returns 'container' as default when input is empty/invalid)
+    if (sanitizedFolder && sanitizedFolder !== CONTAINER_TRIGGER_DEFAULT_NAME) {
+      triggerBaseName = `${sanitizedFolder}-${sanitizedContainer}`;
+    } else {
+      triggerBaseName = sanitizedContainer;
+    }
+  } else {
+    triggerBaseName = sanitizeComponentName(containerName);
+  }
+
+  let triggerName = triggerBaseName;
+  let conflictIndex = 2;
+
+  while (state.trigger[`dockercompose.${triggerName}`]) {
+    triggerName = `${triggerBaseName}-${conflictIndex}`;
+    conflictIndex += 1;
+  }
+
+  const triggerRegistered = await registerComponent({
+    kind: 'trigger',
+    provider: 'dockercompose',
+    name: triggerName,
+    configuration: {},
+    componentPath: 'triggers/providers',
+  });
+
+  return triggerRegistered.getId();
+}
+
 /**
  * Register registries.
  * @returns {Promise}
@@ -288,6 +351,7 @@ async function registerRegistries() {
     lscr: { public: '' },
     ocir: { public: '' },
     quay: { public: '' },
+    trueforge: { public: '' },
   };
   const registriesToRegister = {
     ...defaultRegistries,
@@ -490,6 +554,7 @@ export {
   deregisterWatchers as testable_deregisterWatchers,
   deregisterAuthentications as testable_deregisterAuthentications,
   deregisterAll as testable_deregisterAll,
+  sanitizeComponentName as testable_sanitizeComponentName,
   shutdown as testable_shutdown,
   applyTriggerGroupDefaults as testable_applyTriggerGroupDefaults,
   getKnownProviderSet as testable_getKnownProviderSet,
