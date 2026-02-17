@@ -1000,6 +1000,22 @@ describe('Container Router', () => {
       expect(res.json).toHaveBeenCalledWith(expect.any(Array));
     });
 
+    test('should associate trigger when configuration is missing', async () => {
+      const res = await callGetContainerTriggers({ id: 'c1' }, [
+        { type: 'slack', name: 'default' },
+      ]);
+
+      const triggers = getTriggersFromResponse(res);
+      expect(triggers).toHaveLength(1);
+      expect(triggers[0]).toEqual(
+        expect.objectContaining({
+          type: 'slack',
+          name: 'default',
+          configuration: {},
+        }),
+      );
+    });
+
     test('should filter triggers with triggerInclude', async () => {
       Trigger.parseIncludeOrIncludeTriggerString.mockReturnValue({ id: 'slack.default' });
       Trigger.doesReferenceMatchId.mockImplementation((ref, id) => ref === id);

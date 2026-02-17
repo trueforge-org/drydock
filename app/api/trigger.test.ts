@@ -261,6 +261,32 @@ describe('Trigger Router', () => {
         }),
       );
     });
+
+    test('should return 400 when trigger conditions are not met and container id is missing', async () => {
+      const mockTrigger = {
+        mustTrigger: vi.fn().mockReturnValue(false),
+        trigger: vi.fn(),
+      };
+      registry.getState.mockReturnValue({
+        trigger: { 'slack.default': mockTrigger },
+      });
+
+      const req = {
+        params: { type: 'slack', name: 'default' },
+        body: {},
+      };
+      const res = createResponse();
+
+      await runTrigger(req, res);
+
+      expect(mockTrigger.trigger).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.stringContaining('Trigger conditions not met'),
+        }),
+      );
+    });
   });
 
   describe('runRemoteTrigger', () => {

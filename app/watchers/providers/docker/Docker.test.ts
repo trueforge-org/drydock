@@ -1416,6 +1416,105 @@ describe('Docker Watcher', () => {
       expect(storeContainer.updateContainer).not.toHaveBeenCalled();
     });
 
+    test('should use old container name when inspect name is empty and compose trigger is created', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      docker.log = createMockLogWithChild(['info']);
+      mockContainer.inspect.mockResolvedValue({
+        Name: '',
+        State: { Status: 'running' },
+        Config: {
+          Labels: {
+            'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+          },
+        },
+      });
+      const existingContainer = {
+        id: 'container123',
+        name: 'old-compose-name',
+        displayName: 'old-compose-name',
+        status: 'running',
+        image: { name: 'library/nginx' },
+        labels: {
+          'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+        },
+      };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      await docker.onDockerEvent(Buffer.from('{"Action":"start","id":"container123"}\n'));
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'old-compose-name',
+        '/tmp/my-stack/docker-compose.yml',
+        {},
+      );
+    });
+
+    test('should use old container name in warning when compose trigger creation fails and inspect name is empty', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      docker.log = createMockLogWithChild(['warn']);
+      mockContainer.inspect.mockResolvedValue({
+        Name: '',
+        State: { Status: 'running' },
+        Config: {
+          Labels: {
+            'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+          },
+        },
+      });
+      const existingContainer = {
+        id: 'container123',
+        name: 'old-compose-name',
+        displayName: 'old-compose-name',
+        status: 'running',
+        image: { name: 'library/nginx' },
+        labels: {
+          'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+        },
+      };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      vi.spyOn(registry, 'ensureDockercomposeTriggerForContainer').mockRejectedValueOnce(
+        new Error('event create failed'),
+      );
+
+      await docker.onDockerEvent(Buffer.from('{"Action":"start","id":"container123"}\n'));
+
+      expect(docker.log._child.warn).toHaveBeenCalledWith(
+        expect.stringContaining('old-compose-name'),
+      );
+    });
+
+    test('should skip update when compose label is absent, cached trigger exists, and trigger include is unchanged', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      docker.log = createMockLogWithChild(['info']);
+      mockContainer.inspect.mockResolvedValue({
+        Name: '/compose-container',
+        State: { Status: 'running' },
+        Config: {
+          Labels: {},
+        },
+      });
+      const existingContainer = {
+        id: 'container123',
+        name: 'compose-container',
+        displayName: 'compose-container',
+        status: 'running',
+        image: { name: 'library/nginx' },
+        labels: {},
+        triggerInclude: undefined,
+      };
+      docker.composeTriggersByContainer = {
+        container123: 'dockercompose.my-stack-compose-container',
+      };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      await docker.onDockerEvent(Buffer.from('{"Action":"start","id":"container123"}\n'));
+
+      expect(existingContainer.triggerInclude).toBeUndefined();
+      expect(docker.composeTriggersByContainer.container123).toBeUndefined();
+      expect(storeContainer.updateContainer).not.toHaveBeenCalled();
+    });
+
     test('should skip store update when inspect payload does not change tracked fields', async () => {
       await docker.register('watcher', 'docker', 'test', {});
       docker.log = createMockLogWithChild(['info']);
@@ -4617,6 +4716,10 @@ describe('Docker Watcher', () => {
 
     test('removeTriggerId should return original include when triggerId is missing', () => {
       expect(testable_removeTriggerId('ntfy.default:major', undefined)).toBe('ntfy.default:major');
+    });
+
+    test('removeTriggerId should return undefined when last trigger is removed', () => {
+      expect(testable_removeTriggerId('dockercompose.test', 'dockercompose.test')).toBeUndefined();
     });
 
 
