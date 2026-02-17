@@ -240,7 +240,7 @@ function getComposeFilePathFromLabels(labels: Record<string, string>): string | 
   if (composeWorkingDir) {
     return path.join(composeWorkingDir, composeFileFromConfig);
   }
-  return composeFileFromConfig;
+  return undefined;
 }
 
 interface ResolvedImgset {
