@@ -76,6 +76,12 @@ export const ddTriggerInclude = 'dd.trigger.include';
 export const wudTriggerInclude = 'wud.trigger.include';
 
 /**
+ * Optional compose file location for dockercompose trigger.
+ */
+export const ddComposeFile = 'dd.compose.file';
+export const wudComposeFile = 'wud.compose.file';
+
+/**
  * Optional list of triggers to exclude
  */
 export const ddTriggerExclude = 'dd.trigger.exclude';
