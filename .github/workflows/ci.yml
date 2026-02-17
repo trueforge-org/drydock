@@ -89,6 +89,80 @@ jobs:
           flags: app,ui
           fail_ci_if_error: false
 
+  compose-trigger-log-smoke:
+    name: Compose Trigger Log Smoke
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Start labeled workload container
+        run: |
+          docker run -d \
+            --name dd-compose-label-test \
+            --label dd.watch=true \
+            --label dd.compose.file=/tmp/ci-stack/docker-compose.yml \
+            --label dd.compose.auto=true \
+            --label dd.compose.prune=false \
+            alpine:3.21 sleep 600
+
+      - name: Build drydock image
+        run: docker build -t drydock:ci-trigger --build-arg DD_VERSION=ci .
+
+      - name: Start drydock
+        run: |
+          docker run -d \
+            --name drydock-ci-trigger \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --env DD_WATCHER_LOCAL_WATCHBYDEFAULT=true \
+            --env DD_WATCHER_LOCAL_WATCHATSTART=true \
+            --env DD_WATCHER_LOCAL_WATCHEVENTS=true \
+            drydock:ci-trigger
+
+      - name: Assert compose trigger creation from labels
+        run: |
+          found=0
+          for i in $(seq 1 60); do
+            logs="$(docker logs drydock-ci-trigger 2>&1 || true)"
+
+            if echo "$logs" | grep -Eq 'trigger\.dockercompose\..*dd-compose-label-test'; then
+              found=1
+              echo "Found dockercompose trigger registration log"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$found" -ne 1 ]; then
+            echo "Did not find dockercompose trigger creation log for dd-compose-label-test"
+            docker logs drydock-ci-trigger 2>&1 || true
+            exit 1
+          fi
+
+          logs="$(docker logs drydock-ci-trigger 2>&1 || true)"
+          if ! echo "$logs" | grep -Eq '"auto":("true"|true)'; then
+            echo "Did not find compose trigger auto configuration in logs"
+            docker logs drydock-ci-trigger 2>&1 || true
+            exit 1
+          fi
+          if ! echo "$logs" | grep -Eq '"prune":("false"|false)'; then
+            echo "Did not find compose trigger prune configuration in logs"
+            docker logs drydock-ci-trigger 2>&1 || true
+            exit 1
+          fi
+
+      - name: Dump drydock logs on failure
+        if: failure()
+        run: docker logs drydock-ci-trigger 2>&1 || true
+
+      - name: Cleanup containers
+        if: always()
+        run: |
+          docker rm -f drydock-ci-trigger dd-compose-label-test >/dev/null 2>&1 || true
+
   build:
     name: Build
     runs-on: ubuntu-latest

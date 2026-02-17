@@ -1226,6 +1226,84 @@ describe('Docker Watcher', () => {
       expect(storeContainer.updateContainer).toHaveBeenCalledWith(existingContainer);
     });
 
+    test('should create and attach dockercompose trigger when dd.compose.file appears in inspect labels', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      docker.log = createMockLogWithChild(['info', 'warn']);
+      mockContainer.inspect.mockResolvedValue({
+        Name: '/compose-container',
+        State: { Status: 'running' },
+        Config: {
+          Labels: {
+            'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+            'dd.compose.backup': 'true',
+            'dd.compose.prune': 'false',
+            'dd.compose.auto': 'true',
+            'dd.compose.threshold': 'minor',
+          },
+        },
+      });
+      const existingContainer = {
+        id: 'container123',
+        name: 'compose-container',
+        displayName: 'compose-container',
+        status: 'running',
+        image: { name: 'library/nginx' },
+        labels: {},
+      };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      await docker.onDockerEvent(Buffer.from('{"Action":"start","id":"container123"}\n'));
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'compose-container',
+        '/tmp/my-stack/docker-compose.yml',
+        {
+          backup: 'true',
+          prune: 'false',
+          auto: 'true',
+          threshold: 'minor',
+        },
+      );
+      expect(existingContainer.triggerInclude).toBe('dockercompose.my-stack-compose-container');
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(existingContainer);
+    });
+
+    test('should detach dockercompose trigger when compose label is removed in inspect labels', async () => {
+      await docker.register('watcher', 'docker', 'test', {});
+      docker.log = createMockLogWithChild(['info', 'warn']);
+      mockContainer.inspect.mockResolvedValue({
+        Name: '/compose-container',
+        State: { Status: 'running' },
+        Config: {
+          Labels: {
+            foo: 'bar',
+          },
+        },
+      });
+      const existingContainer = {
+        id: 'container123',
+        name: 'compose-container',
+        displayName: 'compose-container',
+        status: 'running',
+        image: { name: 'library/nginx' },
+        labels: {
+          'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+        },
+        triggerInclude: 'ntfy.default:major,dockercompose.my-stack-compose-container',
+      };
+      docker.composeTriggersByContainer = {
+        container123: 'dockercompose.my-stack-compose-container',
+      };
+      storeContainer.getContainer.mockReturnValue(existingContainer);
+
+      await docker.onDockerEvent(Buffer.from('{"Action":"start","id":"container123"}\n'));
+
+      expect(registry.ensureDockercomposeTriggerForContainer).not.toHaveBeenCalled();
+      expect(existingContainer.triggerInclude).toBe('ntfy.default:major');
+      expect(docker.composeTriggersByContainer.container123).toBeUndefined();
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(existingContainer);
+    });
+
     test('should skip store update when inspect payload does not change tracked fields', async () => {
       await docker.register('watcher', 'docker', 'test', {});
       docker.log = createMockLogWithChild(['info']);

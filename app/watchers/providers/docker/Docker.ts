@@ -182,6 +182,17 @@ function appendTriggerId(triggerInclude: string | undefined, triggerId: string |
   return `${triggerInclude},${triggerId}`;
 }
 
+function removeTriggerId(triggerInclude: string | undefined, triggerId: string | undefined) {
+  if (!triggerInclude || !triggerId) {
+    return triggerInclude;
+  }
+  const triggersIncluded = triggerInclude
+    .split(/\s*,\s*/)
+    .map((trigger) => trigger.trim())
+    .filter((trigger) => trigger !== '' && trigger !== triggerId);
+  return triggersIncluded.length > 0 ? triggersIncluded.join(',') : undefined;
+}
+
 function getDockercomposeTriggerConfigurationFromLabels(labels: Record<string, string>) {
   const dockercomposeConfig: Record<string, string> = {};
 
@@ -1926,7 +1937,7 @@ class Docker extends Watcher {
       const containerFound = storeContainer.getContainer(containerId);
 
       if (containerFound) {
-        this.updateContainerFromInspect(containerFound, containerInspect);
+        await this.updateContainerFromInspect(containerFound, containerInspect);
       }
     } catch (e: any) {
       this.log.debug(
@@ -1935,7 +1946,7 @@ class Docker extends Watcher {
     }
   }
 
-  private updateContainerFromInspect(containerFound: Container, containerInspect: any) {
+  private async updateContainerFromInspect(containerFound: Container, containerInspect: any) {
     const logContainer = this.log.child({
       container: fullName(containerFound),
     });
@@ -1986,6 +1997,47 @@ class Docker extends Watcher {
         undefined,
       );
       changed = true;
+    }
+
+    const containerId = containerFound.id;
+    const composeFilePath = getLabel(labelsToApply, ddComposeFile, wudComposeFile);
+    if (composeFilePath) {
+      let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
+      if (!dockercomposeTriggerId) {
+        try {
+          dockercomposeTriggerId = await registry.ensureDockercomposeTriggerForContainer(
+            newName || oldName,
+            composeFilePath,
+            getDockercomposeTriggerConfigurationFromLabels(labelsToApply),
+          );
+          this.composeTriggersByContainer[containerId] = dockercomposeTriggerId;
+        } catch (e: any) {
+          logContainer.warn(
+            `Unable to create dockercompose trigger for ${newName || oldName} (${e.message})`,
+          );
+        }
+      }
+      const triggerIncludeUpdated = appendTriggerId(
+        containerFound.triggerInclude,
+        dockercomposeTriggerId,
+      );
+      if (triggerIncludeUpdated !== containerFound.triggerInclude) {
+        containerFound.triggerInclude = triggerIncludeUpdated;
+        changed = true;
+      }
+    } else {
+      const cachedDockercomposeTriggerId = this.composeTriggersByContainer[containerId];
+      if (cachedDockercomposeTriggerId) {
+        const triggerIncludeUpdated = removeTriggerId(
+          containerFound.triggerInclude,
+          cachedDockercomposeTriggerId,
+        );
+        if (triggerIncludeUpdated !== containerFound.triggerInclude) {
+          containerFound.triggerInclude = triggerIncludeUpdated;
+          changed = true;
+        }
+        delete this.composeTriggersByContainer[containerId];
+      }
     }
 
     if (changed) {
