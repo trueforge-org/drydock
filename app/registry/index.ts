@@ -68,6 +68,8 @@ const state: RegistryState = {
   agent: {},
 };
 
+const CONTAINER_TRIGGER_DEFAULT_NAME = 'container';
+
 export function getState() {
   return state;
 }
@@ -267,6 +269,39 @@ async function registerTriggers(options: RegistrationOptions = {}) {
     log.warn(`Some triggers failed to register (${e.message})`);
     log.debug(e);
   }
+}
+
+function sanitizeComponentName(name: string): string {
+  const nameSanitized = `${name || ''}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-');
+  return nameSanitized || CONTAINER_TRIGGER_DEFAULT_NAME;
+}
+
+/**
+ * Ensure a dockercompose trigger exists for a container name.
+ * Name collision strategy: append a number to the container name.
+ */
+export async function ensureDockercomposeTriggerForContainer(containerName: string): Promise<string> {
+  const triggerBaseName = sanitizeComponentName(containerName);
+  let triggerName = triggerBaseName;
+  let conflictIndex = 2;
+
+  while (state.trigger[`dockercompose.${triggerName}`]) {
+    triggerName = `${triggerBaseName}${conflictIndex}`;
+    conflictIndex += 1;
+  }
+
+  const triggerRegistered = await registerComponent({
+    kind: 'trigger',
+    provider: 'dockercompose',
+    name: triggerName,
+    configuration: {},
+    componentPath: 'triggers/providers',
+  });
+
+  return triggerRegistered.getId();
 }
 
 /**
@@ -491,6 +526,7 @@ export {
   deregisterWatchers as testable_deregisterWatchers,
   deregisterAuthentications as testable_deregisterAuthentications,
   deregisterAll as testable_deregisterAll,
+  sanitizeComponentName as testable_sanitizeComponentName,
   shutdown as testable_shutdown,
   applyTriggerGroupDefaults as testable_applyTriggerGroupDefaults,
   getKnownProviderSet as testable_getKnownProviderSet,
