@@ -6,6 +6,7 @@ import * as registry from '../../../registry/index.js';
 import * as storeContainer from '../../../store/container.js';
 import { mockConstructor } from '../../../test/mock-constructor.js';
 import Docker, {
+  testable_appendTriggerId,
   testable_filterBySegmentCount,
   testable_getContainerDisplayName,
   testable_getContainerName,
@@ -298,7 +299,9 @@ describe('Docker Watcher', () => {
 
     // Setup registry mock
     registry.getState.mockReturnValue({ registry: {} });
-    registry.ensureDockercomposeTriggerForContainer.mockResolvedValue('dockercompose.test-container');
+    registry.ensureDockercomposeTriggerForContainer.mockImplementation((containerName) => 
+      Promise.resolve(`dockercompose.${containerName}`)
+    );
 
     // Setup event mock
     event.emitWatcherStart.mockImplementation(() => {});
@@ -2468,6 +2471,49 @@ describe('Docker Watcher', () => {
       expect(result.triggerInclude).toBe('ntfy.default:major,dockercompose.test-container');
     });
 
+    test('should auto-include dockercompose trigger when wud.compose.file label is set', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-wud'],
+          Labels: {
+            'wud.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container-wud');
+      expect(result.triggerInclude).toBe('dockercompose.test-container-wud');
+    });
+
+    test('should continue when dockercompose trigger creation fails', async () => {
+      const ensureTriggerSpy = vi
+        .spyOn(registry, 'ensureDockercomposeTriggerForContainer')
+        .mockImplementationOnce(() => {
+          throw new Error('failed to create trigger');
+        });
+
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container, {
+        triggerInclude: 'ntfy.default:major',
+      });
+
+      expect(ensureTriggerSpy).toHaveBeenCalledWith('test-container');
+      // On failure, processing should continue and the original triggerInclude should be preserved.
+      expect(result.triggerInclude).toBe('ntfy.default:major');
+    });
+
     test('should apply imgset watchDigest when label is missing', async () => {
       const watchDigestImgset = {
         customregistry: {
@@ -4093,6 +4139,33 @@ describe('Docker Watcher', () => {
     test('getLabel should return undefined when fallback key is not provided', () => {
       expect(testable_getLabel({}, 'dd.display.name')).toBeUndefined();
     });
+
+    test('appendTriggerId should return triggerInclude when triggerId is undefined', () => {
+      expect(testable_appendTriggerId('ntfy.default:major', undefined)).toBe('ntfy.default:major');
+    });
+
+    test('appendTriggerId should return triggerId when triggerInclude is undefined', () => {
+      expect(testable_appendTriggerId(undefined, 'dockercompose.test')).toBe('dockercompose.test');
+    });
+
+    test('appendTriggerId should append triggerId when not already present', () => {
+      expect(testable_appendTriggerId('ntfy.default:major', 'dockercompose.test')).toBe(
+        'ntfy.default:major,dockercompose.test',
+      );
+    });
+
+    test('appendTriggerId should not duplicate triggerId when already present', () => {
+      expect(
+        testable_appendTriggerId('ntfy.default:major,dockercompose.test', 'dockercompose.test'),
+      ).toBe('ntfy.default:major,dockercompose.test');
+    });
+
+    test('appendTriggerId should handle comma-separated list with spaces', () => {
+      expect(testable_appendTriggerId('ntfy.default:major, discord.default', 'ntfy.default:major')).toBe(
+        'ntfy.default:major, discord.default',
+      );
+    });
+
 
     test('getCurrentPrefix should return the non-numeric prefix before the first digit', () => {
       expect(testable_getCurrentPrefix('v2026.2.1')).toBe('v');

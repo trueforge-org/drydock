@@ -2565,6 +2565,7 @@ class Docker extends Watcher {
 export default Docker;
 
 export {
+  appendTriggerId as testable_appendTriggerId,
   getLabel as testable_getLabel,
   getCurrentPrefix as testable_getCurrentPrefix,
   filterBySegmentCount as testable_filterBySegmentCount,

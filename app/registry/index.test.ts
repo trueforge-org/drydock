@@ -307,6 +307,49 @@ test('ensureDockercomposeTriggerForContainer should append a number when name co
   expect(triggerId2).toBe('dockercompose.my-service2');
 });
 
+test('sanitizeComponentName should handle empty string', () => {
+  const result = registry.testable_sanitizeComponentName('');
+  expect(result).toBe('container');
+});
+
+test('sanitizeComponentName should handle strings with only special characters', () => {
+  const result = registry.testable_sanitizeComponentName('@@@###$$$');
+  // Result should be composed only of safe characters for component names
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+});
+
+test('sanitizeComponentName should lowercase and trim mixed-case names with whitespace', () => {
+  const input = '  My-Component_Name  ';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be all lowercase
+  expect(result).toBe(result.toLowerCase());
+  // Should not have leading or trailing whitespace
+  expect(result.startsWith(' ')).toBe(false);
+  expect(result.endsWith(' ')).toBe(false);
+  expect(result).toBe('my-component_name');
+});
+
+test('sanitizeComponentName should handle various special characters', () => {
+  const input = 'Comp@#Name!$ With%Chars';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be lowercase and contain only safe characters
+  expect(result).toBe(result.toLowerCase());
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+  expect(result).toBe('comp--name---with-chars');
+});
+
+test('sanitizeComponentName should handle unicode and symbols robustly', () => {
+  const input = 'Üñïçødë-µ_Service!';
+  const result = registry.testable_sanitizeComponentName(input);
+
+  // Should be lowercase and contain only safe characters
+  expect(result).toBe(result.toLowerCase());
+  expect(result).toMatch(/^[a-z0-9._-]*$/);
+});
+
+
 test('registerWatchers should register all watchers', async () => {
   watchers = {
     watcher1: {

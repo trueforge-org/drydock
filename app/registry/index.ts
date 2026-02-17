@@ -525,6 +525,7 @@ export {
   deregisterWatchers as testable_deregisterWatchers,
   deregisterAuthentications as testable_deregisterAuthentications,
   deregisterAll as testable_deregisterAll,
+  sanitizeComponentName as testable_sanitizeComponentName,
   shutdown as testable_shutdown,
   applyTriggerGroupDefaults as testable_applyTriggerGroupDefaults,
   getKnownProviderSet as testable_getKnownProviderSet,
