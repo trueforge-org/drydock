@@ -2431,12 +2431,13 @@ class Docker extends Watcher {
     }
     const containerName = getContainerName(container);
     let triggerIncludeUpdated = resolvedConfig.triggerInclude;
-    if (containerLabels[ddComposeFile] || containerLabels[wudComposeFile]) {
+    const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
+    if (composeFilePath) {
       let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
       if (!dockercomposeTriggerId) {
         try {
           dockercomposeTriggerId =
-            await registry.ensureDockercomposeTriggerForContainer(containerName);
+            await registry.ensureDockercomposeTriggerForContainer(containerName, composeFilePath);
           this.composeTriggersByContainer[containerId] = dockercomposeTriggerId;
         } catch (e: any) {
           this.ensureLogger();

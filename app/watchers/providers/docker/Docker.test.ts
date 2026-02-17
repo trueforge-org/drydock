@@ -299,9 +299,19 @@ describe('Docker Watcher', () => {
 
     // Setup registry mock
     registry.getState.mockReturnValue({ registry: {} });
-    registry.ensureDockercomposeTriggerForContainer.mockImplementation((containerName) => 
-      Promise.resolve(`dockercompose.${containerName}`)
-    );
+    registry.ensureDockercomposeTriggerForContainer.mockImplementation((containerName, composeFilePath) => {
+      if (composeFilePath) {
+        const parentFolder = composeFilePath
+          .replace(/\\/g, '/')
+          .split('/')
+          .filter((part) => part.length > 0)
+          .slice(-2, -1)[0] || '';
+        const sanitizedFolder = parentFolder.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+        const sanitizedContainer = containerName.toLowerCase().replace(/[^a-z0-9._-]/g, '-');
+        return Promise.resolve(`dockercompose.${sanitizedFolder}-${sanitizedContainer}`);
+      }
+      return Promise.resolve(`dockercompose.${containerName}`);
+    });
 
     // Setup event mock
     event.emitWatcherStart.mockImplementation(() => {});
@@ -2489,8 +2499,8 @@ describe('Docker Watcher', () => {
 
       const result = await docker.addImageDetailsToContainer(container);
 
-      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container');
-      expect(result.triggerInclude).toBe('dockercompose.test-container');
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container', '/tmp/docker-compose.yml');
+      expect(result.triggerInclude).toBe('dockercompose.tmp-test-container');
     });
 
     test('should append dockercompose trigger when triggerInclude already exists', async () => {
@@ -2508,7 +2518,7 @@ describe('Docker Watcher', () => {
         triggerInclude: 'ntfy.default:major',
       });
 
-      expect(result.triggerInclude).toBe('ntfy.default:major,dockercompose.test-container');
+      expect(result.triggerInclude).toBe('ntfy.default:major,dockercompose.tmp-test-container');
     });
 
     test('should auto-include dockercompose trigger when wud.compose.file label is set', async () => {
@@ -2524,8 +2534,8 @@ describe('Docker Watcher', () => {
 
       const result = await docker.addImageDetailsToContainer(container);
 
-      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container-wud');
-      expect(result.triggerInclude).toBe('dockercompose.test-container-wud');
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith('test-container-wud', '/tmp/docker-compose.yml');
+      expect(result.triggerInclude).toBe('dockercompose.tmp-test-container-wud');
     });
 
     test('should continue when dockercompose trigger creation fails', async () => {
@@ -2549,7 +2559,7 @@ describe('Docker Watcher', () => {
         triggerInclude: 'ntfy.default:major',
       });
 
-      expect(ensureTriggerSpy).toHaveBeenCalledWith('test-container');
+      expect(ensureTriggerSpy).toHaveBeenCalledWith('test-container', '/tmp/docker-compose.yml');
       // On failure, processing should continue and the original triggerInclude should be preserved.
       expect(result.triggerInclude).toBe('ntfy.default:major');
     });

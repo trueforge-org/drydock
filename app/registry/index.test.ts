@@ -295,9 +295,15 @@ test('registerTriggers should warn when registration errors occur', async () => 
   );
 });
 
-test('ensureDockercomposeTriggerForContainer should create a trigger with container name', async () => {
+test('ensureDockercomposeTriggerForContainer should create a trigger with container name only when no compose path', async () => {
   const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service');
   expect(triggerId).toBe('dockercompose.my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('ensureDockercomposeTriggerForContainer should create trigger with parent folder and container name', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+  expect(triggerId).toBe('dockercompose.myapp-my-service');
   expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
 });
 
@@ -306,7 +312,28 @@ test('ensureDockercomposeTriggerForContainer should append a number when name co
   const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service');
 
   expect(triggerId1).toBe('dockercompose.my-service');
-  expect(triggerId2).toBe('dockercompose.my-service2');
+  expect(triggerId2).toBe('dockercompose.my-service-2');
+});
+
+test('ensureDockercomposeTriggerForContainer should append a number when name conflicts with compose path', async () => {
+  const triggerId1 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+  const triggerId2 = await registry.ensureDockercomposeTriggerForContainer('my-service', '/home/user/myapp/docker-compose.yml');
+
+  expect(triggerId1).toBe('dockercompose.myapp-my-service');
+  expect(triggerId2).toBe('dockercompose.myapp-my-service-2');
+});
+
+test('ensureDockercomposeTriggerForContainer should handle Windows paths', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', 'C:\\Users\\user\\myapp\\docker-compose.yml');
+  expect(triggerId).toBe('dockercompose.myapp-my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
+});
+
+test('ensureDockercomposeTriggerForContainer should handle paths without parent folder', async () => {
+  const triggerId = await registry.ensureDockercomposeTriggerForContainer('my-service', '/docker-compose.yml');
+  // When no parent folder is available, should default to container name only
+  expect(triggerId).toBe('dockercompose.container-my-service');
+  expect(Object.keys(registry.getState().trigger)).toContain(triggerId);
 });
 
 test('sanitizeComponentName should handle empty string', () => {

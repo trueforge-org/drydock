@@ -281,15 +281,34 @@ function sanitizeComponentName(name: string): string {
 
 /**
  * Ensure a dockercompose trigger exists for a container name.
- * Name collision strategy: append a number to the container name.
+ * Name collision strategy: append a number to the trigger name.
  */
-export async function ensureDockercomposeTriggerForContainer(containerName: string): Promise<string> {
-  const triggerBaseName = sanitizeComponentName(containerName);
+export async function ensureDockercomposeTriggerForContainer(
+  containerName: string,
+  composeFilePath?: string,
+): Promise<string> {
+  let triggerBaseName: string;
+
+  if (composeFilePath) {
+    // Extract parent folder name from compose file path
+    const parentFolder = composeFilePath
+      .replace(/\\/g, '/') // normalize Windows paths
+      .split('/')
+      .filter((part) => part.length > 0)
+      .slice(-2, -1)[0] || ''; // Get the parent folder name
+    
+    const sanitizedFolder = sanitizeComponentName(parentFolder);
+    const sanitizedContainer = sanitizeComponentName(containerName);
+    triggerBaseName = `${sanitizedFolder}-${sanitizedContainer}`;
+  } else {
+    triggerBaseName = sanitizeComponentName(containerName);
+  }
+
   let triggerName = triggerBaseName;
   let conflictIndex = 2;
 
   while (state.trigger[`dockercompose.${triggerName}`]) {
-    triggerName = `${triggerBaseName}${conflictIndex}`;
+    triggerName = `${triggerBaseName}-${conflictIndex}`;
     conflictIndex += 1;
   }
 
