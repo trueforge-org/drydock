@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import axios from 'axios';
 import Dockerode from 'dockerode';
 import Joi from 'joi';
@@ -168,8 +167,6 @@ const OIDC_DEVICE_URL_PATHS = [
 ];
 const OIDC_DEVICE_POLL_INTERVAL_MS = 5000;
 const OIDC_DEVICE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
-const COMPOSE_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
-const COMPOSE_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
 
 function appendTriggerId(triggerInclude: string | undefined, triggerId: string | undefined): string | undefined {
   if (!triggerId) {
@@ -214,33 +211,6 @@ function getDockercomposeTriggerConfigurationFromLabels(labels: Record<string, s
   }
 
   return dockercomposeConfig;
-}
-
-function getComposeFilePathFromLabels(labels: Record<string, string>): string | undefined {
-  const composeFileLabel = getLabel(labels, ddComposeFile, wudComposeFile);
-  if (composeFileLabel) {
-    return composeFileLabel;
-  }
-
-  const composeConfigFiles = labels[COMPOSE_CONFIG_FILES_LABEL];
-  if (!composeConfigFiles) {
-    return undefined;
-  }
-  const composeFileFromConfig = composeConfigFiles
-    .split(',')
-    .map((configFile) => configFile.trim())
-    .find((configFile) => configFile.length > 0);
-  if (!composeFileFromConfig) {
-    return undefined;
-  }
-  if (path.isAbsolute(composeFileFromConfig)) {
-    return composeFileFromConfig;
-  }
-  const composeWorkingDir = labels[COMPOSE_WORKING_DIR_LABEL];
-  if (composeWorkingDir) {
-    return path.join(composeWorkingDir, composeFileFromConfig);
-  }
-  return undefined;
 }
 
 interface ResolvedImgset {
@@ -2502,7 +2472,7 @@ class Docker extends Watcher {
     }
     const containerName = getContainerName(container);
     let triggerIncludeUpdated = resolvedConfig.triggerInclude;
-    const composeFilePath = getComposeFilePathFromLabels(containerLabels);
+    const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
     const dockercomposeTriggerConfiguration =
       getDockercomposeTriggerConfigurationFromLabels(containerLabels);
     if (composeFilePath) {
