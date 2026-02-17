@@ -35,6 +35,13 @@ describe('Registry Service', () => {
       expect(getRegistryProviderIcon('codeberg.org')).toBe('fas fa-mountain');
       expect(getRegistryProviderIcon('dhi.example.com')).toBe('fab fa-docker');
       expect(getRegistryProviderIcon('docr.digitalocean.com')).toBe('fab fa-digital-ocean');
+      expect(getRegistryProviderIcon('alicr.aliyuncs.com')).toBe('fas fa-cloud');
+      expect(getRegistryProviderIcon('artifactory.acme.com')).toBe('fas fa-frog');
+      expect(getRegistryProviderIcon('gar.pkg.dev')).toBe('fab fa-google');
+      expect(getRegistryProviderIcon('harbor.acme.com')).toBe('fas fa-anchor');
+      expect(getRegistryProviderIcon('ibmcr.icr.io')).toBe('fas fa-cloud');
+      expect(getRegistryProviderIcon('nexus.acme.com')).toBe('fas fa-box');
+      expect(getRegistryProviderIcon('ocir.io')).toBe('fas fa-cloud');
       expect(getRegistryProviderIcon('trueforge.example')).toBe('fas fa-cube');
     });
 
@@ -67,6 +74,13 @@ describe('Registry Service', () => {
       ['codeberg.org', '#2185D0'],
       ['dhi.example.com', '#2496ED'],
       ['docr.digitalocean.com', '#0080FF'],
+      ['alicr.aliyuncs.com', '#FF6A00'],
+      ['artifactory.acme.com', '#41BF47'],
+      ['gar.pkg.dev', '#4285F4'],
+      ['harbor.acme.com', '#60B932'],
+      ['ibmcr.icr.io', '#0F62FE'],
+      ['nexus.acme.com', '#1B1C30'],
+      ['ocir.io', '#F80000'],
       ['custom.registry.com', '#6B7280'],
       ['trueforge.example', '#6B7280'],
       ['unknown.registry', '#6B7280'],

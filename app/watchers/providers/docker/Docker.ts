@@ -2309,9 +2309,7 @@ class Docker extends Watcher {
       );
       container.image.digest.value = digestV2.digest;
     } else {
-      await this.ensureRemoteAuthHeaders();
-      const image = await this.dockerApi.getImage(container.image.id).inspect();
-      container.image.digest.value = image.Config.Image === '' ? undefined : image.Config.Image;
+      container.image.digest.value = container.image.digest.repo;
     }
   }
 

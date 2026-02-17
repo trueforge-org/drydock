@@ -16,7 +16,12 @@ const mockContainer = {
 
 describe('ContainerLogs', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mockGetContainerLogs.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows loading state initially', async () => {
@@ -172,6 +177,156 @@ describe('ContainerLogs', () => {
     await flushPromises();
 
     expect(mockGetContainerLogs).toHaveBeenCalledWith('test-container-id', 100);
+    wrapper.unmount();
+  });
+
+  it('re-fetches and clears scroll lock when container id changes', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'initial logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+
+    wrapper.vm.scrollBlocked = true;
+    mockGetContainerLogs.mockResolvedValue({ logs: 'new container logs' });
+    await wrapper.setProps({
+      container: {
+        ...mockContainer,
+        id: 'different-container-id',
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.vm.scrollBlocked).toBe(false);
+    expect(mockGetContainerLogs).toHaveBeenLastCalledWith('different-container-id', 100);
+    wrapper.unmount();
+  });
+
+  it('auto-fetches logs on interval', async () => {
+    vi.useFakeTimers();
+    mockGetContainerLogs.mockResolvedValue({ logs: 'logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushPromises();
+
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('stops auto-fetching when interval is disabled', async () => {
+    vi.useFakeTimers();
+    mockGetContainerLogs.mockResolvedValue({ logs: 'logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+
+    wrapper.vm.autoFetchSeconds = 0;
+    await wrapper.vm.$nextTick();
+
+    await vi.advanceTimersByTimeAsync(10000);
+    await flushPromises();
+
+    expect(mockGetContainerLogs).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it('locks and unlocks auto-scroll based on scroll position', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'line 1\nline 2\nline 3' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+
+    const pre = wrapper.find('pre');
+    expect(pre.exists()).toBe(true);
+
+    Object.defineProperty(pre.element, 'scrollHeight', {
+      configurable: true,
+      value: 400,
+    });
+    Object.defineProperty(pre.element, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    });
+
+    pre.element.scrollTop = 150;
+    await pre.trigger('scroll');
+    expect(wrapper.vm.scrollBlocked).toBe(true);
+
+    pre.element.scrollTop = 300;
+    await pre.trigger('scroll');
+    expect(wrapper.vm.scrollBlocked).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('resume button clears scroll lock and jumps to bottom', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'line 1\nline 2\nline 3' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+
+    const pre = wrapper.find('pre');
+    expect(pre.exists()).toBe(true);
+
+    Object.defineProperty(pre.element, 'scrollHeight', {
+      configurable: true,
+      value: 400,
+    });
+    Object.defineProperty(pre.element, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    });
+
+    pre.element.scrollTop = 150;
+    wrapper.vm.scrollBlocked = true;
+    await wrapper.vm.$nextTick();
+
+    const resumeButton = wrapper
+      .findAll('.v-btn')
+      .find((button) => button.text().includes('Resume'));
+    expect(resumeButton).toBeDefined();
+    await resumeButton?.trigger('click');
+
+    expect(wrapper.vm.scrollBlocked).toBe(false);
+    expect(pre.element.scrollTop).toBe(400);
+    wrapper.unmount();
+  });
+
+  it('fetches without auto-scroll when scroll is blocked', async () => {
+    mockGetContainerLogs.mockResolvedValue({ logs: 'initial logs' });
+
+    const wrapper = mount(ContainerLogs, {
+      props: { container: mockContainer },
+    });
+
+    await flushPromises();
+    wrapper.vm.scrollBlocked = true;
+
+    mockGetContainerLogs.mockResolvedValue({ logs: 'updated logs' });
+    await wrapper.vm.fetchLogs();
+    await flushPromises();
+
+    expect(wrapper.vm.logs).toBe('updated logs');
+    expect(wrapper.vm.scrollBlocked).toBe(true);
     wrapper.unmount();
   });
 });

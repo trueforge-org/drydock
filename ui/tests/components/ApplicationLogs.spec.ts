@@ -33,9 +33,14 @@ const mockEntries = [
 
 describe('ApplicationLogs', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     mockGetLogEntries.mockReset();
     mockGetAgents.mockReset();
     mockGetAgents.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows loading state initially', async () => {
@@ -71,6 +76,17 @@ describe('ApplicationLogs', () => {
 
     expect(wrapper.find('.v-alert').exists()).toBe(true);
     expect(wrapper.text()).toContain('Network error');
+    wrapper.unmount();
+  });
+
+  it('stringifies non-Error failures in error state', async () => {
+    mockGetLogEntries.mockRejectedValue('raw-error');
+
+    const wrapper = mount(ApplicationLogs);
+
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('raw-error');
     wrapper.unmount();
   });
 
@@ -178,34 +194,6 @@ describe('ApplicationLogs', () => {
 
     it('returns default gray for unknown levels', () => {
       expect(wrapper.vm.levelColor('custom')).toBe('#d4d4d4');
-    });
-  });
-
-  describe('formattedLogs', () => {
-    it('formats entries into readable log lines', async () => {
-      mockGetLogEntries.mockResolvedValue(mockEntries);
-
-      const wrapper = mount(ApplicationLogs);
-      await flushPromises();
-
-      const formatted = wrapper.vm.formattedLogs;
-      expect(formatted).toContain('[INFO ]');
-      expect(formatted).toContain('[ERROR]');
-      expect(formatted).toContain('[server]');
-      expect(formatted).toContain('[docker]');
-      expect(formatted).toContain('Server started');
-      expect(formatted).toContain('Connection failed');
-      wrapper.unmount();
-    });
-
-    it('returns empty string when no entries', async () => {
-      mockGetLogEntries.mockResolvedValue([]);
-
-      const wrapper = mount(ApplicationLogs);
-      await flushPromises();
-
-      expect(wrapper.vm.formattedLogs).toBe('');
-      wrapper.unmount();
     });
   });
 
@@ -338,8 +326,8 @@ describe('ApplicationLogs', () => {
       await flushPromises();
 
       const selects = wrapper.findAll('.v-select');
-      // Should have 3 selects: source, level, tail
-      expect(selects.length).toBeGreaterThanOrEqual(3);
+      // Should have at least 4 selects: source, level, tail, auto-fetch
+      expect(selects.length).toBeGreaterThanOrEqual(4);
       wrapper.unmount();
     });
 
@@ -350,8 +338,8 @@ describe('ApplicationLogs', () => {
       await flushPromises();
 
       const selects = wrapper.findAll('.v-select');
-      // Should have 2 selects: level, tail (no source when no agents)
-      expect(selects.length).toBeGreaterThanOrEqual(2);
+      // Should have at least 3 selects: level, tail, auto-fetch
+      expect(selects.length).toBeGreaterThanOrEqual(3);
       wrapper.unmount();
     });
 
@@ -428,6 +416,89 @@ describe('ApplicationLogs', () => {
       expect(wrapper.vm.loading).toBe(true);
       expect(wrapper.vm.entries.length).toBeGreaterThan(0);
       expect(wrapper.find('.v-progress-circular').exists()).toBe(false);
+      wrapper.unmount();
+    });
+  });
+
+  describe('auto-fetch behavior', () => {
+    it('auto-fetches logs on interval', async () => {
+      vi.useFakeTimers();
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      expect(mockGetLogEntries).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(5000);
+      await flushPromises();
+
+      expect(mockGetLogEntries).toHaveBeenCalledTimes(2);
+      wrapper.unmount();
+    });
+
+    it('stops auto-fetching when interval is disabled', async () => {
+      vi.useFakeTimers();
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      expect(mockGetLogEntries).toHaveBeenCalledTimes(1);
+
+      wrapper.vm.autoFetchSeconds = 0;
+      await wrapper.vm.$nextTick();
+
+      await vi.advanceTimersByTimeAsync(10000);
+      await flushPromises();
+
+      expect(mockGetLogEntries).toHaveBeenCalledTimes(1);
+      wrapper.unmount();
+    });
+  });
+
+  describe('scroll lock behavior', () => {
+    it('locks and unlocks auto-scroll based on scroll position', async () => {
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      const terminal = wrapper.find('section');
+      expect(terminal.exists()).toBe(true);
+
+      Object.defineProperty(terminal.element, 'scrollHeight', {
+        configurable: true,
+        value: 400,
+      });
+      Object.defineProperty(terminal.element, 'clientHeight', {
+        configurable: true,
+        value: 100,
+      });
+
+      terminal.element.scrollTop = 150;
+      await terminal.trigger('scroll');
+      expect(wrapper.vm.scrollBlocked).toBe(true);
+
+      terminal.element.scrollTop = 300;
+      await terminal.trigger('scroll');
+      expect(wrapper.vm.scrollBlocked).toBe(false);
+      wrapper.unmount();
+    });
+
+    it('fetches entries without auto-scroll when scroll is blocked', async () => {
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+
+      const wrapper = mount(ApplicationLogs);
+      await flushPromises();
+
+      wrapper.vm.scrollBlocked = true;
+      mockGetLogEntries.mockResolvedValue(mockEntries);
+      await wrapper.vm.fetchEntries();
+      await flushPromises();
+
+      expect(wrapper.vm.entries).toEqual(mockEntries);
+      expect(wrapper.vm.scrollBlocked).toBe(true);
       wrapper.unmount();
     });
   });

@@ -1,4 +1,10 @@
-import { defineComponent, onMounted, type PropType, ref, watch } from 'vue';
+import { defineComponent, nextTick, onMounted, type PropType, ref, watch } from 'vue';
+import {
+  LOG_AUTO_FETCH_INTERVALS,
+  toLogErrorMessage,
+  useAutoFetchLogs,
+  useLogViewport,
+} from '@/composables/useLogViewerBehavior';
 import { getContainerLogs } from '../services/container';
 
 type ContainerLogTarget = {
@@ -8,13 +14,6 @@ type ContainerLogTarget = {
 type ContainerLogsResponse = {
   logs?: unknown;
 };
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 export default defineComponent({
   props: {
@@ -28,6 +27,9 @@ export default defineComponent({
     const loading = ref(false);
     const error = ref('');
     const tail = ref(100);
+    const autoFetchSeconds = ref(5);
+    const { logPre, scrollBlocked, scrollToBottom, handleLogScroll, resumeAutoScroll } =
+      useLogViewport();
 
     const fetchLogs = async function fetchLogs(): Promise<void> {
       loading.value = true;
@@ -38,27 +40,52 @@ export default defineComponent({
           tail.value,
         )) as ContainerLogsResponse;
         logs.value = typeof result.logs === 'string' ? result.logs : '';
+        await nextTick();
+        if (!scrollBlocked.value) {
+          scrollToBottom();
+        }
       } catch (e: unknown) {
-        error.value = toErrorMessage(e);
+        error.value = toLogErrorMessage(e);
       } finally {
         loading.value = false;
       }
     };
 
+    const { startAutoFetch } = useAutoFetchLogs({
+      intervalSeconds: autoFetchSeconds,
+      loading,
+      fetchLogs,
+    });
+
     onMounted(function loadLogsOnMount() {
       void fetchLogs();
+      startAutoFetch();
     });
 
     watch(tail, function reloadLogsOnTailChange() {
       void fetchLogs();
     });
 
+    watch(
+      () => props.container.id,
+      function reloadLogsOnContainerChange() {
+        scrollBlocked.value = false;
+        void fetchLogs();
+      },
+    );
+
     return {
       logs,
       loading,
       error,
       tail,
+      autoFetchSeconds,
+      autoFetchItems: LOG_AUTO_FETCH_INTERVALS,
+      scrollBlocked,
+      logPre,
       fetchLogs,
+      handleLogScroll,
+      resumeAutoScroll,
     };
   },
 });
