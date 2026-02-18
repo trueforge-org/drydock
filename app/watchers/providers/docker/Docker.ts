@@ -235,8 +235,11 @@ function isAutoComposeEnabled(
   composeNativeEnabledByWatcher: boolean,
 ): boolean {
   const autoComposeLabelValue = getLabel(labels, ddComposeNative, wudComposeNative);
-  if (autoComposeLabelValue !== undefined && autoComposeLabelValue.trim() !== '') {
-    return autoComposeLabelValue.toLowerCase() === 'true';
+  if (autoComposeLabelValue !== undefined) {
+    const normalizedAutoComposeLabelValue = autoComposeLabelValue.trim();
+    if (normalizedAutoComposeLabelValue !== '') {
+      return normalizedAutoComposeLabelValue.toLowerCase() === 'true';
+    }
   }
   return composeNativeEnabledByWatcher;
 }
