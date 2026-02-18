@@ -5,8 +5,8 @@ const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_di
 const DD_COMPOSE_FILE_LABEL = 'dd.compose.file';
 const WUD_COMPOSE_FILE_LABEL = 'wud.compose.file';
 
-function isAbsolutePath(pathCandidate: string) {
-  return pathCandidate.startsWith('/') || /^[A-Za-z]:[\\/]/.test(pathCandidate);
+function isAbsolutePath(path: string) {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path);
 }
 
 function getPathSeparator(workingDir: string) {
