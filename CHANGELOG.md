@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Compose label-driven docker-compose trigger configuration** — Added support for container labels to create and scope compose triggers from discovered containers, including `dd.compose.file` / `wud.compose.file` and compose trigger options (`backup`, `prune`, `dryrun`, `auto`, `threshold`).
+- **Compose-file digest update support** — Docker-compose trigger now supports digest-pinned image references in compose files (`image@sha256:...` and `image:tag@sha256:...`) so digest-based services can be updated without dropping pinning.
+
+### Fixed
+
+- **TrueForge registry default behavior** — Fixed TrueForge registry integration so it works out of the box with default configuration.
+
+### Changed
+
+- **Tag update display accuracy** — Fixed update classification/display so tag-based updates are shown correctly as tag updates.
+
 ## [1.3.2] — 2026-02-16
 
 ### Added
