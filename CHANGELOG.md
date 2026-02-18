@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Compose-native auto-compose discovery** — Added `dd.compose.native` / `wud.compose.native` container labels to enable deriving compose file paths from native Compose labels (`com.docker.compose.project.config_files` + `com.docker.compose.project.working_dir`) when `dd.compose.file` is not set. This requires the resolved compose path to exist inside the drydock container (same path context used by `docker compose`).
 - **Watcher-wide compose-native default** — Added `DD_WATCHER_{name}_COMPOSE_NATIVE=true` to enable compose-native path discovery for all containers watched by a Docker watcher, with per-container `dd.compose.native` still taking precedence.
+- **MAU registry provider (`dock.mau.dev`)** — Added a GitLab-based `mau` registry provider with token auth support. It is auto-registered as `mau.public` by default for public access and can also be configured as private via `DD_REGISTRY_MAU_{name}_TOKEN`.
 
 ### Fixed
 

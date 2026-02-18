@@ -345,6 +345,7 @@ async function registerRegistries() {
     hub: { public: '' },
     ibmcr: { public: '' },
     lscr: { public: '' },
+    mau: { public: '' },
     ocir: { public: '' },
     quay: { public: '' },
     trueforge: { public: '' },

@@ -323,6 +323,7 @@ See full configuration in [`docs/configuration/security/README.md`](docs/configu
 | Google Artifact Registry | `gar` | `*-docker.pkg.dev` |
 | Quay | `quay` | `quay.io` |
 | LinuxServer (LSCR) | `lscr` | `lscr.io` |
+| MAU | `mau` | `dock.mau.dev` |
 | DigitalOcean | `docr` | `registry.digitalocean.com` |
 | Codeberg | `codeberg` | `codeberg.org` |
 | DHI | `dhi` | `dhi.io` |
@@ -344,6 +345,7 @@ See full configuration in [`docs/configuration/security/README.md`](docs/configu
 | GitLab | `gitlab` | `DD_REGISTRY_GITLAB_{name}_TOKEN` |
 | GitHub (GHCR) | `ghcr` | `DD_REGISTRY_GHCR_{name}_TOKEN` |
 | Gitea / Forgejo | `gitea` | `DD_REGISTRY_GITEA_{name}_LOGIN`, `_PASSWORD` |
+| MAU Registry (GitLab-based) | `mau` | `DD_REGISTRY_MAU_{name}_TOKEN` |
 | Harbor | `harbor` | `DD_REGISTRY_HARBOR_{name}_URL`, `_LOGIN`, `_PASSWORD` |
 | JFrog Artifactory | `artifactory` | `DD_REGISTRY_ARTIFACTORY_{name}_URL`, `_LOGIN`, `_PASSWORD` |
 | Sonatype Nexus | `nexus` | `DD_REGISTRY_NEXUS_{name}_URL`, `_LOGIN`, `_PASSWORD` |
