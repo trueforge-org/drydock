@@ -1227,6 +1227,50 @@ describe('Dockercompose Trigger', () => {
     expect(result).toBeNull();
   });
 
+  test('getComposeFileForContainer should use native compose labels with working dir', () => {
+    trigger.configuration.file = undefined;
+    const container = {
+      labels: {
+        'dd.compose.native': 'true',
+        'com.docker.compose.project.working_dir': '/opt/mautrix-whatsapp',
+        'com.docker.compose.project.config_files': 'compose.yml',
+      },
+    };
+
+    const result = trigger.getComposeFileForContainer(container);
+
+    expect(result).toBe('/opt/mautrix-whatsapp/compose.yml');
+  });
+
+  test('getComposeFileForContainer should use first native compose file when multiple config files are set', () => {
+    trigger.configuration.file = undefined;
+    const container = {
+      labels: {
+        'dd.compose.native': 'true',
+        'com.docker.compose.project.working_dir': '/opt/stack',
+        'com.docker.compose.project.config_files': 'compose.yml,compose.override.yml',
+      },
+    };
+
+    const result = trigger.getComposeFileForContainer(container);
+
+    expect(result).toBe('/opt/stack/compose.yml');
+  });
+
+  test('getComposeFileForContainer should ignore native compose labels when compose.native is not true', () => {
+    trigger.configuration.file = undefined;
+    const container = {
+      labels: {
+        'com.docker.compose.project.working_dir': '/opt/stack',
+        'com.docker.compose.project.config_files': 'compose.yml',
+      },
+    };
+
+    const result = trigger.getComposeFileForContainer(container);
+
+    expect(result).toBeNull();
+  });
+
   test('getComposeFileForContainer should fall back to default config file', () => {
     trigger.configuration.file = '/default/compose.yml';
     const container = { labels: {} };

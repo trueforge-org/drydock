@@ -1,9 +1,24 @@
 // @ts-nocheck
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import yaml from 'yaml';
 import { getState } from '../../../registry/index.js';
 import { resolveConfiguredPath } from '../../../runtime/paths.js';
 import Docker from '../docker/Docker.js';
+
+const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
+const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
+const DD_COMPOSE_NATIVE_LABEL = 'dd.compose.native';
+const WUD_COMPOSE_NATIVE_LABEL = 'wud.compose.native';
+
+function isNativeComposeEnabled(labels = {}) {
+  const nativeLabel = labels[DD_COMPOSE_NATIVE_LABEL] ?? labels[WUD_COMPOSE_NATIVE_LABEL];
+  if (nativeLabel === undefined) {
+    return false;
+  }
+  const normalizedNativeLabel = `${nativeLabel}`.trim().toLowerCase();
+  return normalizedNativeLabel === 'true';
+}
 
 function splitDigestReference(image) {
   if (!image) {
@@ -217,6 +232,36 @@ class Dockercompose extends Docker {
           `Compose file label ${composeFileLabel} on container ${container.name} is invalid (${e.message})`,
         );
         return null;
+      }
+    }
+
+    // Fall back to native Docker Compose labels when explicitly enabled
+    const nativeComposeEnabled = isNativeComposeEnabled(container.labels);
+    const composeConfigFiles = container.labels?.[COMPOSE_PROJECT_CONFIG_FILES_LABEL];
+    if (nativeComposeEnabled && composeConfigFiles && composeConfigFiles.trim() !== '') {
+      const composeProjectWorkingDir = container.labels?.[COMPOSE_PROJECT_WORKING_DIR_LABEL];
+      const configFiles = composeConfigFiles
+        .split(',')
+        .map((configFile) => configFile.trim())
+        .filter((configFile) => configFile !== '');
+
+      const configFile = configFiles[0];
+      if (configFile) {
+        const resolvedConfigFile =
+          path.isAbsolute(configFile) || !composeProjectWorkingDir
+            ? configFile
+            : path.join(composeProjectWorkingDir.trim(), configFile);
+
+        try {
+          return resolveConfiguredPath(resolvedConfigFile, {
+            label: `Native compose file labels ${COMPOSE_PROJECT_CONFIG_FILES_LABEL}/${COMPOSE_PROJECT_WORKING_DIR_LABEL}`,
+          });
+        } catch (e) {
+          this.log.warn(
+            `Native compose file labels on container ${container.name} are invalid (${e.message})`,
+          );
+          return null;
+        }
       }
     }
 
