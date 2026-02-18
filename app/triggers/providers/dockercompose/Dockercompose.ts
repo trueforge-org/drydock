@@ -49,8 +49,15 @@ function normalizeImageWithoutDigest(image) {
   return normalizeImplicitLatest(imageWithoutDigest);
 }
 
-function buildUpdatedComposeImage(currentImage, fallbackImage, updateKind, remoteDigest) {
-  if (!currentImage?.includes('@')) {
+function buildUpdatedComposeImage(
+  currentImage,
+  fallbackImage,
+  updateKind,
+  remoteDigest,
+  forceDigestPin = false,
+) {
+  const currentImageIsDigestPinned = Boolean(currentImage?.includes('@'));
+  if (!currentImageIsDigestPinned && !forceDigestPin) {
     return {
       image: fallbackImage,
       keptPinned: false,
@@ -60,13 +67,20 @@ function buildUpdatedComposeImage(currentImage, fallbackImage, updateKind, remot
   const digestToPin =
     updateKind?.kind === 'digest' ? updateKind?.remoteValue : (remoteDigest ?? undefined);
   if (!digestToPin) {
+    if (!currentImageIsDigestPinned) {
+      return {
+        image: fallbackImage,
+        keptPinned: false,
+      };
+    }
     return {
       image: undefined,
       keptPinned: false,
     };
   }
 
-  const imageToPin = updateKind?.kind === 'digest' ? currentImage : fallbackImage;
+  const imageToPin =
+    updateKind?.kind === 'digest' && currentImageIsDigestPinned ? currentImage : fallbackImage;
   const { imageWithoutDigest } = splitDigestReference(imageToPin);
   return {
     image: `${imageWithoutDigest}@${digestToPin}`,
@@ -189,6 +203,7 @@ class Dockercompose extends Docker {
       // Make file optional since we now support per-container compose files
       file: this.joi.string().optional(),
       backup: this.joi.boolean().default(false),
+      digestpin: this.joi.boolean().default(false),
       // Add configuration for the label name to look for
       composeFileLabel: this.joi.string().default('dd.compose.file'),
     });
@@ -566,11 +581,13 @@ class Dockercompose extends Docker {
     }
 
     const currentImage = serviceToUpdate.image;
+    const forceDigestPin = `${this.configuration.digestpin}`.trim().toLowerCase() === 'true';
     const digestAwareUpdate = buildUpdatedComposeImage(
       currentImage,
       this.getNewImageFullName(registry, container),
       container.updateKind,
       container.result?.digest,
+      forceDigestPin,
     );
     const updateImage = digestAwareUpdate.image;
 

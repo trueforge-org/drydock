@@ -37,6 +37,7 @@ import Watcher from '../../Watcher.js';
 import {
   ddComposeAuto,
   ddComposeBackup,
+  ddComposeDigestpin,
   ddComposeDryrun,
   ddComposeFile,
   ddComposeNative,
@@ -58,6 +59,7 @@ import {
   ddWatchDigest,
   wudComposeAuto,
   wudComposeBackup,
+  wudComposeDigestpin,
   wudComposeDryrun,
   wudDisplayIcon,
   wudDisplayName,
@@ -110,6 +112,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
     dryrun?: boolean;
     auto?: boolean;
     once?: boolean;
+    digestpin?: boolean;
     native?: boolean;
     threshold?: string;
   };
@@ -255,6 +258,13 @@ function getDockercomposeTriggerConfigurationFromLabels(
     normalizeComposeDefaultValue(composeDefaults.once);
   if (once !== undefined) {
     dockercomposeConfig.once = once;
+  }
+
+  const digestpin =
+    getLabel(labels, ddComposeDigestpin, wudComposeDigestpin) ||
+    normalizeComposeDefaultValue(composeDefaults.digestpin);
+  if (digestpin !== undefined) {
+    dockercomposeConfig.digestpin = digestpin;
   }
 
   const threshold =
@@ -1178,6 +1188,7 @@ class Docker extends Watcher {
           dryrun: this.joi.boolean(),
           auto: this.joi.boolean(),
           once: this.joi.boolean(),
+          digestpin: this.joi.boolean(),
           native: this.joi.boolean(),
           threshold: this.joi.string(),
         })

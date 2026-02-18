@@ -174,6 +174,7 @@ describe('Dockercompose Trigger', () => {
     trigger.configuration = {
       dryrun: true,
       backup: false,
+      digestpin: false,
       composeFileLabel: 'dd.compose.file',
     };
 
@@ -580,6 +581,37 @@ describe('Dockercompose Trigger', () => {
     const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
       trigger,
       'image: nginx:1.0.0@sha256:abc123',
+    );
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(writeComposeFileSpy).toHaveBeenCalledWith(
+      '/opt/drydock/test/stack.yml',
+      'image: nginx:1.1.0@sha256:newdigest',
+    );
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
+  });
+
+  test('processComposeFile should force digest pinning for tag updates when digestpin is enabled', async () => {
+    trigger.configuration.dryrun = false;
+    trigger.configuration.backup = false;
+    trigger.configuration.digestpin = true;
+    const container = makeContainer({
+      tagValue: '1.0.0',
+      updateKind: 'tag',
+      remoteValue: '1.1.0',
+      result: {
+        digest: 'sha256:newdigest',
+      },
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ nginx: { image: 'nginx:1.0.0' } }),
+    );
+
+    const { writeComposeFileSpy, dockerTriggerSpy } = spyOnProcessComposeHelpers(
+      trigger,
+      'image: nginx:1.0.0',
     );
 
     await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
@@ -1632,6 +1664,34 @@ describe('Dockercompose Trigger', () => {
     expect(result).toEqual({
       image: 'registry.io/nginx:2.0.0@sha256:newdigest',
       keptPinned: true,
+    });
+  });
+
+  test('buildUpdatedComposeImage should force pinning for non-digest compose images when enabled', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0',
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      'sha256:newdigest',
+      true,
+    );
+    expect(result).toEqual({
+      image: 'nginx:2.0.0@sha256:newdigest',
+      keptPinned: true,
+    });
+  });
+
+  test('buildUpdatedComposeImage should fall back when forced pinning has no digest available', () => {
+    const result = testable_buildUpdatedComposeImage(
+      'nginx:1.0.0',
+      'nginx:2.0.0',
+      { kind: 'tag', remoteValue: '2.0.0' },
+      undefined,
+      true,
+    );
+    expect(result).toEqual({
+      image: 'nginx:2.0.0',
+      keptPinned: false,
     });
   });
 });

@@ -112,6 +112,12 @@ export const ddComposeOnce = 'dd.compose.once';
 export const wudComposeOnce = 'wud.compose.once';
 
 /**
+ * Optional dockercompose trigger forced digest pinning mode (true | false).
+ */
+export const ddComposeDigestpin = 'dd.compose.digestpin';
+export const wudComposeDigestpin = 'wud.compose.digestpin';
+
+/**
  * Optional auto-compose discovery mode (true | false).
  * When enabled, use compose-native labels to derive compose file path.
  */

@@ -604,6 +604,7 @@ describe('Docker Watcher', () => {
             'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
             'dd.compose.auto': 'true',
             'dd.compose.prune': 'false',
+            'dd.compose.digestpin': 'true',
           },
           triggerInclude: 'ntfy.default:major',
         },
@@ -621,6 +622,7 @@ describe('Docker Watcher', () => {
         '/tmp/my-stack/docker-compose.yml',
         {
           auto: 'true',
+          digestpin: 'true',
           prune: 'false',
         },
       );
@@ -653,6 +655,7 @@ describe('Docker Watcher', () => {
         compose: {
           threshold: 'minor',
           auto: false,
+          digestpin: true,
         },
       });
 
@@ -663,6 +666,7 @@ describe('Docker Watcher', () => {
         '/tmp/my-stack/docker-compose.yml',
         {
           auto: 'false',
+          digestpin: 'true',
           threshold: 'minor',
         },
       );
@@ -1314,6 +1318,7 @@ describe('Docker Watcher', () => {
             'dd.compose.backup': 'true',
             'dd.compose.prune': 'false',
             'dd.compose.auto': 'true',
+            'dd.compose.digestpin': 'true',
             'dd.compose.threshold': 'minor',
           },
         },
@@ -1337,6 +1342,7 @@ describe('Docker Watcher', () => {
           backup: 'true',
           prune: 'false',
           auto: 'true',
+          digestpin: 'true',
           threshold: 'minor',
         },
       );
