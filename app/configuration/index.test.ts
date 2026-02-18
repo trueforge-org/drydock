@@ -48,6 +48,15 @@ test('getWatcherConfiguration should return configured watchers when overridden'
   });
 });
 
+test('getWatcherConfiguration should map COMPOSE_NATIVE into compose.native', async () => {
+  configuration.ddEnvVars.DD_WATCHER_LOCAL_COMPOSE_NATIVE = 'true';
+
+  const watcherConfigurations = configuration.getWatcherConfigurations();
+  expect(watcherConfigurations.local.compose.native).toStrictEqual('true');
+
+  delete configuration.ddEnvVars.DD_WATCHER_LOCAL_COMPOSE_NATIVE;
+});
+
 test('getWatcherConfiguration should map MAINTENANCE_WINDOW aliases', async () => {
   configuration.ddEnvVars.DD_WATCHER_LOCAL_MAINTENANCE_WINDOW = '0 2 * * *';
   configuration.ddEnvVars.DD_WATCHER_LOCAL_MAINTENANCE_WINDOW_TZ = 'Europe/Paris';

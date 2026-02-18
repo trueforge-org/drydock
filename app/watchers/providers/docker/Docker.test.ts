@@ -2920,10 +2920,12 @@ describe('Docker Watcher', () => {
       expect(result.triggerInclude).toBe('dockercompose.my-stack-test-container-native');
     });
 
-    test('should auto-include dockercompose trigger from compose-native labels when watcher composenative is enabled', async () => {
+    test('should auto-include dockercompose trigger from compose-native labels when watcher compose.native is enabled', async () => {
       const container = await setupContainerDetailTest(docker, {
         registerConfig: {
-          composenative: true,
+          compose: {
+            native: true,
+          },
         },
         container: {
           Image: 'nginx:1.0.0',
@@ -2948,7 +2950,9 @@ describe('Docker Watcher', () => {
     test('should not auto-include dockercompose trigger from compose-native labels when dd.compose.native is false', async () => {
       const container = await setupContainerDetailTest(docker, {
         registerConfig: {
-          composenative: true,
+          compose: {
+            native: true,
+          },
         },
         container: {
           Image: 'nginx:1.0.0',

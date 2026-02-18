@@ -100,7 +100,6 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
   watchdigest?: any;
   watchevents: boolean;
   watchatstart: boolean;
-  composenative: boolean;
   maintenancewindow?: string;
   maintenancewindowtz: string;
   compose?: {
@@ -108,6 +107,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
     prune?: boolean;
     dryrun?: boolean;
     auto?: boolean;
+    native?: boolean;
     threshold?: string;
   };
   imgset?: Record<string, any>;
@@ -1159,7 +1159,6 @@ class Docker extends Watcher {
       watchdigest: this.joi.any(),
       watchevents: this.joi.boolean().default(true),
       watchatstart: this.joi.boolean().default(true),
-      composenative: this.joi.boolean().default(false),
       maintenancewindow: joi.string().cron().optional(),
       maintenancewindowtz: this.joi.string().default('UTC'),
       compose: this.joi
@@ -1168,6 +1167,7 @@ class Docker extends Watcher {
           prune: this.joi.boolean(),
           dryrun: this.joi.boolean(),
           auto: this.joi.boolean(),
+          native: this.joi.boolean(),
           threshold: this.joi.string(),
         })
         .default({}),
@@ -1371,7 +1371,7 @@ class Docker extends Watcher {
       const containerLabels = containerInStore.labels || {};
       const composeFilePath = getComposeFilePathFromLabels(
         containerLabels,
-        this.configuration.composenative,
+        Boolean(this.configuration.compose?.native),
       );
       if (!composeFilePath) {
         continue;
@@ -2156,7 +2156,7 @@ class Docker extends Watcher {
     const containerId = containerFound.id;
     const composeFilePath = getComposeFilePathFromLabels(
       labelsToApply,
-      this.configuration.composenative,
+      Boolean(this.configuration.compose?.native),
     );
     if (composeFilePath) {
       let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
@@ -2631,7 +2631,7 @@ class Docker extends Watcher {
     const containerLabels = container.Labels || {};
     const composeFilePath = getComposeFilePathFromLabels(
       containerLabels,
-      this.configuration.composenative,
+      Boolean(this.configuration.compose?.native),
     );
     const needsComposeTriggerCreation =
       !!composeFilePath && !this.composeTriggersByContainer[containerId];
