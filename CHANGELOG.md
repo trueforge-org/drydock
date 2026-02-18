@@ -12,11 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Compose label-driven docker-compose trigger configuration** — Added support for container labels to create and scope compose triggers from discovered containers, including `dd.compose.file` / `wud.compose.file` and compose trigger options (`backup`, `prune`, `dryrun`, `auto`, `threshold`).
+- **Compose label-driven docker-compose trigger configuration** — Added support for container labels to create and scope compose triggers from discovered containers, including `dd.compose.file` / `wud.compose.file` and compose trigger options (`backup`, `prune`, `dryrun`, `auto`, `once`, `threshold`).
 - **Compose-file digest update support** — Docker-compose trigger now supports digest-pinned image references in compose files (`image@sha256:...` and `image:tag@sha256:...`) so digest-based services can be updated without dropping pinning.
 
 - **Compose-native auto-compose discovery** — Added `dd.compose.native` / `wud.compose.native` container labels to enable deriving compose file paths from native Compose labels (`com.docker.compose.project.config_files` + `com.docker.compose.project.working_dir`) when `dd.compose.file` is not set. This requires the resolved compose path to exist inside the drydock container (same path context used by `docker compose`).
 - **Watcher-wide compose-native default** — Added `DD_WATCHER_{name}_COMPOSE_NATIVE=true` to enable compose-native path discovery for all containers watched by a Docker watcher, with per-container `dd.compose.native` still taking precedence.
+- **Compose trigger `once` overrides** — Added per-container `dd.compose.once` / `wud.compose.once` and watcher-level `DD_WATCHER_{name}_COMPOSE_ONCE` defaults for generated docker-compose triggers.
 - **MAU registry provider (`dock.mau.dev`)** — Added a GitLab-based `mau` registry provider with token auth support. It is auto-registered as `mau.public` by default for public access and can also be configured as private via `DD_REGISTRY_MAU_{name}_TOKEN`.
 
 ### Fixed

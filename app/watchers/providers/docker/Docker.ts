@@ -40,6 +40,7 @@ import {
   ddComposeDryrun,
   ddComposeFile,
   ddComposeNative,
+  ddComposeOnce,
   ddComposePrune,
   ddComposeThreshold,
   ddDisplayIcon,
@@ -62,6 +63,7 @@ import {
   wudDisplayName,
   wudComposeFile,
   wudComposeNative,
+  wudComposeOnce,
   wudComposePrune,
   wudComposeThreshold,
   wudInspectTagPath,
@@ -107,6 +109,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
     prune?: boolean;
     dryrun?: boolean;
     auto?: boolean;
+    once?: boolean;
     native?: boolean;
     threshold?: string;
   };
@@ -245,6 +248,13 @@ function getDockercomposeTriggerConfigurationFromLabels(
     normalizeComposeDefaultValue(composeDefaults.auto);
   if (auto !== undefined) {
     dockercomposeConfig.auto = auto;
+  }
+
+  const once =
+    getLabel(labels, ddComposeOnce, wudComposeOnce) ||
+    normalizeComposeDefaultValue(composeDefaults.once);
+  if (once !== undefined) {
+    dockercomposeConfig.once = once;
   }
 
   const threshold =
@@ -1167,6 +1177,7 @@ class Docker extends Watcher {
           prune: this.joi.boolean(),
           dryrun: this.joi.boolean(),
           auto: this.joi.boolean(),
+          once: this.joi.boolean(),
           native: this.joi.boolean(),
           threshold: this.joi.string(),
         })

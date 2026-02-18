@@ -57,6 +57,15 @@ test('getWatcherConfiguration should map COMPOSE_NATIVE into compose.native', as
   delete configuration.ddEnvVars.DD_WATCHER_LOCAL_COMPOSE_NATIVE;
 });
 
+test('getWatcherConfiguration should map COMPOSE_ONCE into compose.once', async () => {
+  configuration.ddEnvVars.DD_WATCHER_LOCAL_COMPOSE_ONCE = 'false';
+
+  const watcherConfigurations = configuration.getWatcherConfigurations();
+  expect(watcherConfigurations.local.compose.once).toStrictEqual('false');
+
+  delete configuration.ddEnvVars.DD_WATCHER_LOCAL_COMPOSE_ONCE;
+});
+
 test('getWatcherConfiguration should map MAINTENANCE_WINDOW aliases', async () => {
   configuration.ddEnvVars.DD_WATCHER_LOCAL_MAINTENANCE_WINDOW = '0 2 * * *';
   configuration.ddEnvVars.DD_WATCHER_LOCAL_MAINTENANCE_WINDOW_TZ = 'Europe/Paris';

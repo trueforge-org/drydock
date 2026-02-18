@@ -404,6 +404,7 @@ When using the Docker Compose trigger, container labels can override trigger set
 | `dd.compose.prune` | `wud.compose.prune` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_PRUNE` | `true` / `false` |
 | `dd.compose.dryrun` | `wud.compose.dryrun` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_DRYRUN` | `true` / `false` |
 | `dd.compose.auto` | `wud.compose.auto` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_AUTO` | `true` / `false` |
+| `dd.compose.once` | `wud.compose.once` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_ONCE` | `true` / `false` |
 | `dd.compose.native` | `wud.compose.native` | `DD_WATCHER_<WATCHER_NAME>_COMPOSE_NATIVE` | `true` / `false` |
 | `dd.compose.threshold` | `wud.compose.threshold` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_THRESHOLD` | `all` / `major` / `minor` / `patch` |
 
@@ -415,11 +416,13 @@ Behavior notes:
 - Compose-native/automatic detection requires the resolved compose file path to be valid inside the drydock container (same path that `docker compose` uses); if Compose was run from a host-only path, bind-mount that path into drydock at the same location or set `dd.compose.file` explicitly.
 - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_NATIVE=true` enables compose-native lookup by default for all containers in that watcher (container label can still override).
 - If `dd.compose.auto` is omitted, normal trigger default applies (`auto=true`).
+- If `dd.compose.once` is omitted, normal trigger default applies (`once=true`).
 - You can set watcher-level defaults via env vars (per watcher):
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_BACKUP`
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_PRUNE`
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_DRYRUN`
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_AUTO`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_ONCE`
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_NATIVE`
   - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_THRESHOLD`
   These defaults apply when corresponding compose labels are not present.

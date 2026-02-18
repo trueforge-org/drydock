@@ -106,6 +106,12 @@ export const ddComposeAuto = 'dd.compose.auto';
 export const wudComposeAuto = 'wud.compose.auto';
 
 /**
+ * Optional dockercompose trigger once mode (true | false).
+ */
+export const ddComposeOnce = 'dd.compose.once';
+export const wudComposeOnce = 'wud.compose.once';
+
+/**
  * Optional auto-compose discovery mode (true | false).
  * When enabled, use compose-native labels to derive compose file path.
  */
