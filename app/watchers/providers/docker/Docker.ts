@@ -220,28 +220,28 @@ function getDockercomposeTriggerConfigurationFromLabels(
   const dockercomposeConfig: Record<string, string> = {};
 
   const backup =
-    getLabel(labels, ddComposeBackup, wudComposeBackup) ??
+    getLabel(labels, ddComposeBackup, wudComposeBackup) ||
     normalizeComposeDefaultValue(composeDefaults.backup);
   if (backup !== undefined) {
     dockercomposeConfig.backup = backup;
   }
 
   const prune =
-    getLabel(labels, ddComposePrune, wudComposePrune) ??
+    getLabel(labels, ddComposePrune, wudComposePrune) ||
     normalizeComposeDefaultValue(composeDefaults.prune);
   if (prune !== undefined) {
     dockercomposeConfig.prune = prune;
   }
 
   const dryrun =
-    getLabel(labels, ddComposeDryrun, wudComposeDryrun) ??
+    getLabel(labels, ddComposeDryrun, wudComposeDryrun) ||
     normalizeComposeDefaultValue(composeDefaults.dryrun);
   if (dryrun !== undefined) {
     dockercomposeConfig.dryrun = dryrun;
   }
 
   const auto =
-    getLabel(labels, ddComposeAuto, wudComposeAuto) ??
+    getLabel(labels, ddComposeAuto, wudComposeAuto) ||
     normalizeComposeDefaultValue(composeDefaults.auto);
   if (auto !== undefined) {
     dockercomposeConfig.auto = auto;
