@@ -48,6 +48,29 @@
         }}</router-link>
       </v-list-item-subtitle>
     </v-list-item>
+    <v-list-item v-if="composeFilePath">
+      <template v-slot:prepend>
+        <v-icon>fab fa-docker</v-icon>
+      </template>
+      <v-list-item-title>Compose file</v-list-item-title>
+      <v-list-item-subtitle>
+        {{ composeFilePath }}
+        <v-tooltip location="bottom">
+          <template v-slot:activator="{ props }">
+            <v-btn
+              variant="text"
+              size="small"
+              icon
+              v-bind="props"
+              @click="copyToClipboard('compose file', composeFilePath)"
+            >
+              <v-icon size="small">far fa-clipboard</v-icon>
+            </v-btn>
+          </template>
+          <span class="text-caption">Copy to clipboard</span>
+        </v-tooltip>
+      </v-list-item-subtitle>
+    </v-list-item>
     <v-list-item v-if="container.includeTags">
       <template v-slot:prepend>
         <v-icon>fas fa-tag</v-icon>

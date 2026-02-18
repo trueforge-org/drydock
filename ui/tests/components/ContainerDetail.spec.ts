@@ -327,4 +327,87 @@ describe('ContainerDetail', () => {
       expect(wrapper.text()).not.toContain('120s');
     });
   });
+
+  describe('Compose file', () => {
+    it('hides compose file when compose labels are not present', () => {
+      expect(wrapper.text()).not.toContain('Compose file');
+    });
+
+    it('shows normalized compose file from working_dir + relative config file', async () => {
+      await wrapper.setProps({
+        container: {
+          ...mockContainer,
+          labels: {
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files': 'docker-compose.yml',
+          },
+        },
+      });
+
+      expect(wrapper.text()).toContain('Compose file');
+      expect(wrapper.text()).toContain('/opt/my-stack/docker-compose.yml');
+    });
+
+    it('uses first config file when multiple config files are present', async () => {
+      await wrapper.setProps({
+        container: {
+          ...mockContainer,
+          labels: {
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files':
+              'docker-compose.yml, docker-compose.override.yml',
+          },
+        },
+      });
+
+      expect(wrapper.text()).toContain('/opt/my-stack/docker-compose.yml');
+      expect(wrapper.text()).not.toContain('docker-compose.override.yml');
+    });
+
+    it('keeps absolute config file path as-is', async () => {
+      await wrapper.setProps({
+        container: {
+          ...mockContainer,
+          labels: {
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files': '/configs/docker-compose.yml',
+          },
+        },
+      });
+
+      expect(wrapper.text()).toContain('/configs/docker-compose.yml');
+    });
+
+    it('prefers dd.compose.file over native compose labels', async () => {
+      await wrapper.setProps({
+        container: {
+          ...mockContainer,
+          labels: {
+            'dd.compose.file': '/explicit/from-label.yml',
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files': 'docker-compose.yml',
+          },
+        },
+      });
+
+      expect(wrapper.text()).toContain('/explicit/from-label.yml');
+      expect(wrapper.text()).not.toContain('/opt/my-stack/docker-compose.yml');
+    });
+
+    it('uses wud.compose.file as fallback when dd.compose.file is not set', async () => {
+      await wrapper.setProps({
+        container: {
+          ...mockContainer,
+          labels: {
+            'wud.compose.file': '/legacy/wud-compose.yml',
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files': 'docker-compose.yml',
+          },
+        },
+      });
+
+      expect(wrapper.text()).toContain('/legacy/wud-compose.yml');
+      expect(wrapper.text()).not.toContain('/opt/my-stack/docker-compose.yml');
+    });
+  });
 });
