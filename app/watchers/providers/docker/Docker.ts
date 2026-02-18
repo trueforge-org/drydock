@@ -103,6 +103,13 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
   composenative: boolean;
   maintenancewindow?: string;
   maintenancewindowtz: string;
+  compose?: {
+    backup?: boolean;
+    prune?: boolean;
+    dryrun?: boolean;
+    auto?: boolean;
+    threshold?: string;
+  };
   imgset?: Record<string, any>;
 }
 
@@ -199,30 +206,50 @@ function removeTriggerId(triggerInclude: string | undefined, triggerId: string |
   return triggersIncluded.length > 0 ? triggersIncluded.join(',') : undefined;
 }
 
-function getDockercomposeTriggerConfigurationFromLabels(labels: Record<string, string>) {
+function normalizeComposeDefaultValue(value: string | boolean | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+  return `${value}`;
+}
+
+function getDockercomposeTriggerConfigurationFromLabels(
+  labels: Record<string, string>,
+  composeDefaults: DockerWatcherConfiguration['compose'] = {},
+) {
   const dockercomposeConfig: Record<string, string> = {};
 
-  const backup = getLabel(labels, ddComposeBackup, wudComposeBackup);
+  const backup =
+    getLabel(labels, ddComposeBackup, wudComposeBackup) ??
+    normalizeComposeDefaultValue(composeDefaults.backup);
   if (backup !== undefined) {
     dockercomposeConfig.backup = backup;
   }
 
-  const prune = getLabel(labels, ddComposePrune, wudComposePrune);
+  const prune =
+    getLabel(labels, ddComposePrune, wudComposePrune) ??
+    normalizeComposeDefaultValue(composeDefaults.prune);
   if (prune !== undefined) {
     dockercomposeConfig.prune = prune;
   }
 
-  const dryrun = getLabel(labels, ddComposeDryrun, wudComposeDryrun);
+  const dryrun =
+    getLabel(labels, ddComposeDryrun, wudComposeDryrun) ??
+    normalizeComposeDefaultValue(composeDefaults.dryrun);
   if (dryrun !== undefined) {
     dockercomposeConfig.dryrun = dryrun;
   }
 
-  const auto = getLabel(labels, ddComposeAuto, wudComposeAuto);
+  const auto =
+    getLabel(labels, ddComposeAuto, wudComposeAuto) ??
+    normalizeComposeDefaultValue(composeDefaults.auto);
   if (auto !== undefined) {
     dockercomposeConfig.auto = auto;
   }
 
-  const threshold = getLabel(labels, ddComposeThreshold, wudComposeThreshold);
+  const threshold =
+    getLabel(labels, ddComposeThreshold, wudComposeThreshold) ||
+    normalizeConfigStringValue(composeDefaults.threshold);
   if (threshold !== undefined) {
     dockercomposeConfig.threshold = threshold;
   }
@@ -1135,6 +1162,15 @@ class Docker extends Watcher {
       composenative: this.joi.boolean().default(false),
       maintenancewindow: joi.string().cron().optional(),
       maintenancewindowtz: this.joi.string().default('UTC'),
+      compose: this.joi
+        .object({
+          backup: this.joi.boolean(),
+          prune: this.joi.boolean(),
+          dryrun: this.joi.boolean(),
+          auto: this.joi.boolean(),
+          threshold: this.joi.string(),
+        })
+        .default({}),
       imgset: this.joi
         .object()
         .pattern(
@@ -1347,7 +1383,10 @@ class Docker extends Watcher {
           dockercomposeTriggerId = await registry.ensureDockercomposeTriggerForContainer(
             containerInStore.name,
             composeFilePath,
-            getDockercomposeTriggerConfigurationFromLabels(containerLabels),
+            getDockercomposeTriggerConfigurationFromLabels(
+              containerLabels,
+              this.configuration.compose,
+            ),
           );
           this.composeTriggersByContainer[containerInStore.id] = dockercomposeTriggerId;
         } catch (e: any) {
@@ -2126,7 +2165,10 @@ class Docker extends Watcher {
           dockercomposeTriggerId = await registry.ensureDockercomposeTriggerForContainer(
             newName || oldName,
             composeFilePath,
-            getDockercomposeTriggerConfigurationFromLabels(labelsToApply),
+            getDockercomposeTriggerConfigurationFromLabels(
+              labelsToApply,
+              this.configuration.compose,
+            ),
           );
           this.composeTriggersByContainer[containerId] = dockercomposeTriggerId;
         } catch (e: any) {
@@ -2652,8 +2694,10 @@ class Docker extends Watcher {
     }
     const containerName = getContainerName(container);
     let triggerIncludeUpdated = resolvedConfig.triggerInclude;
-    const dockercomposeTriggerConfiguration =
-      getDockercomposeTriggerConfigurationFromLabels(containerLabels);
+    const dockercomposeTriggerConfiguration = getDockercomposeTriggerConfigurationFromLabels(
+      containerLabels,
+      this.configuration.compose,
+    );
     if (composeFilePath) {
       let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
       if (!dockercomposeTriggerId) {

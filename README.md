@@ -413,6 +413,13 @@ Behavior notes:
 - Compose-native/automatic detection requires the resolved compose file path to be valid inside the drydock container (same path that `docker compose` uses); if Compose was run from a host-only path, bind-mount that path into drydock at the same location or set `dd.compose.file` explicitly.
 - `DD_WATCHER_DOCKER_xxx_COMPOSENATIVE=true` enables compose-native lookup by default for all containers in that watcher (container label can still override).
 - If `dd.compose.auto` is omitted, normal trigger default applies (`auto=true`).
+- You can set watcher-level defaults via env vars (per watcher):
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_BACKUP`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_PRUNE`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_DRYRUN`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_AUTO`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_THRESHOLD`
+  These defaults apply when corresponding compose labels are not present.
 
 Troubleshooting path mismatch:
 

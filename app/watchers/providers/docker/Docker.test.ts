@@ -635,6 +635,39 @@ describe('Docker Watcher', () => {
       );
     });
 
+    test('should apply watcher compose defaults from configuration during init', async () => {
+      storeContainer.getContainers.mockReturnValue([
+        {
+          id: 'existing-compose-defaults',
+          name: 'web-defaults',
+          watcher: 'test',
+          labels: {
+            'dd.compose.file': '/tmp/my-stack/docker-compose.yml',
+          },
+          triggerInclude: 'ntfy.default:major',
+        },
+      ]);
+
+      await docker.register('watcher', 'docker', 'test', {
+        watchatstart: true,
+        compose: {
+          threshold: 'minor',
+          auto: false,
+        },
+      });
+
+      await docker.init();
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'web-defaults',
+        '/tmp/my-stack/docker-compose.yml',
+        {
+          auto: 'false',
+          threshold: 'minor',
+        },
+      );
+    });
+
     test('should keep watchatstart disabled when explicitly set to false', async () => {
       storeContainer.getContainers.mockReturnValue([]);
       await docker.register('watcher', 'docker', 'test', {
@@ -2961,6 +2994,78 @@ describe('Docker Watcher', () => {
           dryrun: 'true',
           auto: 'false',
           threshold: 'minor',
+        },
+      );
+    });
+
+    test('should use watcher compose defaults when compose labels are missing', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        registerConfig: {
+          compose: {
+            backup: true,
+            prune: false,
+            dryrun: true,
+            auto: false,
+            threshold: 'minor',
+          },
+        },
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-default-options'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-default-options',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'true',
+          prune: 'false',
+          dryrun: 'true',
+          auto: 'false',
+          threshold: 'minor',
+        },
+      );
+    });
+
+    test('should let compose labels override watcher compose defaults', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        registerConfig: {
+          compose: {
+            backup: true,
+            prune: true,
+            dryrun: true,
+            auto: true,
+            threshold: 'major',
+          },
+        },
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-default-override'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+            'dd.compose.backup': 'false',
+            'dd.compose.threshold': 'patch',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-default-override',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'false',
+          prune: 'true',
+          dryrun: 'true',
+          auto: 'true',
+          threshold: 'patch',
         },
       );
     });
