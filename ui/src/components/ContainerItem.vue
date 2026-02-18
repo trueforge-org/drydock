@@ -93,6 +93,7 @@
                 <span v-if="container.agent">{{ container.agent }} &middot;</span>
                 <span>{{ container.watcher }}</span>
                 <span v-if="mdAndUp">&middot; {{ container.image.registry.name }}</span>
+                <span v-if="container.name">&middot; {{ container.name }}</span>
               </div>
             </div>
           </div>

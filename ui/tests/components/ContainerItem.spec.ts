@@ -199,7 +199,9 @@ describe('ContainerItem', () => {
   it('renders container information correctly', () => {
     expect(wrapper.text()).toContain('Test Container');
     expect(wrapper.text()).toContain('1.0.0');
+    expect(wrapper.text()).toContain('local');
     expect(wrapper.text()).toContain('hub');
+    expect(wrapper.text()).toContain('test-container');
   });
 
   it('shows update available indicator when update is available', () => {
