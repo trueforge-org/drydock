@@ -1514,7 +1514,6 @@ describe('Docker Watcher', () => {
       expect(docker.composeTriggersByContainer.container123).toBeUndefined();
       expect(storeContainer.updateContainer).not.toHaveBeenCalled();
     });
-
     test('should skip store update when inspect payload does not change tracked fields', async () => {
       await docker.register('watcher', 'docker', 'test', {});
       docker.log = createMockLogWithChild(['info']);
@@ -4721,7 +4720,6 @@ describe('Docker Watcher', () => {
     test('removeTriggerId should return undefined when last trigger is removed', () => {
       expect(testable_removeTriggerId('dockercompose.test', 'dockercompose.test')).toBeUndefined();
     });
-
 
     test('getCurrentPrefix should return the non-numeric prefix before the first digit', () => {
       expect(testable_getCurrentPrefix('v2026.2.1')).toBe('v');
