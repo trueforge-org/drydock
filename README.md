@@ -402,12 +402,15 @@ When using the Docker Compose trigger, container labels can override trigger set
 | `dd.compose.prune` | `wud.compose.prune` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_PRUNE` | `true` / `false` |
 | `dd.compose.dryrun` | `wud.compose.dryrun` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_DRYRUN` | `true` / `false` |
 | `dd.compose.auto` | `wud.compose.auto` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_AUTO` | `true` / `false` |
+| `dd.compose.native` | `wud.compose.native` | `DD_WATCHER_DOCKER_xxx_COMPOSENATIVE` | `true` / `false` |
 | `dd.compose.threshold` | `wud.compose.threshold` | `DD_TRIGGER_DOCKERCOMPOSE_xxx_THRESHOLD` | `all` / `major` / `minor` / `patch` |
 
 Behavior notes:
 
 - `dd.compose.file` / `wud.compose.file` causes drydock to create (or reuse) a scoped `dockercompose` trigger for that container.
 - That generated compose trigger is set with `requireinclude=true` and auto-appended to the container include list, so it only runs for explicitly associated containers.
+- `dd.compose.native` / `wud.compose.native` enables deriving compose file paths from native Compose labels (`com.docker.compose.project.config_files` and `com.docker.compose.project.working_dir`).
+- `DD_WATCHER_DOCKER_xxx_COMPOSENATIVE=true` enables compose-native lookup by default for all containers in that watcher (container label can still override).
 - If `dd.compose.auto` is omitted, normal trigger default applies (`auto=true`).
 
 `dd.*` labels take precedence when both `dd.*` and `wud.*` are present.

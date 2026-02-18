@@ -10,6 +10,7 @@ import Docker, {
   testable_filterBySegmentCount,
   testable_getContainerDisplayName,
   testable_getContainerName,
+  testable_getComposeFilePathFromLabels,
   testable_getCurrentPrefix,
   testable_getFirstDigitIndex,
   testable_getImageForRegistryLookup,
@@ -2863,6 +2864,76 @@ describe('Docker Watcher', () => {
       expect(result.triggerInclude).toBe('dockercompose.tmp-test-container-wud');
     });
 
+    test('should auto-include dockercompose trigger from compose-native labels when dd.compose.native is true', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-native'],
+          Labels: {
+            'dd.compose.native': 'true',
+            'com.docker.compose.project.working_dir': '/opt/my-stack',
+            'com.docker.compose.project.config_files': 'docker-compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-native',
+        '/opt/my-stack/docker-compose.yml',
+        {},
+      );
+      expect(result.triggerInclude).toBe('dockercompose.my-stack-test-container-native');
+    });
+
+    test('should auto-include dockercompose trigger from compose-native labels when watcher composenative is enabled', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        registerConfig: {
+          composenative: true,
+        },
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-native-global'],
+          Labels: {
+            'com.docker.compose.project.working_dir': '/opt/global-stack',
+            'com.docker.compose.project.config_files': 'compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-native-global',
+        '/opt/global-stack/compose.yml',
+        {},
+      );
+      expect(result.triggerInclude).toBe('dockercompose.global-stack-test-container-native-global');
+    });
+
+    test('should not auto-include dockercompose trigger from compose-native labels when dd.compose.native is false', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        registerConfig: {
+          composenative: true,
+        },
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-native-disabled'],
+          Labels: {
+            'dd.compose.native': 'false',
+            'com.docker.compose.project.working_dir': '/opt/disabled-stack',
+            'com.docker.compose.project.config_files': 'compose.yml',
+          },
+        },
+      });
+
+      const result = await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).not.toHaveBeenCalled();
+      expect(result.triggerInclude).toBeUndefined();
+    });
+
     test('should pass compose trigger options from labels', async () => {
       const container = await setupContainerDetailTest(docker, {
         container: {
@@ -4685,6 +4756,42 @@ describe('Docker Watcher', () => {
 
     test('getLabel should return undefined when fallback key is not provided', () => {
       expect(testable_getLabel({}, 'dd.display.name')).toBeUndefined();
+    });
+
+    test('getComposeFilePathFromLabels should prefer dd.compose.file over compose-native labels', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'dd.compose.file': '/opt/explicit/docker-compose.yml',
+          'dd.compose.native': 'true',
+          'com.docker.compose.project.working_dir': '/opt/native',
+          'com.docker.compose.project.config_files': 'compose.yml',
+        },
+        false,
+      );
+      expect(composeFile).toBe('/opt/explicit/docker-compose.yml');
+    });
+
+    test('getComposeFilePathFromLabels should resolve compose-native labels when enabled globally', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'com.docker.compose.project.working_dir': '/opt/native',
+          'com.docker.compose.project.config_files': 'compose.yml',
+        },
+        true,
+      );
+      expect(composeFile).toBe('/opt/native/compose.yml');
+    });
+
+    test('getComposeFilePathFromLabels should return undefined when compose-native labels are disabled', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'dd.compose.native': 'false',
+          'com.docker.compose.project.working_dir': '/opt/native',
+          'com.docker.compose.project.config_files': 'compose.yml',
+        },
+        true,
+      );
+      expect(composeFile).toBeUndefined();
     });
 
     test('appendTriggerId should return triggerInclude when triggerId is undefined', () => {
