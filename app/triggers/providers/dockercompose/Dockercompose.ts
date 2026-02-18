@@ -12,12 +12,14 @@ const DD_COMPOSE_NATIVE_LABEL = 'dd.compose.native';
 const WUD_COMPOSE_NATIVE_LABEL = 'wud.compose.native';
 
 function isNativeComposeEnabled(labels = {}) {
+  const normalizeToBoolean = (value) => `${value}`.trim().toLowerCase() === 'true';
+
   const nativeLabel = labels[DD_COMPOSE_NATIVE_LABEL] ?? labels[WUD_COMPOSE_NATIVE_LABEL];
-  if (nativeLabel === undefined) {
-    return false;
+  if (nativeLabel !== undefined) {
+    return normalizeToBoolean(nativeLabel);
   }
-  const normalizedNativeLabel = `${nativeLabel}`.trim().toLowerCase();
-  return normalizedNativeLabel === 'true';
+
+  return false;
 }
 
 function splitDigestReference(image) {
@@ -236,7 +238,12 @@ class Dockercompose extends Docker {
     }
 
     // Fall back to native Docker Compose labels when explicitly enabled
-    const nativeComposeEnabled = isNativeComposeEnabled(container.labels);
+    const watcherComposeNativeEnabled = this.getWatcher(container)?.configuration?.compose?.native;
+    const nativeComposeEnabled =
+      isNativeComposeEnabled(container.labels) ||
+      (container.labels?.[DD_COMPOSE_NATIVE_LABEL] === undefined &&
+        container.labels?.[WUD_COMPOSE_NATIVE_LABEL] === undefined &&
+        `${watcherComposeNativeEnabled}`.trim().toLowerCase() === 'true');
     const composeConfigFiles = container.labels?.[COMPOSE_PROJECT_CONFIG_FILES_LABEL];
     if (nativeComposeEnabled && composeConfigFiles && composeConfigFiles.trim() !== '') {
       const composeProjectWorkingDir = container.labels?.[COMPOSE_PROJECT_WORKING_DIR_LABEL];

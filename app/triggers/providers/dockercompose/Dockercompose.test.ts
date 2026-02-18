@@ -1271,6 +1271,73 @@ describe('Dockercompose Trigger', () => {
     expect(result).toBeNull();
   });
 
+  test('getComposeFileForContainer should use native compose labels when watcher compose.native is enabled', () => {
+    trigger.configuration.file = undefined;
+    getState.mockReturnValueOnce({
+      registry: {
+        hub: {
+          getImageFullName: (image, tag) => `${image.name}:${tag}`,
+        },
+      },
+      watcher: {
+        'docker.local': {
+          configuration: {
+            compose: {
+              native: 'true',
+            },
+          },
+          dockerApi: mockDockerApi,
+        },
+      },
+    });
+
+    const container = {
+      watcher: 'local',
+      labels: {
+        'com.docker.compose.project.working_dir': '/opt/stack',
+        'com.docker.compose.project.config_files': 'compose.yml',
+      },
+    };
+
+    const result = trigger.getComposeFileForContainer(container);
+
+    expect(result).toBe('/opt/stack/compose.yml');
+  });
+
+  test('getComposeFileForContainer should prioritize dd.compose.native label over watcher compose.native', () => {
+    trigger.configuration.file = undefined;
+    getState.mockReturnValueOnce({
+      registry: {
+        hub: {
+          getImageFullName: (image, tag) => `${image.name}:${tag}`,
+        },
+      },
+      watcher: {
+        'docker.local': {
+          configuration: {
+            compose: {
+              native: 'true',
+            },
+          },
+          dockerApi: mockDockerApi,
+        },
+      },
+    });
+
+    const container = {
+      watcher: 'local',
+      labels: {
+        'dd.compose.native': 'false',
+        'com.docker.compose.project.working_dir': '/opt/stack',
+        'com.docker.compose.project.config_files': 'compose.yml',
+      },
+    };
+
+    const result = trigger.getComposeFileForContainer(container);
+
+    expect(result).toBeNull();
+  });
+
   test('getComposeFileForContainer should fall back to default config file', () => {
     trigger.configuration.file = '/default/compose.yml';
     const container = { labels: {} };
