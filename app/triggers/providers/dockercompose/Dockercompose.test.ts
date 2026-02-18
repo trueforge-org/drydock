@@ -341,6 +341,34 @@ describe('Dockercompose Trigger', () => {
     expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
   });
 
+  test('processComposeFile should skip reconciliation when dryrun is enabled and no service image changes are needed', async () => {
+    trigger.configuration.dryrun = true;
+    const container = makeContainer({
+      name: 'redis',
+      imageName: 'redis',
+      tagValue: '7.0.0',
+      updateKind: 'digest',
+      remoteValue: 'sha256:deadbeef',
+    });
+
+    vi.spyOn(trigger, 'getComposeFileAsObject').mockResolvedValue(
+      makeCompose({ redis: { image: 'redis:7.0.0' } }),
+    );
+
+    const { getComposeFileSpy, writeComposeFileSpy, dockerTriggerSpy } =
+      spyOnProcessComposeHelpers(trigger);
+
+    await trigger.processComposeFile('/opt/drydock/test/stack.yml', [container]);
+
+    expect(getComposeFileSpy).not.toHaveBeenCalled();
+    expect(writeComposeFileSpy).not.toHaveBeenCalled();
+    expect(dockerTriggerSpy).not.toHaveBeenCalled();
+    expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
+    expect(mockLog.info).toHaveBeenCalledWith(
+      expect.stringContaining('Skip container reconciliation'),
+    );
+  });
+
   test('processComposeFile should treat implicit latest as up to date', async () => {
     trigger.configuration.dryrun = false;
     const container = makeContainer({

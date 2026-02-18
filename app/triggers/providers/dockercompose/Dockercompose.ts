@@ -400,6 +400,13 @@ class Dockercompose extends Docker {
       this.log.info(
         `Do not replace existing docker-compose file ${composeFile} (dry-run mode enabled)`,
       );
+
+      if (!shouldRewriteComposeFile) {
+        this.log.info(
+          `Skip container reconciliation for ${composeFile} because dry-run mode is enabled and compose file is already up to date`,
+        );
+        return;
+      }
     } else if (shouldRewriteComposeFile) {
       // Backup docker-compose file
       if (this.configuration.backup) {
@@ -420,7 +427,6 @@ class Dockercompose extends Docker {
     }
 
     // Trigger all mapped containers so running state is reconciled even when compose file is already current.
-    // (super.notify will take care of the dry-run mode for each container as well)
     await Promise.all(
       versionMappings.map(async ({ container, service }) => {
         await super.trigger(container);
