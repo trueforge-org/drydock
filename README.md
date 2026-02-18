@@ -409,6 +409,13 @@ Behavior notes:
 - `dd.compose.file` / `wud.compose.file` causes drydock to create (or reuse) a scoped `dockercompose` trigger for that container.
 - That generated compose trigger is set with `requireinclude=true` and auto-appended to the container include list, so it only runs for explicitly associated containers.
 - If `dd.compose.auto` is omitted, normal trigger default applies (`auto=true`).
+- You can set watcher-level defaults via env vars (per watcher):
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_BACKUP`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_PRUNE`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_DRYRUN`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_AUTO`
+  - `DD_WATCHER_<WATCHER_NAME>_COMPOSE_THRESHOLD`
+  These defaults apply when corresponding compose labels are not present.
 
 `dd.*` labels take precedence when both `dd.*` and `wud.*` are present.
 
