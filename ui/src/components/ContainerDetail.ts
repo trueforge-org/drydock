@@ -63,9 +63,9 @@ function getComposeNativeFilePathFromLabels(labels: Record<string, string> = {})
 }
 
 function getComposeFilePathFromLabels(labels: Record<string, string> = {}) {
-  const composeFilePathFromLabel = labels[DD_COMPOSE_FILE_LABEL] ?? labels[WUD_COMPOSE_FILE_LABEL];
-  if (composeFilePathFromLabel) {
-    return composeFilePathFromLabel;
+  const overridePath = labels[DD_COMPOSE_FILE_LABEL] ?? labels[WUD_COMPOSE_FILE_LABEL];
+  if (overridePath) {
+    return overridePath;
   }
 
   return getComposeNativeFilePathFromLabels(labels);
