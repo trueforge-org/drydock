@@ -378,14 +378,21 @@ class Dockercompose extends Docker {
       })
       .filter((entry) => entry !== undefined);
 
-    // Only update/trigger containers where the compose image actually changes.
-    const mappingsNeedingUpdate = versionMappings.filter(
+    // Only rewrite compose file entries where the compose image actually changes.
+    const mappingsNeedingComposeRewrite = versionMappings.filter(
       ({ currentNormalized, updateNormalized }) => currentNormalized !== updateNormalized,
     );
 
-    if (mappingsNeedingUpdate.length === 0) {
-      this.log.info(`All containers in ${composeFile} are already up to date`);
+    if (versionMappings.length === 0) {
+      this.log.info(`No updatable services found in ${composeFile}`);
       return;
+    }
+
+    const shouldRewriteComposeFile = mappingsNeedingComposeRewrite.length > 0;
+    if (!shouldRewriteComposeFile) {
+      this.log.info(
+        `All containers in ${composeFile} are already up to date in compose file; reconciling running containers anyway`,
+      );
     }
 
     // Dry-run?
@@ -393,7 +400,7 @@ class Dockercompose extends Docker {
       this.log.info(
         `Do not replace existing docker-compose file ${composeFile} (dry-run mode enabled)`,
       );
-    } else {
+    } else if (shouldRewriteComposeFile) {
       // Backup docker-compose file
       if (this.configuration.backup) {
         const backupFile = `${composeFile}.back`;
@@ -403,8 +410,8 @@ class Dockercompose extends Docker {
       // Read the compose file as a string
       let composeFileStr = (await this.getComposeFile(composeFile)).toString();
 
-      // Replace only versions requiring updates
-      mappingsNeedingUpdate.forEach(({ current, update }) => {
+        // Replace only versions requiring updates
+      mappingsNeedingComposeRewrite.forEach(({ current, update }) => {
         composeFileStr = composeFileStr.replaceAll(current, update);
       });
 
@@ -412,10 +419,10 @@ class Dockercompose extends Docker {
       await this.writeComposeFile(composeFile, composeFileStr);
     }
 
-    // Update only containers requiring an image change
+    // Trigger all mapped containers so running state is reconciled even when compose file is already current.
     // (super.notify will take care of the dry-run mode for each container as well)
     await Promise.all(
-      mappingsNeedingUpdate.map(async ({ container, service }) => {
+      versionMappings.map(async ({ container, service }) => {
         await super.trigger(container);
         await this.runServicePostStartHooks(container, service, compose.services[service]);
       }),

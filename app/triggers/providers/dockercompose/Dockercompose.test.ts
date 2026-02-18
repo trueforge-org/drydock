@@ -287,7 +287,7 @@ describe('Dockercompose Trigger', () => {
     expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
   });
 
-  test('processComposeFile should only trigger containers with actual image changes', async () => {
+  test('processComposeFile should trigger all mapped containers even when only some compose entries change', async () => {
     const tagContainer = makeContainer({ name: 'nginx' });
     const digestContainer = makeContainer({
       name: 'redis',
@@ -311,11 +311,12 @@ describe('Dockercompose Trigger', () => {
       digestContainer,
     ]);
 
-    expect(dockerTriggerSpy).toHaveBeenCalledTimes(1);
+    expect(dockerTriggerSpy).toHaveBeenCalledTimes(2);
     expect(dockerTriggerSpy).toHaveBeenCalledWith(tagContainer);
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(digestContainer);
   });
 
-  test('processComposeFile should skip writes and triggers when no service image changes are needed', async () => {
+  test('processComposeFile should skip writes but still trigger reconciliation when no service image changes are needed', async () => {
     trigger.configuration.dryrun = false;
     const container = makeContainer({
       name: 'redis',
@@ -336,7 +337,7 @@ describe('Dockercompose Trigger', () => {
 
     expect(getComposeFileSpy).not.toHaveBeenCalled();
     expect(writeComposeFileSpy).not.toHaveBeenCalled();
-    expect(dockerTriggerSpy).not.toHaveBeenCalled();
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
     expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
   });
 
@@ -359,7 +360,7 @@ describe('Dockercompose Trigger', () => {
 
     expect(getComposeFileSpy).not.toHaveBeenCalled();
     expect(writeComposeFileSpy).not.toHaveBeenCalled();
-    expect(dockerTriggerSpy).not.toHaveBeenCalled();
+    expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
     expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
   });
 
@@ -647,7 +648,7 @@ describe('Dockercompose Trigger', () => {
       expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
     });
 
-    test('[digest update] + [compose tag] should be up to date (no rewrite)', async () => {
+    test('[digest update] + [compose tag] should skip rewrite but still trigger reconciliation', async () => {
       trigger.configuration.dryrun = false;
       trigger.configuration.backup = false;
 
@@ -668,7 +669,7 @@ describe('Dockercompose Trigger', () => {
 
       expect(getComposeFileSpy).not.toHaveBeenCalled();
       expect(writeComposeFileSpy).not.toHaveBeenCalled();
-      expect(dockerTriggerSpy).not.toHaveBeenCalled();
+      expect(dockerTriggerSpy).toHaveBeenCalledWith(container);
       expect(mockLog.info).toHaveBeenCalledWith(expect.stringContaining('already up to date'));
     });
 
