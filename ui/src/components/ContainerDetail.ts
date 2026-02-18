@@ -9,13 +9,27 @@ function isAbsolutePath(pathCandidate: string) {
   return pathCandidate.startsWith('/') || /^[A-Za-z]:[\\/]/.test(pathCandidate);
 }
 
+function getPathSeparator(workingDir: string) {
+  // Prefer Windows-style separator for obvious Windows paths (drive letter or UNC),
+  // or when only backslashes are present. Fall back to POSIX-style otherwise.
+  if (/^[A-Za-z]:[\\/]/.test(workingDir) || workingDir.startsWith('\\\\')) {
+    return '\\';
+  }
+  const hasBackslash = workingDir.includes('\\');
+  const hasSlash = workingDir.includes('/');
+  if (hasBackslash && !hasSlash) {
+    return '\\';
+  }
+  return '/';
+}
+
 function joinComposePath(workingDir: string, configFile: string) {
-  const hasTrailingSeparator = workingDir.endsWith('/') || workingDir.endsWith('\\');
+  const hasTrailingSeparator = /[\\/]\s*$/.test(workingDir);
   if (hasTrailingSeparator) {
     return `${workingDir}${configFile}`;
   }
 
-  const separator = workingDir.includes('\\') ? '\\' : '/';
+  const separator = getPathSeparator(workingDir);
   return `${workingDir}${separator}${configFile}`;
 }
 
