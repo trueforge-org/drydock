@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Compose label-driven docker-compose trigger configuration** — Added support for container labels to create and scope compose triggers from discovered containers, including `dd.compose.file` / `wud.compose.file` and compose trigger options (`backup`, `prune`, `dryrun`, `auto`, `threshold`).
 - **Compose-file digest update support** — Docker-compose trigger now supports digest-pinned image references in compose files (`image@sha256:...` and `image:tag@sha256:...`) so digest-based services can be updated without dropping pinning.
 
-- **Compose-native auto-compose discovery** — Added `dd.compose.native` / `wud.compose.native` container labels to enable deriving compose file paths from native Compose labels (`com.docker.compose.project.config_files` + `com.docker.compose.project.working_dir`) when `dd.compose.file` is not set.
+- **Compose-native auto-compose discovery** — Added `dd.compose.native` / `wud.compose.native` container labels to enable deriving compose file paths from native Compose labels (`com.docker.compose.project.config_files` + `com.docker.compose.project.working_dir`) when `dd.compose.file` is not set. This requires the resolved compose path to exist inside the drydock container (same path context used by `docker compose`).
 - **Watcher-wide compose-native default** — Added `DD_WATCHER_DOCKER_{name}_COMPOSENATIVE=true` to enable compose-native path discovery for all containers watched by a Docker watcher, with per-container `dd.compose.native` still taking precedence.
 
 ### Fixed
