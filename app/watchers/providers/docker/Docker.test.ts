@@ -4794,6 +4794,18 @@ describe('Docker Watcher', () => {
       expect(composeFile).toBeUndefined();
     });
 
+    test('getComposeFilePathFromLabels should fallback to watcher setting when compose-native label is blank', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'dd.compose.native': '   ',
+          'com.docker.compose.project.working_dir': '/opt/native',
+          'com.docker.compose.project.config_files': 'compose.yml',
+        },
+        true,
+      );
+      expect(composeFile).toBe('/opt/native/compose.yml');
+    });
+
     test('getComposeFilePathFromLabels should return undefined when compose-native config files label is missing', () => {
       const composeFile = testable_getComposeFilePathFromLabels(
         {
