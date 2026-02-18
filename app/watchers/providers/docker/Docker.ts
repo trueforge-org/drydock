@@ -253,17 +253,22 @@ function getComposeNativeFilePathFromLabels(labels: Record<string, string>) {
     .map((configFile) => configFile.trim())
     .filter((configFile) => configFile !== '');
 
-  for (const configFile of configFiles) {
-    if (path.isAbsolute(configFile)) {
-      return configFile;
-    }
-    if (composeProjectWorkingDir && composeProjectWorkingDir.trim() !== '') {
-      return path.join(composeProjectWorkingDir, configFile);
-    }
+  // Only the first entry is used if multiple config files are present ("first file wins").
+  const configFile = configFiles[0];
+  if (!configFile) {
+    return undefined;
+  }
+
+  if (path.isAbsolute(configFile)) {
     return configFile;
   }
 
-  return undefined;
+  const trimmedWorkingDir = composeProjectWorkingDir?.trim();
+  if (trimmedWorkingDir) {
+    return path.join(trimmedWorkingDir, configFile);
+  }
+
+  return configFile;
 }
 
 function getComposeFilePathFromLabels(
