@@ -154,3 +154,27 @@ test('getAuthPull should return username/password when token is configured', asy
     password: TEST_TOKEN,
   });
 });
+
+test('init should default url/authurl when configuration is undefined', async () => {
+  const mauDefault = new Mau();
+  mauDefault.configuration = undefined;
+
+  mauDefault.init();
+
+  expect(mauDefault.configuration).toEqual({
+    url: 'https://dock.mau.dev',
+    authurl: 'https://dock.mau.dev',
+  });
+});
+
+test('init should convert string configuration to object defaults', async () => {
+  const mauString = new Mau();
+  mauString.configuration = '';
+
+  mauString.init();
+
+  expect(mauString.configuration).toEqual({
+    url: 'https://dock.mau.dev',
+    authurl: 'https://dock.mau.dev',
+  });
+});
