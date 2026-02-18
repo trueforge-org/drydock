@@ -106,6 +106,13 @@ export const ddComposeAuto = 'dd.compose.auto';
 export const wudComposeAuto = 'wud.compose.auto';
 
 /**
+ * Optional auto-compose discovery mode (true | false).
+ * When enabled, use compose-native labels to derive compose file path.
+ */
+export const ddComposeNative = 'dd.compose.native';
+export const wudComposeNative = 'wud.compose.native';
+
+/**
  * Optional dockercompose trigger threshold setting.
  */
 export const ddComposeThreshold = 'dd.compose.threshold';

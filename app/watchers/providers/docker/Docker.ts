@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import axios from 'axios';
 import Dockerode from 'dockerode';
 import Joi from 'joi';
@@ -38,6 +39,7 @@ import {
   ddComposeBackup,
   ddComposeDryrun,
   ddComposeFile,
+  ddComposeNative,
   ddComposePrune,
   ddComposeThreshold,
   ddDisplayIcon,
@@ -59,6 +61,7 @@ import {
   wudDisplayIcon,
   wudDisplayName,
   wudComposeFile,
+  wudComposeNative,
   wudComposePrune,
   wudComposeThreshold,
   wudInspectTagPath,
@@ -97,6 +100,7 @@ export interface DockerWatcherConfiguration extends ComponentConfiguration {
   watchdigest?: any;
   watchevents: boolean;
   watchatstart: boolean;
+  composenative: boolean;
   maintenancewindow?: string;
   maintenancewindowtz: string;
   imgset?: Record<string, any>;
@@ -135,6 +139,8 @@ const START_WATCHER_DELAY_MS = 1000;
 const DEBOUNCED_WATCH_CRON_MS = 5000;
 const MAINTENANCE_WINDOW_QUEUE_POLL_MS = 60 * 1000;
 const SWARM_SERVICE_ID_LABEL = 'com.docker.swarm.service.id';
+const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
+const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
 const OIDC_ACCESS_TOKEN_REFRESH_WINDOW_MS = 30 * 1000;
 const OIDC_DEFAULT_ACCESS_TOKEN_TTL_MS = 5 * 60 * 1000;
 const OIDC_DEFAULT_TIMEOUT_MS = 5000;
@@ -222,6 +228,66 @@ function getDockercomposeTriggerConfigurationFromLabels(labels: Record<string, s
   }
 
   return dockercomposeConfig;
+}
+
+function isAutoComposeEnabled(
+  labels: Record<string, string>,
+  composeNativeEnabledByWatcher: boolean,
+): boolean {
+  const autoComposeLabelValue = getLabel(labels, ddComposeNative, wudComposeNative);
+  if (autoComposeLabelValue !== undefined) {
+    const normalizedAutoComposeLabelValue = autoComposeLabelValue.trim();
+    if (normalizedAutoComposeLabelValue !== '') {
+      return normalizedAutoComposeLabelValue.toLowerCase() === 'true';
+    }
+  }
+  return composeNativeEnabledByWatcher;
+}
+
+function getComposeNativeFilePathFromLabels(labels: Record<string, string>) {
+  const composeConfigFiles = labels[COMPOSE_PROJECT_CONFIG_FILES_LABEL];
+  if (!composeConfigFiles || composeConfigFiles.trim() === '') {
+    return undefined;
+  }
+
+  const composeProjectWorkingDir = labels[COMPOSE_PROJECT_WORKING_DIR_LABEL];
+  const configFiles = composeConfigFiles
+    .split(',')
+    .map((configFile) => configFile.trim())
+    .filter((configFile) => configFile !== '');
+
+  // Only the first entry is used if multiple config files are present ("first file wins").
+  const configFile = configFiles[0];
+  if (!configFile) {
+    return undefined;
+  }
+
+  if (path.isAbsolute(configFile)) {
+    return configFile;
+  }
+
+  const trimmedWorkingDir = composeProjectWorkingDir?.trim();
+  if (trimmedWorkingDir) {
+    return path.join(trimmedWorkingDir, configFile);
+  }
+
+  return configFile;
+}
+
+function getComposeFilePathFromLabels(
+  labels: Record<string, string>,
+  composeNativeEnabledByWatcher: boolean,
+) {
+  const composeFilePathFromLabel = getLabel(labels, ddComposeFile, wudComposeFile);
+  if (composeFilePathFromLabel) {
+    return composeFilePathFromLabel;
+  }
+
+  if (!isAutoComposeEnabled(labels, composeNativeEnabledByWatcher)) {
+    return undefined;
+  }
+
+  return getComposeNativeFilePathFromLabels(labels);
 }
 
 interface ResolvedImgset {
@@ -1066,6 +1132,7 @@ class Docker extends Watcher {
       watchdigest: this.joi.any(),
       watchevents: this.joi.boolean().default(true),
       watchatstart: this.joi.boolean().default(true),
+      composenative: this.joi.boolean().default(false),
       maintenancewindow: joi.string().cron().optional(),
       maintenancewindowtz: this.joi.string().default('UTC'),
       imgset: this.joi
@@ -1266,7 +1333,10 @@ class Docker extends Watcher {
 
     for (const containerInStore of containersInStore) {
       const containerLabels = containerInStore.labels || {};
-      const composeFilePath = getLabel(containerLabels, ddComposeFile, wudComposeFile);
+      const composeFilePath = getComposeFilePathFromLabels(
+        containerLabels,
+        this.configuration.composenative,
+      );
       if (!composeFilePath) {
         continue;
       }
@@ -2045,7 +2115,10 @@ class Docker extends Watcher {
     }
 
     const containerId = containerFound.id;
-    const composeFilePath = getLabel(labelsToApply, ddComposeFile, wudComposeFile);
+    const composeFilePath = getComposeFilePathFromLabels(
+      labelsToApply,
+      this.configuration.composenative,
+    );
     if (composeFilePath) {
       let dockercomposeTriggerId = this.composeTriggersByContainer[containerId];
       if (!dockercomposeTriggerId) {
@@ -2514,7 +2587,10 @@ class Docker extends Watcher {
   async addImageDetailsToContainer(container: any, labelOverrides: ContainerLabelOverrides = {}) {
     const containerId = container.Id;
     const containerLabels = container.Labels || {};
-    const composeFilePath = containerLabels[ddComposeFile] || containerLabels[wudComposeFile];
+    const composeFilePath = getComposeFilePathFromLabels(
+      containerLabels,
+      this.configuration.composenative,
+    );
     const needsComposeTriggerCreation =
       !!composeFilePath && !this.composeTriggersByContainer[containerId];
 
@@ -2736,4 +2812,5 @@ export {
   getImageReferenceCandidatesFromPattern as testable_getImageReferenceCandidatesFromPattern,
   getImgsetSpecificity as testable_getImgsetSpecificity,
   getInspectValueByPath as testable_getInspectValueByPath,
+  getComposeFilePathFromLabels as testable_getComposeFilePathFromLabels,
 };
