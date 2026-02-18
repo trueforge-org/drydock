@@ -169,7 +169,7 @@ test('init should default url/authurl when configuration is undefined', async ()
 
 test('init should convert string configuration to object defaults', async () => {
   const mauString = new Mau();
-  mauString.configuration = '';
+  mauString.configuration = 'legacy-string-config';
 
   mauString.init();
 
