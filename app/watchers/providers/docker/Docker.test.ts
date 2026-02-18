@@ -3000,6 +3000,43 @@ describe('Docker Watcher', () => {
       );
     });
 
+    test('should treat empty string compose labels as unset and fall back to watcher defaults', async () => {
+      const container = await setupContainerDetailTest(docker, {
+        registerConfig: {
+          compose: {
+            backup: true,
+            prune: false,
+            dryrun: true,
+            auto: false,
+            threshold: 'minor',
+          },
+        },
+        container: {
+          Image: 'nginx:1.0.0',
+          Names: ['/test-container-empty-labels'],
+          Labels: {
+            'dd.compose.file': '/tmp/docker-compose.yml',
+            'dd.compose.backup': '',
+            'dd.compose.threshold': '',
+          },
+        },
+      });
+
+      await docker.addImageDetailsToContainer(container);
+
+      expect(registry.ensureDockercomposeTriggerForContainer).toHaveBeenCalledWith(
+        'test-container-empty-labels',
+        '/tmp/docker-compose.yml',
+        {
+          backup: 'true',
+          prune: 'false',
+          dryrun: 'true',
+          auto: 'false',
+          threshold: 'minor',
+        },
+      );
+    });
+
     test('should pass compose trigger options from wud labels as fallback', async () => {
       const container = await setupContainerDetailTest(docker, {
         container: {
