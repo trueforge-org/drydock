@@ -4794,6 +4794,48 @@ describe('Docker Watcher', () => {
       expect(composeFile).toBeUndefined();
     });
 
+    test('getComposeFilePathFromLabels should return undefined when compose-native config files label is missing', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'com.docker.compose.project.working_dir': '/opt/native',
+        },
+        true,
+      );
+      expect(composeFile).toBeUndefined();
+    });
+
+    test('getComposeFilePathFromLabels should keep absolute compose-native config file path', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'com.docker.compose.project.working_dir': '/opt/native',
+          'com.docker.compose.project.config_files': '/etc/compose/docker-compose.yml',
+        },
+        true,
+      );
+      expect(composeFile).toBe('/etc/compose/docker-compose.yml');
+    });
+
+    test('getComposeFilePathFromLabels should return relative compose-native config file when working dir is absent', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'com.docker.compose.project.config_files': 'compose.yml',
+        },
+        true,
+      );
+      expect(composeFile).toBe('compose.yml');
+    });
+
+    test('getComposeFilePathFromLabels should return undefined when compose-native config files are only empty entries', () => {
+      const composeFile = testable_getComposeFilePathFromLabels(
+        {
+          'com.docker.compose.project.config_files': ' ,  , ',
+          'dd.compose.native': 'true',
+        },
+        false,
+      );
+      expect(composeFile).toBeUndefined();
+    });
+
     test('appendTriggerId should return triggerInclude when triggerId is undefined', () => {
       expect(testable_appendTriggerId('ntfy.default:major', undefined)).toBe('ntfy.default:major');
     });
