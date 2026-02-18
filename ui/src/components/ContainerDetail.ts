@@ -1,5 +1,62 @@
 import { defineComponent } from 'vue';
 
+const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
+const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
+const DD_COMPOSE_FILE_LABEL = 'dd.compose.file';
+const WUD_COMPOSE_FILE_LABEL = 'wud.compose.file';
+
+function isAbsolutePath(pathCandidate: string) {
+  return pathCandidate.startsWith('/') || /^[A-Za-z]:[\\/]/.test(pathCandidate);
+}
+
+function joinComposePath(workingDir: string, configFile: string) {
+  const hasTrailingSeparator = workingDir.endsWith('/') || workingDir.endsWith('\\');
+  if (hasTrailingSeparator) {
+    return `${workingDir}${configFile}`;
+  }
+
+  const separator = workingDir.includes('\\') ? '\\' : '/';
+  return `${workingDir}${separator}${configFile}`;
+}
+
+function getComposeNativeFilePathFromLabels(labels: Record<string, string> = {}) {
+  const composeConfigFiles = labels[COMPOSE_PROJECT_CONFIG_FILES_LABEL];
+  if (!composeConfigFiles || composeConfigFiles.trim() === '') {
+    return null;
+  }
+
+  const composeProjectWorkingDir = labels[COMPOSE_PROJECT_WORKING_DIR_LABEL];
+  const configFiles = composeConfigFiles
+    .split(',')
+    .map((configFile) => configFile.trim())
+    .filter((configFile) => configFile !== '');
+
+  const configFile = configFiles[0];
+  if (!configFile) {
+    return null;
+  }
+
+  if (isAbsolutePath(configFile)) {
+    return configFile;
+  }
+
+  const trimmedWorkingDir = composeProjectWorkingDir?.trim();
+  if (trimmedWorkingDir) {
+    return joinComposePath(trimmedWorkingDir, configFile);
+  }
+
+  return configFile;
+}
+
+function getComposeFilePathFromLabels(labels: Record<string, string> = {}) {
+  const composeFilePathFromLabel = labels[DD_COMPOSE_FILE_LABEL] ?? labels[WUD_COMPOSE_FILE_LABEL];
+  if (composeFilePathFromLabel) {
+    return composeFilePathFromLabel;
+  }
+
+  return getComposeNativeFilePathFromLabels(labels);
+}
+
 export default defineComponent({
   props: {
     container: {
@@ -62,6 +119,9 @@ export default defineComponent({
           '10000',
         10,
       );
+    },
+    composeFilePath(): string | null {
+      return getComposeFilePathFromLabels(this.container.labels || {});
     },
   },
 
