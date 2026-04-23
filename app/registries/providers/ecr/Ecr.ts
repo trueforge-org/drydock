@@ -1,14 +1,36 @@
-// @ts-nocheck
 import { ECRClient, GetAuthorizationTokenCommand } from '@aws-sdk/client-ecr';
 import axios from 'axios';
+import { requireAuthString, withAuthorizationHeader } from '../../../security/auth.js';
 import Registry from '../../Registry.js';
 
 const ECR_PUBLIC_GALLERY_HOSTNAME = 'public.ecr.aws';
 
+function getRegistryHost(registryUrl: string | undefined): string {
+  if (!registryUrl) {
+    return '';
+  }
+
+  try {
+    const withProtocol =
+      registryUrl.startsWith('http://') || registryUrl.startsWith('https://')
+        ? registryUrl
+        : `https://${registryUrl}`;
+    return new URL(withProtocol).hostname;
+  } catch {
+    return registryUrl.split('/')[0] || '';
+  }
+}
+
 /**
  * Elastic Container Registry integration.
  */
-class Ecr extends Registry {
+interface EcrRegistryConfiguration {
+  accesskeyid?: string;
+  secretaccesskey?: string;
+  region?: string;
+}
+
+class Ecr extends Registry<EcrRegistryConfiguration> {
   getConfigurationSchema() {
     return this.joi.alternatives([
       this.joi.string().allow(''),
@@ -42,7 +64,7 @@ class Ecr extends Registry {
   match(image) {
     return (
       /^.*\.dkr\.ecr\..*\.amazonaws\.com$/.test(image.registry.url) ||
-      image.registry.url === ECR_PUBLIC_GALLERY_HOSTNAME
+      getRegistryHost(image.registry.url) === ECR_PUBLIC_GALLERY_HOSTNAME
     );
   }
 
@@ -53,8 +75,16 @@ class Ecr extends Registry {
    */
 
   normalizeImage(image) {
-    const imageNormalized = image;
-    if (!imageNormalized.registry.url.startsWith('https://')) {
+    const imageNormalized = {
+      ...image,
+      registry: {
+        ...image.registry,
+      },
+    };
+    if (
+      !imageNormalized.registry.url.startsWith('https://') &&
+      !imageNormalized.registry.url.startsWith('http://')
+    ) {
       imageNormalized.registry.url = `https://${imageNormalized.registry.url}/v2`;
     }
     return imageNormalized;
@@ -74,15 +104,24 @@ class Ecr extends Registry {
   }
 
   async authenticate(image, requestOptions) {
-    const requestOptionsWithAuth = requestOptions;
+    const requestOptionsWithAuth = {
+      ...requestOptions,
+      headers: {
+        ...(requestOptions?.headers || {}),
+      },
+    };
     // Private registry
     if (this.configuration.accesskeyid) {
       const tokenValue = await this.fetchPrivateEcrAuthToken();
-
-      requestOptionsWithAuth.headers.Authorization = `Basic ${tokenValue}`;
+      return withAuthorizationHeader(
+        requestOptionsWithAuth,
+        'Basic',
+        tokenValue,
+        `Unable to authenticate registry ${this.getId()}: ECR authorization token is missing`,
+      );
 
       // Public ECR gallery
-    } else if (image.registry.url.includes(ECR_PUBLIC_GALLERY_HOSTNAME)) {
+    } else if (getRegistryHost(image?.registry?.url) === ECR_PUBLIC_GALLERY_HOSTNAME) {
       const response = await axios({
         method: 'GET',
         url: 'https://public.ecr.aws/token/',
@@ -90,15 +129,29 @@ class Ecr extends Registry {
           Accept: 'application/json',
         },
       });
-      requestOptionsWithAuth.headers.Authorization = `Bearer ${response.data.token}`;
+      return withAuthorizationHeader(
+        requestOptionsWithAuth,
+        'Bearer',
+        response.data.token,
+        `Unable to authenticate registry ${this.getId()}: public ECR token endpoint response does not contain token`,
+      );
     }
     return requestOptionsWithAuth;
   }
 
   async getAuthPull() {
     if (this.configuration.accesskeyid) {
-      const tokenValue = await this.fetchPrivateEcrAuthToken();
-      const auth = Buffer.from(tokenValue, 'base64').toString().split(':');
+      const tokenValue = requireAuthString(
+        await this.fetchPrivateEcrAuthToken(),
+        `Unable to authenticate registry ${this.getId()}: ECR authorization token is missing`,
+      );
+      const decodedToken = Buffer.from(tokenValue, 'base64').toString();
+      const auth = decodedToken.split(':');
+      if (auth.length !== 2 || !auth[0] || !auth[1]) {
+        throw new Error(
+          `Unable to authenticate registry ${this.getId()}: ECR authorization token is malformed`,
+        );
+      }
       return {
         username: auth[0],
         password: auth[1],

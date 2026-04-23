@@ -1,8 +1,6 @@
-// @ts-nocheck
-
 import type { Container } from '../../model/container.js';
 import Trigger from '../../triggers/providers/Trigger.js';
-import { getAgent } from '../manager.js';
+import { getRequiredAgentClient } from './getRequiredAgentClient.js';
 
 /**
  * Agent Trigger.
@@ -13,15 +11,8 @@ class AgentTrigger extends Trigger {
    * Trigger method.
    * Delegates to the agent.
    */
-  async trigger(container: Container): Promise<any> {
-    const agentName = this.agent;
-    if (!agentName) {
-      throw new Error('AgentTrigger must have an agent assigned');
-    }
-    const client = getAgent(agentName);
-    if (!client) {
-      throw new Error(`Agent ${agentName} not found`);
-    }
+  async trigger(container: Container): Promise<unknown> {
+    const client = getRequiredAgentClient(this.agent, 'AgentTrigger');
     return client.runRemoteTrigger(container, this.type, this.name);
   }
 
@@ -29,15 +20,8 @@ class AgentTrigger extends Trigger {
    * Trigger batch method.
    * Delegates to the agent.
    */
-  async triggerBatch(containers: Container[]): Promise<any> {
-    const agentName = this.agent;
-    if (!agentName) {
-      throw new Error('AgentTrigger must have an agent assigned');
-    }
-    const client = getAgent(agentName);
-    if (!client) {
-      throw new Error(`Agent ${agentName} not found`);
-    }
+  async triggerBatch(containers: Container[]): Promise<unknown> {
+    const client = getRequiredAgentClient(this.agent, 'AgentTrigger');
     return client.runRemoteTriggerBatch(containers, this.type, this.name);
   }
 

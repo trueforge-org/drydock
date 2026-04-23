@@ -1,25 +1,27 @@
-// @ts-nocheck
-import BaseRegistry from '../../BaseRegistry.js';
+import BaseRegistry, { type BaseRegistryConfiguration } from '../../BaseRegistry.js';
+import type { RegistryTagsList } from '../../Registry.js';
+
+interface QuayRegistryConfiguration extends BaseRegistryConfiguration {
+  namespace?: string;
+  account?: string;
+  token?: string;
+}
 
 /**
  * Quay.io Registry integration.
  */
-class Quay extends BaseRegistry {
+class Quay extends BaseRegistry<QuayRegistryConfiguration> {
   getConfigurationSchema() {
     return this.joi.alternatives([
       // Anonymous configuration
-      this.joi
-        .string()
-        .allow(''),
+      this.joi.string().allow(''),
 
       // Auth configuration
-      this.joi
-        .object()
-        .keys({
-          namespace: this.joi.string().required(),
-          account: this.joi.string().required(),
-          token: this.joi.string().required(),
-        }),
+      this.joi.object().keys({
+        namespace: this.joi.string().required(),
+        account: this.joi.string().required(),
+        token: this.joi.string().required(),
+      }),
     ]);
   }
 
@@ -55,16 +57,18 @@ class Quay extends BaseRegistry {
       return requestOptions;
     }
     const authUrl = `https://quay.io/v2/auth?service=quay.io&scope=repository:${image.name}:pull`;
-    return this.authenticateBearerFromAuthUrl(
+    return this.authenticateBearerFromAuthUrlWithPublicFallback(
       requestOptions,
       authUrl,
       credentials,
-      (response) => response.token,
+      {
+        providerLabel: 'Quay',
+      },
     );
   }
 
   /**
-   * Return Base64 credentials if any.
+   * Return Base64 credentials when configured.
    * @returns {string|undefined|*}
    */
   getAuthCredentials() {
@@ -104,7 +108,7 @@ class Quay extends BaseRegistry {
         nextOrLast = `&last=${lastRegex[1]}`;
       }
     }
-    return this.callRegistry({
+    return this.callRegistry<RegistryTagsList>({
       image,
       url: `${image.registry.url}/${image.name}/tags/list?n=${itemsPerPage}${nextOrLast}`,
       resolveWithFullResponse: true,

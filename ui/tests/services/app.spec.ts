@@ -1,10 +1,12 @@
 import { getAppInfos } from '@/services/app';
-import { getServer, getServerIcon } from '@/services/server';
-import { getStore, getStoreIcon } from '@/services/store';
+import { getServer } from '@/services/server';
+
+let fetchMock: ReturnType<typeof vi.fn>;
 
 describe('App Service', () => {
   beforeEach(() => {
-    global.fetch = vi.fn();
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -13,57 +15,44 @@ describe('App Service', () => {
 
   it('should get app infos', async () => {
     const mockResponse = { name: 'drydock', version: '1.0.0' };
-    global.fetch.mockResolvedValue({
+    fetchMock.mockResolvedValue({
+      ok: true,
       json: vi.fn().mockResolvedValue(mockResponse),
     });
 
     const result = await getAppInfos();
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/app', { credentials: 'include' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/app', { credentials: 'include' });
     expect(result).toEqual(mockResponse);
+  });
+
+  it('should throw when fetching app infos fails', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      statusText: 'Internal Server Error',
+      json: vi.fn().mockResolvedValue({}),
+    });
+
+    await expect(getAppInfos()).rejects.toThrow('Failed to get app infos: Internal Server Error');
   });
 });
 
 describe('Server Service', () => {
   beforeEach(() => {
-    global.fetch = vi.fn();
-  });
-
-  it('should return server icon', () => {
-    expect(getServerIcon()).toBe('fas fa-server');
+    fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
   });
 
   it('should get server data', async () => {
     const mockResponse = { configuration: {} };
-    global.fetch.mockResolvedValue({
+    fetchMock.mockResolvedValue({
+      ok: true,
       json: vi.fn().mockResolvedValue(mockResponse),
     });
 
     const result = await getServer();
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/server', { credentials: 'include' });
-    expect(result).toEqual(mockResponse);
-  });
-});
-
-describe('Store Service', () => {
-  beforeEach(() => {
-    global.fetch = vi.fn();
-  });
-
-  it('should return store icon', () => {
-    expect(getStoreIcon()).toBe('fas fa-copy');
-  });
-
-  it('should get store data', async () => {
-    const mockResponse = { data: 'store' };
-    global.fetch.mockResolvedValue({
-      json: vi.fn().mockResolvedValue(mockResponse),
-    });
-
-    const result = await getStore();
-
-    expect(global.fetch).toHaveBeenCalledWith('/api/store', { credentials: 'include' });
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/server', { credentials: 'include' });
     expect(result).toEqual(mockResponse);
   });
 });

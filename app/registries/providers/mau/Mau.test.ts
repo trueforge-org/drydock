@@ -1,5 +1,5 @@
-// @ts-nocheck
 import axios from 'axios';
+import { expect, test, vi } from 'vitest';
 import Mau from './Mau.js';
 
 const TEST_TOKEN = 'abcdef';
@@ -12,6 +12,10 @@ mau.configuration = {
 };
 
 vi.mock('axios');
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 test('validatedConfiguration should initialize when configuration is empty string', async () => {
   expect(mau.validateConfiguration('')).toStrictEqual({});
@@ -33,7 +37,7 @@ test('maskConfiguration should mask token', async () => {
   expect(mau.maskConfiguration()).toEqual({
     url: 'https://dock.mau.dev',
     authurl: 'https://dock.mau.dev',
-    token: 'a****f',
+    token: '[REDACTED]',
   });
 });
 
@@ -65,6 +69,19 @@ test('match should return false for other registries', async () => {
       },
     }),
   ).toBeFalsy();
+});
+
+test('match should return false and never throw when registry url is missing', async () => {
+  expect(() => mau.match({ registry: { url: undefined } })).not.toThrow();
+  expect(() => mau.match({})).not.toThrow();
+  expect(mau.match({ registry: { url: undefined } })).toBe(false);
+  expect(mau.match({})).toBe(false);
+});
+
+test('match should reject hostnames that bypass unescaped dot in regex', async () => {
+  expect(mau.match({ registry: { url: 'dockXmauXdev' } })).toBe(false);
+  expect(mau.match({ registry: { url: 'evil-dock.mau.dev.attacker.com' } })).toBe(false);
+  expect(mau.match({ registry: { url: 'notdock.mau.dev' } })).toBe(false);
 });
 
 test('authenticate should perform request with token auth when token is configured', async () => {
@@ -120,6 +137,47 @@ test('authenticate should omit basic auth when token is not configured', async (
         Accept: 'application/json',
       },
     }),
+  );
+});
+
+test('authenticate should throw when token endpoint returns empty response', async () => {
+  axios.mockImplementation(() => ({
+    data: {},
+  }));
+
+  await expect(
+    mau.authenticate(
+      { name: 'team/image' },
+      {
+        headers: {},
+      },
+    ),
+  ).rejects.toThrow('does not contain token');
+});
+
+test('authenticate should propagate network errors', async () => {
+  axios.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:443'));
+
+  await expect(mau.authenticate({ name: 'team/image' }, { headers: {} })).rejects.toThrow(
+    'connect ECONNREFUSED 127.0.0.1:443',
+  );
+});
+
+test('authenticate should propagate timeout errors', async () => {
+  axios.mockRejectedValue(new Error('timeout of 15000ms exceeded'));
+
+  await expect(mau.authenticate({ name: 'team/image' }, { headers: {} })).rejects.toThrow(
+    'timeout of 15000ms exceeded',
+  );
+});
+
+test('authenticate should propagate 429 rate limit errors', async () => {
+  const error = new Error('Request failed with status code 429');
+  (error as any).response = { status: 429 };
+  axios.mockRejectedValue(error);
+
+  await expect(mau.authenticate({ name: 'team/image' }, { headers: {} })).rejects.toThrow(
+    'Request failed with status code 429',
   );
 });
 

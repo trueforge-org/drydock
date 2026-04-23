@@ -2,9 +2,43 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, mergeConfig } from 'vitest/config';
 import viteConfig from './vite.config';
 
+interface CoverageThresholds {
+  lines: number;
+  branches: number;
+  functions: number;
+  statements: number;
+}
+
+interface CustomCoverageConfig {
+  provider: 'custom';
+  customProviderModule: string;
+  reporter: string[];
+  include: string[];
+  exclude: string[];
+  thresholds: CoverageThresholds;
+}
+
+const coverageConfig: CustomCoverageConfig = {
+  provider: 'custom',
+  customProviderModule: './vitest.coverage-provider.ts',
+  reporter: ['text', 'lcov', 'html', 'json-summary'],
+  include: ['src/**/*.ts'],
+  exclude: ['**/*.typecheck.ts', '**/*.d.ts', '**/types/**', '**/node_modules/**'],
+  thresholds: {
+    lines: 100,
+    branches: 100,
+    functions: 100,
+    statements: 100,
+  },
+};
+
 export default mergeConfig(
   viteConfig,
   defineConfig({
+    server: {
+      port: 0,
+      hmr: false,
+    },
     resolve: {
       alias: {
         '@vue/devtools-api': fileURLToPath(
@@ -15,30 +49,14 @@ export default mergeConfig(
     test: {
       globals: true,
       environment: 'jsdom',
+      fileParallelism: false,
       setupFiles: ['./tests/setup.ts'],
       include: ['tests/**/*.spec.ts'],
       css: true,
-      server: {
-        deps: {
-          inline: ['vuetify'],
-        },
-      },
       transformMode: {
         web: [/\.vue$/],
       },
-      coverage: {
-        provider: 'v8',
-        reporter: ['text', 'lcov', 'html'],
-        // Measure executable app logic; Vue SFC template render output produces non-actionable partial branches.
-        include: ['src/**/*.{js,ts}'],
-        exclude: ['src/main.ts', 'src/registerServiceWorker.ts', '**/*.d.ts', '**/node_modules/**'],
-        thresholds: {
-          lines: 75,
-          branches: 65,
-          functions: 73,
-          statements: 75,
-        },
-      },
+      coverage: coverageConfig,
     },
   }),
 );

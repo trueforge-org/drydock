@@ -1,9 +1,11 @@
-// @ts-nocheck
 import Gitea from '../gitea/Gitea.js';
+import type { SelfHostedBasicConfiguration } from '../shared/SelfHostedBasic.js';
 
 /**
  * Forgejo Container Registry integration.
  */
-class Forgejo extends Gitea {}
+class Forgejo<
+  TConfiguration extends SelfHostedBasicConfiguration = SelfHostedBasicConfiguration,
+> extends Gitea<TConfiguration> {}
 
 export default Forgejo;

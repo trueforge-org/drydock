@@ -1,30 +1,34 @@
-// @ts-nocheck
 import axios from 'axios';
-import Gitlab from '../gitlab/Gitlab.js';
+import { withAuthorizationHeader } from '../../../security/auth.js';
+import Gitlab, { type GitlabRegistryConfiguration } from '../gitlab/Gitlab.js';
+
+interface MauRegistryConfiguration extends GitlabRegistryConfiguration {
+  token?: string;
+}
 
 /**
  * dock.mau.dev (GitLab-based) Container Registry integration.
  */
-class Mau extends Gitlab {
+class Mau extends Gitlab<MauRegistryConfiguration> {
   /**
    * Get the mau configuration schema.
    * @returns {*}
    */
   getConfigurationSchema() {
-    return this.joi.alternatives([
+    return this.joi.alternatives().try(
       this.joi.string().allow(''),
       this.joi.object().keys({
         url: this.joi.string().uri().default('https://dock.mau.dev'),
         authurl: this.joi.string().uri().default('https://dock.mau.dev'),
         token: this.joi.string(),
       }),
-    ]);
+    );
   }
 
   /**
    * Custom init behavior.
    */
-  init() {
+  async init() {
     this.configuration = this.configuration || {};
     if (typeof this.configuration === 'string') {
       this.configuration = {};
@@ -47,7 +51,13 @@ class Mau extends Gitlab {
    * @returns {boolean}
    */
   match(image) {
-    return /^.*\.?dock\.mau\.dev$/i.test(image.registry.url);
+    const url = image?.registry?.url;
+    if (typeof url !== 'string') {
+      return false;
+    }
+    return (
+      url === 'dock.mau.dev' || (url.endsWith('.dock.mau.dev') && /^[a-zA-Z0-9.-]+$/.test(url))
+    );
   }
 
   /**
@@ -57,7 +67,11 @@ class Mau extends Gitlab {
    * @returns {Promise<*>}
    */
   async authenticate(image, requestOptions) {
-    const request = {
+    const request: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+    } = {
       method: 'GET',
       url: `${this.configuration.authurl}/jwt/auth?service=container_registry&scope=repository:${image.name}:pull`,
       headers: {
@@ -70,9 +84,12 @@ class Mau extends Gitlab {
     }
 
     const response = await axios(request);
-    const requestOptionsWithAuth = requestOptions;
-    requestOptionsWithAuth.headers.Authorization = `Bearer ${response.data.token}`;
-    return requestOptionsWithAuth;
+    return withAuthorizationHeader(
+      requestOptions,
+      'Bearer',
+      response.data.token,
+      `Unable to authenticate registry ${this.getId()}: dock.mau.dev token endpoint response does not contain token`,
+    );
   }
 
   /**

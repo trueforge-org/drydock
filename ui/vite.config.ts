@@ -1,15 +1,19 @@
 import { fileURLToPath, URL } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
-import vuetify from 'vite-plugin-vuetify';
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
-    vuetify({
-      autoImport: true,
+    vue({
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag === 'iconify-icon',
+        },
+      },
     }),
+    tailwindcss(),
   ],
 
   resolve: {
@@ -24,11 +28,11 @@ export default defineConfig({
     port: 8080,
     proxy: {
       '^/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3333',
         changeOrigin: true,
       },
       '^/auth': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3333',
         changeOrigin: true,
       },
     },
@@ -37,7 +41,18 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    sourcemap: true,
+    sourcemap: false,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: 'framework', test: /[\\/]node_modules[\\/](vue|vue-router)[\\/]/ },
+            { name: 'icons', test: /[\\/]node_modules[\\/]iconify-icon[\\/]/ },
+            { name: 'vendor', test: /[\\/]node_modules[\\/]/ },
+          ],
+        },
+      },
+    },
   },
 
   define: {
@@ -45,7 +60,4 @@ export default defineConfig({
     __VUE_PROD_DEVTOOLS__: false,
     __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
   },
-
-  // PWA configuration will be handled by vite-plugin-pwa if needed
-  // For now, keeping the existing register-service-worker approach
 });

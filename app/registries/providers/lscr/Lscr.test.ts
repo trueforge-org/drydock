@@ -1,19 +1,20 @@
-// @ts-nocheck
+import axios from 'axios';
 import Lscr from './Lscr.js';
 
-vi.mock('axios', () =>
-  vi.fn().mockImplementation(() => ({
-    data: { token: 'xxxxx' },
-  })),
-);
-
-const lscr = new Lscr();
-lscr.configuration = {
-  username: 'user',
-  token: 'token',
-};
-
 vi.mock('axios');
+
+let lscr;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  axios.mockReset();
+  axios.mockResolvedValue({ data: { token: 'xxxxx' } });
+  lscr = new Lscr();
+  lscr.configuration = {
+    username: 'user',
+    token: 'token',
+  };
+});
 
 test('validatedConfiguration should initialize when auth configuration is valid', async () => {
   expect(
@@ -72,4 +73,70 @@ test('normalizeImage should return the proper registry v2 endpoint', async () =>
       url: 'https://lscr.io/test/image/v2',
     },
   });
+});
+
+test('authenticate should propagate network errors', async () => {
+  axios.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:443'));
+  lscr.configuration = { username: 'test-user', token: 'test-token' };
+  const image = { name: 'linuxserver/sonarr' };
+  const requestOptions = {
+    headers: {},
+    url: 'https://lscr.io/v2/linuxserver/sonarr/manifests/latest',
+  };
+
+  await expect(lscr.authenticate(image, requestOptions)).rejects.toThrow(
+    'connect ECONNREFUSED 127.0.0.1:443',
+  );
+});
+
+test('authenticate should propagate timeout errors', async () => {
+  axios.mockRejectedValue(new Error('timeout of 15000ms exceeded'));
+  lscr.configuration = { username: 'test-user', token: 'test-token' };
+  const image = { name: 'linuxserver/sonarr' };
+  const requestOptions = {
+    headers: {},
+    url: 'https://lscr.io/v2/linuxserver/sonarr/manifests/latest',
+  };
+
+  await expect(lscr.authenticate(image, requestOptions)).rejects.toThrow(
+    'timeout of 15000ms exceeded',
+  );
+});
+
+test('authenticate should propagate 429 rate limit errors', async () => {
+  const error = new Error('Request failed with status code 429');
+  (error as any).response = { status: 429 };
+  axios.mockRejectedValue(error);
+  lscr.configuration = { username: 'test-user', token: 'test-token' };
+  const image = { name: 'linuxserver/sonarr' };
+  const requestOptions = {
+    headers: {},
+    url: 'https://lscr.io/v2/linuxserver/sonarr/manifests/latest',
+  };
+
+  await expect(lscr.authenticate(image, requestOptions)).rejects.toThrow(
+    'Request failed with status code 429',
+  );
+});
+
+test('should authenticate against ghcr.io token endpoint for lscr.io images', async () => {
+  lscr.configuration = { username: 'test-user', token: 'test-token' };
+  const image = { name: 'linuxserver/sonarr' };
+  const requestOptions = {
+    headers: {},
+    url: 'https://lscr.io/v2/linuxserver/sonarr/manifests/latest',
+  };
+
+  const result = await lscr.authenticate(image, requestOptions);
+
+  const expectedBasic = Buffer.from('test-user:test-token', 'utf-8').toString('base64');
+  expect(axios).toHaveBeenCalledWith({
+    method: 'GET',
+    url: 'https://ghcr.io/token?service=ghcr.io&scope=repository%3Alinuxserver%2Fsonarr%3Apull',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Basic ${expectedBasic}`,
+    },
+  });
+  expect(result.headers.Authorization).toBe('Bearer xxxxx');
 });

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Rocketchat from './Rocketchat.js';
 
 // Mock axios
@@ -86,8 +85,8 @@ describe('Rocketchat Trigger', () => {
       channel: '#general',
     };
     const masked = rocketchat.maskConfiguration();
-    expect(masked.auth.token).toBe('t***n');
-    expect(masked.user.id).toBe('s**********d');
+    expect(masked.auth.token).toBe('[REDACTED]');
+    expect(masked.user.id).toBe('[REDACTED]');
     expect(masked.channel).toBe('#general');
   });
 
@@ -146,6 +145,7 @@ describe('Rocketchat Trigger', () => {
           'content-type': 'application/json',
           accept: 'application/json',
         },
+        timeout: 30000,
       },
     );
   });

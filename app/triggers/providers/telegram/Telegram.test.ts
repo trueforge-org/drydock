@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import axios from 'axios';
 import joi from 'joi';
 
@@ -19,18 +17,21 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
-  simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+  simpletitle:
+    '${isDigestUpdate ? "New image available for container " + container.name + " (tag " + currentTag + ")" : "New " + container.updateKind.kind + " found for container " + container.name}',
 
   simplebody:
-    'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+    '${isDigestUpdate ? "Container " + container.name + " running tag " + currentTag + " has a newer image available" : "Container " + container.name + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
   batchtitle: '${containers.length} updates available',
   resolvenotifications: false,
+  securitymode: 'simple',
   disabletitle: false,
   messageformat: 'Markdown',
+  digestcron: '0 8 * * *',
 };
 
 beforeEach(async () => {
@@ -53,21 +54,24 @@ test('maskConfiguration should mask sensitive data', async () => {
   telegram.configuration = configurationValid;
   expect(telegram.maskConfiguration()).toEqual({
     batchtitle: '${containers.length} updates available',
-    bottoken: 't***n',
-    chatid: '1*******9',
+    bottoken: '[REDACTED]',
+    chatid: '[REDACTED]',
     mode: 'simple',
     once: true,
-    auto: true,
+    auto: 'all',
     order: 100,
     requireinclude: false,
     simplebody:
-      'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+      '${isDigestUpdate ? "Container " + container.name + " running tag " + currentTag + " has a newer image available" : "Container " + container.name + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
-    simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+    simpletitle:
+      '${isDigestUpdate ? "New image available for container " + container.name + " (tag " + currentTag + ")" : "New " + container.updateKind.kind + " found for container " + container.name}',
     threshold: 'all',
     resolvenotifications: false,
+    securitymode: 'simple',
     disabletitle: false,
     messageformat: 'Markdown',
+    digestcron: '0 8 * * *',
   });
 });
 
@@ -111,6 +115,21 @@ test('disabletitle should result in no title in message', async () => {
   expect(telegram.sendMessage).toHaveBeenCalledWith('Test Body');
 });
 
+test('disabletitle with HTML format should escape body as HTML', async () => {
+  telegram.configuration = {
+    ...configurationValid,
+    simpletitle: 'Test Title',
+    simplebody: 'Test <Body>',
+    disabletitle: true,
+    messageformat: 'HTML',
+  };
+
+  telegram.sendMessage = vi.fn();
+  await telegram.trigger({});
+
+  expect(telegram.sendMessage).toHaveBeenCalledWith('Test &lt;Body&gt;');
+});
+
 test('triggerBatch should send batch notification', async () => {
   telegram.configuration = configurationValid;
   telegram.sendMessage = vi.fn();
@@ -134,7 +153,20 @@ test('triggerBatch should send batch notification', async () => {
   ];
   await telegram.triggerBatch(containers);
   expect(telegram.sendMessage).toHaveBeenCalledWith(
-    '*2 updates available*\n\n- Container container1 running with tag 1.0.0 can be updated to tag 2.0.0\n\n- Container container2 running with tag 1.1.0 can be updated to tag 2.1.0\n',
+    '*2 updates available*\n\n\\- Container container1 running with tag 1\\.0\\.0 can be updated to tag 2\\.0\\.0\n\n\\- Container container2 running with tag 1\\.1\\.0 can be updated to tag 2\\.1\\.0\n',
+  );
+});
+
+test('trigger should escape MarkdownV2 special characters in body', async () => {
+  telegram.configuration = {
+    ...configurationValid,
+    simpletitle: 'Update',
+    simplebody: 'nginx:1.25.5 -> 1.29.7 (minor)',
+  };
+  telegram.sendMessage = vi.fn();
+  await telegram.trigger({});
+  expect(telegram.sendMessage).toHaveBeenCalledWith(
+    '*Update*\n\nnginx:1\\.25\\.5 \\-\\> 1\\.29\\.7 \\(minor\\)',
   );
 });
 
@@ -177,11 +209,15 @@ test('sendMessage should post to telegram API and return data', async () => {
   axios.post.mockResolvedValue({ data: { ok: true } });
 
   const result = await tg.sendMessage('Hello');
-  expect(axios.post).toHaveBeenCalledWith('https://api.telegram.org/bottoken/sendMessage', {
-    chat_id: '123456789',
-    text: 'Hello',
-    parse_mode: 'MarkdownV2',
-  });
+  expect(axios.post).toHaveBeenCalledWith(
+    'https://api.telegram.org/bottoken/sendMessage',
+    {
+      chat_id: '123456789',
+      text: 'Hello',
+      parse_mode: 'MarkdownV2',
+    },
+    { timeout: 30000 },
+  );
   expect(result).toEqual({ ok: true });
 });
 

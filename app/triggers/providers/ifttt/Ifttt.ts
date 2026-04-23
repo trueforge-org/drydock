@@ -1,12 +1,16 @@
-// @ts-nocheck
 import axios from 'axios';
 
-import Trigger from '../Trigger.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+interface IftttConfiguration extends TriggerConfiguration {
+  key: string;
+  event: string;
+}
 
 /**
  * Ifttt Trigger implementation
  */
-class Ifttt extends Trigger {
+class Ifttt extends Trigger<IftttConfiguration> {
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -35,7 +39,7 @@ class Ifttt extends Trigger {
   async trigger(container) {
     return this.sendHttpRequest({
       value1: container.name,
-      value2: container.result.tag,
+      value2: container.result?.tag,
       value3: JSON.stringify(container),
     });
   }

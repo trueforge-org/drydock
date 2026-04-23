@@ -1,29 +1,21 @@
-# ui
+# Drydock UI
 
-## Project setup
+## Setup
 
 ```bash
 npm install
 ```
 
-### Compiles and hot-reloads for development
+## Local Development
 
 ```bash
-npm run serve
+npm run dev
 ```
 
-### Compiles and minifies for production
-
-```bash
-npm run build
-```
-
-### Lints and fixes files
+## Quality Checks
 
 ```bash
 npm run lint
+npm run test:unit
+npm run build
 ```
-
-### Customize configuration
-
-See [Configuration Reference](https://cli.vuejs.org/config/).

@@ -1,20 +1,24 @@
-// @ts-nocheck
+import log from '../log/index.js';
 import Component from './Component.js';
 
 beforeEach(async () => {
   vi.resetAllMocks();
 });
 
-test('mask should mask with * when called with defaults', async () => {
-  expect(Component.mask('abcdefgh')).toStrictEqual('a******h');
+test('mask should return fixed redaction marker when called with defaults', async () => {
+  expect(Component.mask('abcdefgh')).toStrictEqual('[REDACTED]');
 });
 
-test('mask should mask with § when called with § masking char', async () => {
-  expect(Component.mask('abcdefgh', 1, '§')).toStrictEqual('a§§§§§§h');
+test('mask should return fixed redaction marker for non-empty values', () => {
+  expect(Component.mask('registry-token')).toBe('[REDACTED]');
 });
 
-test('mask should mask with § and keep 3 chars when called with § masking char and a number of 3', async () => {
-  expect(Component.mask('abcdefgh', 3, '§')).toStrictEqual('abc§§fgh');
+test('mask should ignore masking char and keep fixed redaction marker', async () => {
+  expect(Component.mask('abcdefgh', 1, '§')).toStrictEqual('[REDACTED]');
+});
+
+test('mask should ignore keep-count and keep fixed redaction marker', async () => {
+  expect(Component.mask('abcdefgh', 3, '§')).toStrictEqual('[REDACTED]');
 });
 
 test('mask should return undefined when value is undefined', async () => {
@@ -22,7 +26,7 @@ test('mask should return undefined when value is undefined', async () => {
 });
 
 test('mask should not fail when mask is longer than original string', async () => {
-  expect(Component.mask('abc', 5)).toStrictEqual('***');
+  expect(Component.mask('abc', 5)).toStrictEqual('[REDACTED]');
 });
 
 test('getId should return the concatenation $type.$name', async () => {
@@ -38,6 +42,24 @@ test('register should call validateConfiguration and init methods of the compone
   component.register('kind', 'type', 'name', { x: 'x' });
   expect(spyValidateConsiguration).toHaveBeenCalledWith({ x: 'x' });
   expect(spyInit).toHaveBeenCalledTimes(1);
+});
+
+test('register should redact trigger infrastructure details in startup logs', async () => {
+  const component = new Component();
+  const info = vi.fn();
+  vi.spyOn(log, 'child').mockReturnValue({ info } as any);
+
+  await component.register('trigger', 'slack', 'ops', {
+    channel: 'C01FAKECHANNEL',
+    url: 'http://httpbin.org/post',
+    mode: 'simple',
+  });
+
+  const registrationLogMessage = info.mock.calls[0][0] as string;
+  expect(registrationLogMessage).toContain('"channel":"[REDACTED]"');
+  expect(registrationLogMessage).toContain('"url":"[REDACTED]"');
+  expect(registrationLogMessage).not.toContain('C01FAKECHANNEL');
+  expect(registrationLogMessage).not.toContain('http://httpbin.org/post');
 });
 
 test('register should not call init when validateConfiguration fails', async () => {
@@ -86,4 +108,14 @@ test('validateConfiguration should return empty object when value is falsy', () 
   component.getConfigurationSchema = () => component.joi.object().keys({}).default(undefined);
   const result = component.validateConfiguration({});
   expect(result).toEqual({});
+});
+
+test('validateConfiguration should support schemas without a validate function', () => {
+  const component = new Component();
+  const configuration = { foo: 'bar' };
+  component.getConfigurationSchema = () => ({}) as any;
+
+  const result = component.validateConfiguration(configuration);
+
+  expect(result).toEqual(configuration);
 });

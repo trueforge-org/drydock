@@ -9,7 +9,9 @@ let backupCollection: ReturnType<typeof initCollection> | undefined;
  * @param db
  */
 export function createCollections(db: InstanceType<typeof import('lokijs')>): void {
-  backupCollection = initCollection(db, 'backups');
+  backupCollection = initCollection(db, 'backups', {
+    indices: ['data.containerName', 'data.id'],
+  });
 }
 
 /**
@@ -29,17 +31,18 @@ export function insertBackup(backup: ImageBackup): ImageBackup {
 }
 
 /**
- * Get all backups for a container, sorted by timestamp desc.
- * @param containerId
+ * Get all backups for a container by name, sorted by timestamp desc.
+ * Uses containerName (stable across recreates) rather than containerId
+ * (which changes every time Docker recreates the container).
+ * @param containerName
  */
-export function getBackups(containerId: string): ImageBackup[] {
+export function getBackupsByName(containerName: string): ImageBackup[] {
   if (!backupCollection) {
     return [];
   }
   return backupCollection
-    .find()
+    .find({ 'data.containerName': containerName })
     .map((item) => item.data as ImageBackup)
-    .filter((b) => b.containerId === containerId)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
@@ -64,7 +67,10 @@ export function getBackup(id: string): ImageBackup | undefined {
   if (!backupCollection) {
     return undefined;
   }
-  const doc = backupCollection.find().find((item) => item.data.id === id);
+  const doc =
+    typeof backupCollection.findOne === 'function'
+      ? backupCollection.findOne({ 'data.id': id })
+      : backupCollection.find({ 'data.id': id })[0];
   return doc ? (doc.data as ImageBackup) : undefined;
 }
 
@@ -76,7 +82,10 @@ export function deleteBackup(id: string): boolean {
   if (!backupCollection) {
     return false;
   }
-  const doc = backupCollection.find().find((item) => item.data.id === id);
+  const doc =
+    typeof backupCollection.findOne === 'function'
+      ? backupCollection.findOne({ 'data.id': id })
+      : backupCollection.find({ 'data.id': id })[0];
   if (doc) {
     backupCollection.remove(doc);
     return true;
@@ -86,14 +95,17 @@ export function deleteBackup(id: string): boolean {
 
 /**
  * Prune old backups for a container, keeping only the N most recent.
- * @param containerId
+ * @param containerName
  * @param maxCount
  */
-export function pruneOldBackups(containerId: string, maxCount: number): number {
+export function pruneOldBackups(containerName: string, maxCount: number | undefined): number {
   if (!backupCollection) {
     return 0;
   }
-  const docs = backupCollection.find().filter((item) => item.data.containerId === containerId);
+  if (typeof maxCount !== 'number' || !Number.isFinite(maxCount)) {
+    return 0;
+  }
+  const docs = backupCollection.find({ 'data.containerName': containerName });
   docs.sort((a, b) => new Date(b.data.timestamp).getTime() - new Date(a.data.timestamp).getTime());
   const toRemove = docs.slice(maxCount);
   toRemove.forEach((doc) => backupCollection.remove(doc));

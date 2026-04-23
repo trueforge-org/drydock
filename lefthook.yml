@@ -1,22 +1,108 @@
 ---
-pre-push:
+# Lefthook configuration — mirrors CI pipeline for local/CI parity.
+#
+# Pre-push pipeline (piped = sequential, fail-fast):
+#   0. Clean tree gate — rejects untracked/uncommitted/stashed files
+#   1. Lint gate (~20s) — catches formatting/lint before burning CPU
+#   2. Coverage (sharded app+ui parallel) — tests run here, gap report on fail
+#   3. Build (sharded app+ui parallel) — tsc/vite only, no tests
+#   4. E2E + Playwright + zizmor (blocking)
+#
+# Coverage runs BEFORE build because it's the most common failure mode and
+# it already exercises the code. Splitting it out of the build step means
+# tests run exactly once per push instead of once embedded in build-and-test
+# plus again if we ever add a standalone coverage gate.
+#
+# Snyk scans are CI-only (release workflow) to preserve the 200/month quota.
+#
+# Biome runs directly (not via qlty) because qlty's biome integration
+# does not reliably apply fixes. Qlty handles all other linters.
+
+pre-commit:
+  piped: true
   commands:
+    biome-fix:
+      glob: '*.{ts,js,json,vue,css}'
+      run: npx biome check --fix --no-errors-on-unmatched {staged_files} && git add {staged_files}
+      priority: 1
+    biome-format:
+      glob: '*.{ts,js,json,vue,css}'
+      run: npx biome format --write --no-errors-on-unmatched {staged_files} && git add {staged_files}
+      priority: 2
+    coverage:
+      glob: '*.{ts,vue}'
+      run: ./scripts/pre-commit-coverage.sh
+      priority: 3
+      timeout: 2m
+
+pre-push:
+  piped: true
+  commands:
+    # ── Clean tree gate: block push if uncommitted changes exist ───────
+    # CI only sees committed state. Hard-fail so you don't push code
+    # that hasn't been tested in its committed form.
+    clean-tree:
+      run: |
+        dirty=$(git status --porcelain 2>/dev/null)
+        if [ -n "$dirty" ]; then
+          echo "❌ Working tree has uncommitted changes (CI won't see these):"
+          echo ""
+          echo "$dirty"
+          echo ""
+          echo "What do we want to do with these files?"
+          exit 1
+        fi
+      fail_text: "Uncommitted changes detected — decide what to do with them before pushing"
+      priority: 1
+      timeout: 10s
+
+    # ── Lint gate: fast checks that catch formatting/lint issues ──────
+    ts-nocheck:
+      run: node scripts/check-ts-nocheck-allowlist.mjs
+      priority: 2
+      timeout: 15s
+    biome:
+      run: npx biome check .
+      priority: 3
+      timeout: 30s
     qlty:
-      run: qlty check --no-progress
-    snyk-deps:
-      root: app/
-      run: snyk test --severity-threshold=high
-    snyk-code:
-      run: scripts/snyk-code-gate.sh
+      run: ./scripts/qlty-check-gate.sh all
+      priority: 4
+      timeout: 4m
+
+    # ── Coverage: sharded app+ui parallel, 100% threshold ────────────
+    # Runs tests with coverage. On failure, writes .coverage-gaps.json
+    # with exact files + uncovered lines/branches (parsed from lcov.info).
+    # Honors DD_COVERAGE_FAIL_FAST=1 for sequential first-failure mode.
+    coverage:
+      run: ./scripts/pre-push-coverage.sh
+      priority: 5
+      timeout: 6m
+
+    # ── Build: sharded app+ui parallel, no tests ─────────────────────
+    # Tests already ran in the coverage step, so this is tsc/vite only.
     build:
-      root: app/
-      run: npm run build
-    test:
-      root: app/
-      run: npm test
-    ui-build:
-      root: ui/
-      run: npm run build
-    ui-test:
-      root: ui/
-      run: npm run test:unit
+      run: ./scripts/pre-push-build.sh
+      priority: 6
+      timeout: 4m
+
+    # ── E2E: mirrors CI "E2E Tests" job ──────────────────────────────
+    e2e:
+      run: ./scripts/run-e2e-tests.sh
+      priority: 7
+      timeout: 10m
+
+    # ── Playwright: mirrors CI "Playwright E2E" job ────────────────
+    e2e-playwright:
+      run: ./scripts/run-playwright-qa.sh
+      priority: 8
+      timeout: 15m
+
+    # ── Zizmor: GitHub Actions security scanner (blocking) ───────────
+    zizmor:
+      glob: '.github/workflows/*.yml'
+      run: zizmor .github/workflows/
+      skip:
+        - run: '! command -v zizmor >/dev/null 2>&1'
+      priority: 9
+      timeout: 30s

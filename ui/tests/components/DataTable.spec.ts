@@ -1,0 +1,549 @@
+import { mount } from '@vue/test-utils';
+import { vi } from 'vitest';
+import { nextTick } from 'vue';
+import DataTable from '@/components/DataTable.vue';
+
+const columns = [
+  { key: 'name', label: 'Name', sortable: true },
+  { key: 'status', label: 'Status', sortable: true },
+  { key: 'icon', label: '', icon: true },
+];
+
+const rows = [
+  { id: '1', name: 'Alpha', status: 'running' },
+  { id: '2', name: 'Beta', status: 'stopped' },
+  { id: '3', name: 'Gamma', status: 'running' },
+];
+
+function factory(props: Record<string, any> = {}, slots: Record<string, any> = {}) {
+  return mount(DataTable, {
+    props: { columns, rows, rowKey: 'id', ...props },
+    slots,
+    global: { stubs: { AppIcon: { template: '<span class="app-icon-stub" />' } } },
+  });
+}
+
+describe('DataTable', () => {
+  describe('column headers', () => {
+    it('renders a <th> for each column', () => {
+      const w = factory();
+      const ths = w.findAll('thead th');
+      // 3 columns, no actions column by default
+      expect(ths).toHaveLength(3);
+    });
+
+    it('displays column labels', () => {
+      const w = factory();
+      const ths = w.findAll('thead th');
+      expect(ths[0].text()).toBe('Name');
+      expect(ths[1].text()).toBe('Status');
+    });
+
+    it('hides label text for icon columns', () => {
+      const w = factory();
+      const iconTh = w.findAll('thead th')[2];
+      expect(iconTh.text()).toBe('');
+    });
+
+    it('shows Actions header when showActions is true', () => {
+      const w = factory({ showActions: true });
+      const ths = w.findAll('thead th');
+      expect(ths).toHaveLength(4);
+      expect(ths[3].text()).toBe('Actions');
+    });
+
+    it('right-aligns Actions header text to match action buttons', () => {
+      const w = factory({ showActions: true });
+      const actionsHeader = w.findAll('thead th')[3];
+      expect(actionsHeader.classes()).toContain('text-right');
+    });
+
+    it('does not show Actions header when showActions is false', () => {
+      const w = factory({ showActions: false });
+      const ths = w.findAll('thead th');
+      expect(ths).toHaveLength(3);
+    });
+
+    it('defaults actions column width to 80px', () => {
+      const w = factory({ showActions: true });
+      const actionsHeader = w.findAll('thead th')[3];
+      expect(actionsHeader.attributes('style')).toContain('width: 80px');
+    });
+
+    it('applies actionsWidth override to the actions header', () => {
+      const w = factory({ showActions: true, actionsWidth: '180px' });
+      const actionsHeader = w.findAll('thead th')[3];
+      expect(actionsHeader.attributes('style')).toContain('width: 180px');
+    });
+
+    it('uses fixed table layout when fixedLayout is enabled', () => {
+      const w = factory({ fixedLayout: true });
+      expect(w.find('table').attributes('style')).toContain('table-layout: fixed');
+    });
+
+    it('applies width from column def to <th> style when fixedLayout is true', () => {
+      const cols = [
+        { key: 'name', label: 'Name', width: '320px' },
+        { key: 'status', label: 'Status', width: '90px' },
+      ];
+      const w = mount(DataTable, {
+        props: { columns: cols, rows: [], rowKey: 'id', fixedLayout: true },
+        global: { stubs: { AppIcon: { template: '<span />' } } },
+      });
+      const ths = w.findAll('thead th');
+      expect(ths[0].attributes('style')).toContain('width: 320px');
+      expect(ths[1].attributes('style')).toContain('width: 90px');
+    });
+  });
+
+  describe('rows', () => {
+    it('renders a <tr> per row in tbody', () => {
+      const w = factory();
+      expect(w.findAll('tbody tr')).toHaveLength(3);
+    });
+
+    it('renders cell data from row objects', () => {
+      const w = factory();
+      const firstRowCells = w.findAll('tbody tr')[0].findAll('td');
+      expect(firstRowCells[0].text()).toBe('Alpha');
+      expect(firstRowCells[1].text()).toBe('running');
+    });
+
+    it('vertically centers row cells so multi-line content stays aligned with icons + actions', () => {
+      const w = factory();
+      const firstRowCells = w.findAll('tbody tr')[0].findAll('td');
+
+      expect(firstRowCells[0].classes()).toContain('align-middle');
+      expect(firstRowCells[0].classes()).not.toContain('align-top');
+      expect(firstRowCells[2].classes()).toContain('align-middle');
+      expect(firstRowCells[2].classes()).not.toContain('align-top');
+    });
+
+    it('uses striped backgrounds (alternating even/odd)', () => {
+      const w = factory();
+      const trs = w.findAll('tbody tr');
+      const evenBg = trs[0].attributes('style');
+      const oddBg = trs[1].attributes('style');
+      expect(evenBg).toContain('dd-bg-card');
+      expect(oddBg).toContain('dd-bg-inset');
+    });
+
+    it('renders a full-width row slot when a row is marked full width', () => {
+      const mixedRows = [
+        { id: 'group-a', name: 'Group A', status: 'meta', kind: 'group' },
+        ...rows,
+      ];
+      const w = factory(
+        {
+          rows: mixedRows,
+          fullWidthRow: (row: { kind?: string }) => row.kind === 'group',
+        },
+        {
+          'full-row': ({ row }: any) => `<div class="full-row">Header: ${row.name}</div>`,
+        },
+      );
+
+      const firstRow = w.findAll('tbody tr')[0];
+      const cells = firstRow.findAll('td');
+
+      expect(cells).toHaveLength(1);
+      expect(cells[0].attributes('colspan')).toBe('3');
+      expect(firstRow.text()).toContain('Header: Group A');
+    });
+  });
+
+  describe('row key', () => {
+    it('supports string row key', () => {
+      const w = factory({ rowKey: 'id' });
+      expect(w.findAll('tbody tr')).toHaveLength(3);
+    });
+
+    it('supports function row key', () => {
+      const w = factory({ rowKey: (r: any) => `key-${r.id}` });
+      expect(w.findAll('tbody tr')).toHaveLength(3);
+    });
+  });
+
+  describe('sorting', () => {
+    it('emits update:sortKey and update:sortAsc=true when clicking a new column', async () => {
+      const w = factory({ sortKey: 'name', sortAsc: true });
+      const statusTh = w.findAll('thead th')[1]; // Status column
+      await statusTh.trigger('click');
+      expect(w.emitted('update:sortKey')?.[0]).toEqual(['status']);
+      expect(w.emitted('update:sortAsc')?.[0]).toEqual([true]);
+    });
+
+    it('toggles sortAsc when clicking the already-sorted column', async () => {
+      const w = factory({ sortKey: 'name', sortAsc: true });
+      const nameTh = w.findAll('thead th')[0];
+      await nameTh.trigger('click');
+      expect(w.emitted('update:sortAsc')?.[0]).toEqual([false]);
+      expect(w.emitted('update:sortKey')).toBeUndefined();
+    });
+
+    it('shows ascending indicator when sortAsc is true', () => {
+      const w = factory({ sortKey: 'name', sortAsc: true });
+      const nameTh = w.findAll('thead th')[0];
+      expect(nameTh.text()).toContain('\u25B2');
+    });
+
+    it('shows descending indicator when sortAsc is false', () => {
+      const w = factory({ sortKey: 'name', sortAsc: false });
+      const nameTh = w.findAll('thead th')[0];
+      expect(nameTh.text()).toContain('\u25BC');
+    });
+
+    it('does not emit sort events when clicking an icon column', async () => {
+      const w = factory({ sortKey: 'name', sortAsc: true });
+      const iconTh = w.findAll('thead th')[2];
+      await iconTh.trigger('click');
+      expect(w.emitted('update:sortKey')).toBeUndefined();
+      expect(w.emitted('update:sortAsc')).toBeUndefined();
+    });
+
+    it('does not emit sort events when clicking a non-sortable column', async () => {
+      const nonSortCols = [{ key: 'name', label: 'Name', sortable: false }];
+      const w = factory({ columns: nonSortCols });
+      await w.findAll('thead th')[0].trigger('click');
+      expect(w.emitted('update:sortKey')).toBeUndefined();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('sets aria-sort on sortable headers', () => {
+      const w = factory({ sortKey: 'name', sortAsc: true });
+      const ths = w.findAll('thead th');
+      expect(ths[0].attributes('aria-sort')).toBe('ascending');
+      expect(ths[1].attributes('aria-sort')).toBe('none');
+      expect(ths[2].attributes('aria-sort')).toBeUndefined();
+    });
+
+    it('sets aria-sort to descending when the active sort is descending', () => {
+      const w = factory({ sortKey: 'status', sortAsc: false });
+      const ths = w.findAll('thead th');
+      expect(ths[0].attributes('aria-sort')).toBe('none');
+      expect(ths[1].attributes('aria-sort')).toBe('descending');
+    });
+  });
+
+  describe('selection', () => {
+    it('applies ring class to the selected row', () => {
+      const w = factory({ selectedKey: '2' });
+      const trs = w.findAll('tbody tr');
+      expect(trs[1].classes()).toContain('ring-1');
+      expect(trs[1].classes()).toContain('ring-drydock-secondary');
+    });
+
+    it('does not apply ring class to unselected rows', () => {
+      const w = factory({ selectedKey: '2' });
+      expect(w.findAll('tbody tr')[0].classes()).not.toContain('ring-1');
+    });
+
+    it('applies elevated bg to the selected row', () => {
+      const w = factory({ selectedKey: '1' });
+      const style = w.findAll('tbody tr')[0].attributes('style');
+      expect(style).toContain('dd-bg-elevated');
+    });
+  });
+
+  describe('row click', () => {
+    it('emits row-click with the row data', async () => {
+      const w = factory();
+      await w.findAll('tbody tr')[1].trigger('click');
+      expect(w.emitted('row-click')?.[0]).toEqual([rows[1]]);
+    });
+  });
+
+  describe('row keyboard navigation', () => {
+    it('sets tabindex on rows', () => {
+      const w = factory();
+      const row = w.findAll('tbody tr')[0];
+      expect(row.attributes('tabindex')).toBe('0');
+    });
+
+    it('emits row-click on Enter keydown', async () => {
+      const w = factory();
+      await w.findAll('tbody tr')[0].trigger('keydown', { key: 'Enter' });
+      expect(w.emitted('row-click')?.[0]).toEqual([rows[0]]);
+    });
+
+    it('emits row-click on Space keydown', async () => {
+      const w = factory();
+      await w.findAll('tbody tr')[2].trigger('keydown', { key: ' ' });
+      expect(w.emitted('row-click')?.[0]).toEqual([rows[2]]);
+    });
+
+    it('does not emit row-click on other keys', async () => {
+      const w = factory();
+      await w.findAll('tbody tr')[0].trigger('keydown', { key: 'Tab' });
+      expect(w.emitted('row-click')).toBeUndefined();
+    });
+
+    it('skips tabindex and row-click for non-interactive rows', async () => {
+      const mixedRows = [
+        { id: 'group-a', name: 'Group A', status: 'meta', kind: 'group' },
+        ...rows,
+      ];
+      const w = factory({
+        rows: mixedRows,
+        rowInteractive: (row: { kind?: string }) => row.kind !== 'group',
+      });
+
+      const firstRow = w.findAll('tbody tr')[0];
+      expect(firstRow.attributes('tabindex')).toBeUndefined();
+
+      await firstRow.trigger('click');
+      await firstRow.trigger('keydown', { key: 'Enter' });
+
+      expect(w.emitted('row-click')).toBeUndefined();
+    });
+  });
+
+  describe('actions column', () => {
+    it('renders actions td per row when showActions is true', () => {
+      const w = factory({ showActions: true }, { actions: '<span class="action-btn">Act</span>' });
+      const firstRow = w.findAll('tbody tr')[0];
+      const tds = firstRow.findAll('td');
+      // columns.length + 1 for actions
+      expect(tds).toHaveLength(4);
+    });
+
+    it('does not render actions td when showActions is falsy', () => {
+      const w = factory();
+      const tds = w.findAll('tbody tr')[0].findAll('td');
+      expect(tds).toHaveLength(3);
+    });
+
+    it('shows a resize handle at the registry-actions boundary when actions is shown', () => {
+      const resizeColumns = [
+        { key: 'host', label: 'Host', sortable: true },
+        { key: 'registry', label: 'Registry', sortable: true },
+      ];
+      const w = factory({ columns: resizeColumns, showActions: true });
+      const actionsHeader = w.findAll('thead th')[2];
+      expect(actionsHeader.text()).toContain('Actions');
+      expect(actionsHeader.find('[role="separator"]').exists()).toBe(true);
+    });
+  });
+
+  describe('column resize performance', () => {
+    it('does not re-render on every mousemove while dragging a column', async () => {
+      const updatedSpy = vi.fn();
+      const resizeColumns = [
+        { key: 'name', label: 'Name', sortable: true },
+        { key: 'status', label: 'Status', sortable: true },
+      ];
+      const w = mount(DataTable, {
+        props: { columns: resizeColumns, rows, rowKey: 'id' },
+        global: {
+          stubs: { AppIcon: { template: '<span class="app-icon-stub" />' } },
+          mixins: [
+            {
+              updated() {
+                updatedSpy();
+              },
+            },
+          ],
+        },
+      });
+
+      const firstHeader = w.findAll('thead th')[0];
+      const resizeHandle = firstHeader.find('[role="separator"]');
+      expect(resizeHandle.exists()).toBe(true);
+
+      vi.spyOn(firstHeader.element, 'getBoundingClientRect').mockReturnValue({
+        width: 120,
+        height: 24,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 24,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+
+      await resizeHandle.trigger('mousedown', { clientX: 100, button: 0 });
+      await nextTick();
+      const updatesAfterDragStart = updatedSpy.mock.calls.length;
+
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 110 }));
+      await nextTick();
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 130 }));
+      await nextTick();
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 160 }));
+      await nextTick();
+
+      expect(updatedSpy.mock.calls.length).toBe(updatesAfterDragStart);
+
+      document.dispatchEvent(new MouseEvent('mouseup'));
+      await nextTick();
+    });
+
+    it('toggles body resize class during drag without relying on inline body styles', async () => {
+      const resizeColumns = [
+        { key: 'name', label: 'Name', sortable: true },
+        { key: 'status', label: 'Status', sortable: true },
+      ];
+      const w = mount(DataTable, {
+        props: { columns: resizeColumns, rows, rowKey: 'id' },
+        global: {
+          stubs: { AppIcon: { template: '<span class="app-icon-stub" />' } },
+        },
+      });
+
+      const firstHeader = w.findAll('thead th')[0];
+      const resizeHandle = firstHeader.find('[role="separator"]');
+      expect(resizeHandle.exists()).toBe(true);
+
+      vi.spyOn(firstHeader.element, 'getBoundingClientRect').mockReturnValue({
+        width: 120,
+        height: 24,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 24,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect);
+
+      await resizeHandle.trigger('mousedown', { clientX: 100, button: 0 });
+      expect(document.body.classList.contains('dd-col-resizing')).toBe(true);
+
+      document.dispatchEvent(new MouseEvent('mousemove', { clientX: 140 }));
+      await nextTick();
+      expect(firstHeader.attributes('width')).toBe('160');
+
+      document.dispatchEvent(new MouseEvent('mouseup'));
+      await nextTick();
+      expect(document.body.classList.contains('dd-col-resizing')).toBe(false);
+    });
+  });
+
+  describe('empty state', () => {
+    it('renders empty slot when rows is empty', () => {
+      const w = factory({ rows: [] }, { empty: '<div class="empty-msg">No data</div>' });
+      expect(w.find('.empty-msg').exists()).toBe(true);
+      expect(w.find('.empty-msg').text()).toBe('No data');
+    });
+
+    it('does not render empty slot when rows exist', () => {
+      const w = factory({}, { empty: '<div class="empty-msg">No data</div>' });
+      expect(w.find('.empty-msg').exists()).toBe(false);
+    });
+  });
+
+  describe('cell slots', () => {
+    it('renders custom cell slot content', () => {
+      const w = factory({}, { 'cell-name': ({ row }: any) => `Custom: ${row.name}` });
+      const firstCell = w.findAll('tbody tr')[0].findAll('td')[0];
+      expect(firstCell.text()).toContain('Custom: Alpha');
+    });
+  });
+
+  describe('virtual scrolling', () => {
+    function makeRows(count: number) {
+      return Array.from({ length: count }, (_, i) => ({
+        id: `${i + 1}`,
+        name: `Container ${i + 1}`,
+        status: i % 2 === 0 ? 'running' : 'stopped',
+      }));
+    }
+
+    it('renders only a visible window when virtual scrolling is enabled', () => {
+      const manyRows = makeRows(200);
+      const w = factory({
+        rows: manyRows,
+        virtualScroll: true,
+        virtualRowHeight: 40,
+        virtualMaxHeight: '120px',
+      });
+
+      const renderedRows = w.findAll('tbody tr').filter((tr) => !tr.attributes('aria-hidden'));
+      expect(renderedRows.length).toBeLessThan(manyRows.length);
+      expect(renderedRows.length).toBeGreaterThan(0);
+    });
+
+    it('updates the rendered window after scrolling', async () => {
+      const manyRows = makeRows(200);
+      const w = factory({
+        rows: manyRows,
+        virtualScroll: true,
+        virtualRowHeight: 40,
+        virtualMaxHeight: '120px',
+      });
+
+      const scrollViewport = w.find('[data-test="data-table-scroll"]');
+      expect(scrollViewport.exists()).toBe(true);
+
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('Container 1'))).toBe(true);
+
+      (scrollViewport.element as HTMLElement).scrollTop = 1200;
+      scrollViewport.trigger('scroll');
+      await nextTick();
+
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('Container 1'))).toBe(false);
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('Container 25'))).toBe(true);
+    });
+
+    it('honors a caller-provided rowHeight estimator for heterogeneous rows', async () => {
+      // Two tall anchor rows (200px each) bracket many thin rows (20px each). The bottom
+      // spacer should reflect the real prefix-sum total, not rows.length * fallback height.
+      const rows = [
+        { id: 'tall-top', name: 'TallTop', status: '', kind: 'tall' },
+        ...Array.from({ length: 100 }, (_, i) => ({
+          id: `thin-${i}`,
+          name: `Thin ${i}`,
+          status: '',
+          kind: 'thin',
+        })),
+        { id: 'tall-bottom', name: 'TallBottom', status: '', kind: 'tall' },
+      ];
+      const rowHeight = (row: Record<string, unknown>) => (row.kind === 'tall' ? 200 : 20);
+
+      const w = factory({
+        rows,
+        virtualScroll: true,
+        virtualRowHeight: 20,
+        virtualMaxHeight: '100px',
+        rowHeight,
+      });
+
+      const scrollViewport = w.find('[data-test="data-table-scroll"]');
+      expect(scrollViewport.exists()).toBe(true);
+
+      // Initial: only the tall top + first few thin rows visible.
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('TallTop'))).toBe(true);
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('TallBottom'))).toBe(false);
+
+      // Scroll far enough to reach the bottom anchor (200 + 100*20 = 2200).
+      (scrollViewport.element as HTMLElement).scrollTop = 2400;
+      scrollViewport.trigger('scroll');
+      await nextTick();
+
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('TallBottom'))).toBe(true);
+      expect(w.findAll('tbody tr').some((tr) => tr.text().includes('TallTop'))).toBe(false);
+    });
+
+    it('falls back to virtualRowHeight when the rowHeight estimator returns an invalid value', () => {
+      const rows = [
+        { id: '1', name: 'A', status: '' },
+        { id: '2', name: 'B', status: '' },
+      ];
+      const rowHeight = () => Number.NaN;
+
+      const w = factory({
+        rows,
+        virtualScroll: true,
+        virtualRowHeight: 50,
+        virtualMaxHeight: '200px',
+        rowHeight,
+      });
+
+      // Both rows fit within 200px at 50px each, so both should render.
+      const dataRows = w.findAll('tbody tr').filter((tr) => !tr.attributes('aria-hidden'));
+      expect(dataRows).toHaveLength(2);
+    });
+  });
+});

@@ -1,6 +1,9 @@
-// @ts-nocheck
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import log from '../log/index.js';
+import appPackageJson from '../package.json';
 import * as configuration from './index.js';
 
 function getTestDirectory() {
@@ -13,6 +16,10 @@ function getTestDirectory() {
 }
 
 const TEST_DIRECTORY = getTestDirectory();
+
+afterEach(() => {
+  configuration.setDetectedServerName(undefined);
+});
 
 test('getVersion should return dd version', async () => {
   configuration.ddEnvVars.DD_VERSION = 'x.y.z';
@@ -27,6 +34,110 @@ test('getLogLevel should return info by default', async () => {
 test('getLogLevel should return debug when overridden', async () => {
   configuration.ddEnvVars.DD_LOG_LEVEL = 'debug';
   expect(configuration.getLogLevel()).toStrictEqual('debug');
+});
+
+test('getLogFormat should return text by default', async () => {
+  delete configuration.ddEnvVars.DD_LOG_FORMAT;
+  expect(configuration.getLogFormat()).toStrictEqual('text');
+});
+
+test('getLogFormat should return json when overridden', async () => {
+  configuration.ddEnvVars.DD_LOG_FORMAT = 'json';
+  expect(configuration.getLogFormat()).toStrictEqual('json');
+});
+
+test('getLogFormat should normalize casing', async () => {
+  configuration.ddEnvVars.DD_LOG_FORMAT = 'JSON';
+  expect(configuration.getLogFormat()).toStrictEqual('json');
+});
+
+test('getLogFormat should fallback to text for unsupported values', async () => {
+  configuration.ddEnvVars.DD_LOG_FORMAT = 'pretty';
+  expect(configuration.getLogFormat()).toStrictEqual('text');
+  delete configuration.ddEnvVars.DD_LOG_FORMAT;
+});
+
+test('getLogBufferEnabled should default to true', async () => {
+  delete configuration.ddEnvVars.DD_LOG_BUFFER_ENABLED;
+  expect(configuration.getLogBufferEnabled()).toStrictEqual(true);
+});
+
+test('getLogBufferEnabled should return false when disabled via env', async () => {
+  configuration.ddEnvVars.DD_LOG_BUFFER_ENABLED = 'false';
+  expect(configuration.getLogBufferEnabled()).toStrictEqual(false);
+  delete configuration.ddEnvVars.DD_LOG_BUFFER_ENABLED;
+});
+
+test('getLocalWatcherEnabled should default to true', async () => {
+  delete configuration.ddEnvVars.DD_LOCAL_WATCHER;
+  expect(configuration.getLocalWatcherEnabled()).toStrictEqual(true);
+});
+
+test('getLocalWatcherEnabled should return false when disabled via env', async () => {
+  configuration.ddEnvVars.DD_LOCAL_WATCHER = 'false';
+  expect(configuration.getLocalWatcherEnabled()).toStrictEqual(false);
+  delete configuration.ddEnvVars.DD_LOCAL_WATCHER;
+});
+
+test('getDnsMode should default to ipv4first', () => {
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+  expect(configuration.getDnsMode()).toBe('ipv4first');
+});
+
+test('getDnsMode should accept ipv6first', () => {
+  configuration.ddEnvVars.DD_DNS_MODE = 'ipv6first';
+  expect(configuration.getDnsMode()).toBe('ipv6first');
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+});
+
+test('getDnsMode should accept verbatim', () => {
+  configuration.ddEnvVars.DD_DNS_MODE = 'verbatim';
+  expect(configuration.getDnsMode()).toBe('verbatim');
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+});
+
+test('getDnsMode should normalize casing', () => {
+  configuration.ddEnvVars.DD_DNS_MODE = 'IPV4FIRST';
+  expect(configuration.getDnsMode()).toBe('ipv4first');
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+});
+
+test('getDnsMode should fallback to ipv4first for invalid values', () => {
+  configuration.ddEnvVars.DD_DNS_MODE = 'invalid';
+  expect(configuration.getDnsMode()).toBe('ipv4first');
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+});
+
+test('getDnsMode should trim whitespace', () => {
+  configuration.ddEnvVars.DD_DNS_MODE = '  verbatim  ';
+  expect(configuration.getDnsMode()).toBe('verbatim');
+  delete configuration.ddEnvVars.DD_DNS_MODE;
+});
+
+test('should include additional legacy env count in warning suffix when more than 10 WUD vars are present', async () => {
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  const legacyKeys = Array.from({ length: 12 }, (_, index) => `WUD_LEGACY_${index}`);
+  const previousValues = new Map<string, string | undefined>();
+  for (const key of legacyKeys) {
+    previousValues.set(key, process.env[key]);
+    process.env[key] = '1';
+  }
+
+  try {
+    vi.resetModules();
+    await import('./index.js');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('(+2 more)'));
+  } finally {
+    for (const key of legacyKeys) {
+      const previousValue = previousValues.get(key);
+      if (previousValue === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previousValue;
+      }
+    }
+    warnSpy.mockRestore();
+  }
 });
 
 test('getWatcherConfiguration should return empty object by default', async () => {
@@ -195,18 +306,22 @@ test('getStoreConfiguration should return configured store', async () => {
 test('getServerConfiguration should return configured api (new vars)', async () => {
   configuration.ddEnvVars.DD_SERVER_PORT = '4000';
   delete configuration.ddEnvVars.DD_SERVER_METRICS_AUTH;
+  delete configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN;
   expect(configuration.getServerConfiguration()).toStrictEqual({
+    cookie: {},
+    compression: {},
     cors: {},
     enabled: true,
     feature: {
       delete: true,
       containeractions: true,
-      webhook: true,
     },
     metrics: {},
     port: 4000,
+    session: {},
     tls: {},
     trustproxy: false,
+    ui: {},
   });
 });
 
@@ -214,20 +329,68 @@ test('getServerConfiguration should allow disabling metrics auth', async () => {
   delete configuration.ddEnvVars.DD_SERVER_PORT;
   configuration.ddEnvVars.DD_SERVER_METRICS_AUTH = 'false';
   expect(configuration.getServerConfiguration()).toStrictEqual({
+    cookie: {},
+    compression: {},
     cors: {},
     enabled: true,
     feature: {
       delete: true,
       containeractions: true,
-      webhook: true,
     },
     metrics: {
       auth: false,
+      token: '',
     },
     port: 3000,
+    session: {},
     tls: {},
     trustproxy: false,
+    ui: {},
   });
+  delete configuration.ddEnvVars.DD_SERVER_METRICS_AUTH;
+});
+
+test('getServerConfiguration should parse DD_SERVER_METRICS_TOKEN', async () => {
+  delete configuration.ddEnvVars.DD_SERVER_PORT;
+  configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN = 'my-prom-metrics-token';
+  const config = configuration.getServerConfiguration();
+  expect(config.metrics).toStrictEqual({
+    auth: true,
+    token: 'my-prom-metrics-token',
+  });
+  delete configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN;
+});
+
+test('getServerConfiguration should allow DD_SERVER_METRICS_TOKEN to be empty', async () => {
+  delete configuration.ddEnvVars.DD_SERVER_PORT;
+  configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN = '';
+  const config = configuration.getServerConfiguration();
+  expect(config.metrics).toStrictEqual({
+    auth: true,
+    token: '',
+  });
+  delete configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN;
+});
+
+test('getServerConfiguration should allow disabling the UI router', async () => {
+  configuration.ddEnvVars.DD_SERVER_UI_ENABLED = 'false';
+  const config = configuration.getServerConfiguration();
+  expect(config.ui).toStrictEqual({
+    enabled: false,
+  });
+  delete configuration.ddEnvVars.DD_SERVER_UI_ENABLED;
+});
+
+test('getServerConfiguration should allow tuning compression', async () => {
+  configuration.ddEnvVars.DD_SERVER_COMPRESSION_ENABLED = 'false';
+  configuration.ddEnvVars.DD_SERVER_COMPRESSION_THRESHOLD = '2048';
+  const config = configuration.getServerConfiguration();
+  expect(config.compression).toStrictEqual({
+    enabled: false,
+    threshold: 2048,
+  });
+  delete configuration.ddEnvVars.DD_SERVER_COMPRESSION_ENABLED;
+  delete configuration.ddEnvVars.DD_SERVER_COMPRESSION_THRESHOLD;
 });
 
 test('getServerConfiguration should accept trustproxy as number', async () => {
@@ -242,6 +405,86 @@ test('getServerConfiguration should accept trustproxy as boolean string', async 
   const config = configuration.getServerConfiguration();
   expect(config.trustproxy).toBe(true);
   delete configuration.ddEnvVars.DD_SERVER_TRUSTPROXY;
+});
+
+test('getServerConfiguration should allow overriding session cookie sameSite', async () => {
+  configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE = 'none';
+  const config = configuration.getServerConfiguration();
+  expect(config.cookie).toStrictEqual({
+    samesite: 'none',
+  });
+  delete configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE;
+});
+
+test('getServerConfiguration should normalize session cookie sameSite casing', async () => {
+  configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE = 'STRICT';
+  const config = configuration.getServerConfiguration();
+  expect(config.cookie).toStrictEqual({
+    samesite: 'strict',
+  });
+  delete configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE;
+});
+
+test('getServerConfiguration should allow overriding max concurrent sessions per user', async () => {
+  configuration.ddEnvVars.DD_SERVER_SESSION_MAXCONCURRENTSESSIONS = '3';
+  const config = configuration.getServerConfiguration();
+  expect(config.session).toStrictEqual({
+    maxconcurrentsessions: 3,
+  });
+  delete configuration.ddEnvVars.DD_SERVER_SESSION_MAXCONCURRENTSESSIONS;
+});
+
+test('getServerName should return DD_SERVER_NAME when set', () => {
+  configuration.ddEnvVars.DD_SERVER_NAME = 'my-controller';
+  expect(configuration.getServerName()).toBe('my-controller');
+  delete configuration.ddEnvVars.DD_SERVER_NAME;
+});
+
+test('getServerName should fall back to os.hostname when DD_SERVER_NAME is not set', () => {
+  delete configuration.ddEnvVars.DD_SERVER_NAME;
+  const name = configuration.getServerName();
+  expect(typeof name).toBe('string');
+  expect(name.length).toBeGreaterThan(0);
+});
+
+test('getServerName should trim whitespace from DD_SERVER_NAME', () => {
+  configuration.ddEnvVars.DD_SERVER_NAME = '  my-server  ';
+  expect(configuration.getServerName()).toBe('my-server');
+  delete configuration.ddEnvVars.DD_SERVER_NAME;
+});
+
+test('getServerName should fall back to hostname when DD_SERVER_NAME is empty', () => {
+  configuration.ddEnvVars.DD_SERVER_NAME = '';
+  const name = configuration.getServerName();
+  expect(name).not.toBe('');
+  delete configuration.ddEnvVars.DD_SERVER_NAME;
+});
+
+test('getServerName should prefer detected server name when DD_SERVER_NAME is not set', () => {
+  delete configuration.ddEnvVars.DD_SERVER_NAME;
+  configuration.setDetectedServerName('datavault');
+
+  expect(configuration.getServerName()).toBe('datavault');
+});
+
+test('getDetectedServerName should reflect the last setDetectedServerName value', () => {
+  configuration.setDetectedServerName(undefined);
+  expect(configuration.getDetectedServerName()).toBeUndefined();
+
+  configuration.setDetectedServerName('datavault');
+  expect(configuration.getDetectedServerName()).toBe('datavault');
+
+  configuration.setDetectedServerName('   ');
+  expect(configuration.getDetectedServerName()).toBeUndefined();
+});
+
+test('getServerConfiguration should allow enabling identity-aware rate-limit keys', async () => {
+  configuration.ddEnvVars.DD_SERVER_RATELIMIT_IDENTITYKEYING = 'true';
+  const config = configuration.getServerConfiguration();
+  expect(config.ratelimit).toStrictEqual({
+    identitykeying: true,
+  });
+  delete configuration.ddEnvVars.DD_SERVER_RATELIMIT_IDENTITYKEYING;
 });
 
 test('getPrometheusConfiguration should result in enabled by default', async () => {
@@ -262,10 +505,42 @@ test('replaceSecrets must read secret in file', async () => {
   const vars = {
     DD_SERVER_X__FILE: `${TEST_DIRECTORY}/secret.txt`,
   };
-  configuration.replaceSecrets(vars);
+  await configuration.replaceSecrets(vars);
   expect(vars).toStrictEqual({
     DD_SERVER_X: 'super_secret',
   });
+});
+
+test('replaceSecrets should avoid synchronous file-system APIs', async () => {
+  const vars = {
+    DD_SERVER_X__FILE: `${TEST_DIRECTORY}/secret.txt`,
+  };
+  const openSyncSpy = vi.spyOn(fs, 'openSync');
+
+  try {
+    await configuration.replaceSecrets(vars);
+    expect(openSyncSpy).not.toHaveBeenCalled();
+  } finally {
+    openSyncSpy.mockRestore();
+  }
+});
+
+test('replaceSecrets must reject secret files larger than 1MB', async () => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'drydock-secret-'));
+  const largeSecretPath = path.join(tempDirectory, 'large-secret.txt');
+  fs.writeFileSync(largeSecretPath, 'x'.repeat(1024 * 1024 + 1), 'utf-8');
+
+  const vars = {
+    DD_SERVER_X__FILE: largeSecretPath,
+  };
+
+  try {
+    await expect(configuration.replaceSecrets(vars)).rejects.toThrow(
+      'exceeds maximum size of 1048576 bytes',
+    );
+  } finally {
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  }
 });
 
 describe('getSecurityConfiguration', () => {
@@ -297,6 +572,13 @@ describe('getSecurityConfiguration', () => {
         enabled: false,
         formats: ['spdx-json'],
       },
+      scan: {
+        cron: '',
+        jitter: 60000,
+        concurrency: 4,
+        batchTimeout: 1800000,
+        notifications: false,
+      },
     });
   });
 
@@ -309,12 +591,14 @@ describe('getSecurityConfiguration', () => {
     configuration.ddEnvVars.DD_SECURITY_VERIFY_SIGNATURES = 'true';
     configuration.ddEnvVars.DD_SECURITY_COSIGN_COMMAND = '/usr/local/bin/cosign';
     configuration.ddEnvVars.DD_SECURITY_COSIGN_TIMEOUT = '45000';
-    configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY = '/keys/cosign.pub';
+    configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY = `${TEST_DIRECTORY}/secret.txt`;
     configuration.ddEnvVars.DD_SECURITY_COSIGN_IDENTITY = 'maintainer@example.com';
     configuration.ddEnvVars.DD_SECURITY_COSIGN_ISSUER =
       'https://token.actions.githubusercontent.com';
     configuration.ddEnvVars.DD_SECURITY_SBOM_ENABLED = 'true';
     configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS = 'cyclonedx-json,spdx-json,cyclonedx-json';
+    configuration.ddEnvVars.DD_SECURITY_SCAN_CONCURRENCY = '8';
+    configuration.ddEnvVars.DD_SECURITY_SCAN_BATCH_TIMEOUT = '900000';
 
     const result = configuration.getSecurityConfiguration();
     expect(result).toEqual({
@@ -331,7 +615,7 @@ describe('getSecurityConfiguration', () => {
         cosign: {
           command: '/usr/local/bin/cosign',
           timeout: 45000,
-          key: '/keys/cosign.pub',
+          key: `${TEST_DIRECTORY}/secret.txt`,
           identity: 'maintainer@example.com',
           issuer: 'https://token.actions.githubusercontent.com',
         },
@@ -339,6 +623,13 @@ describe('getSecurityConfiguration', () => {
       sbom: {
         enabled: true,
         formats: ['cyclonedx-json', 'spdx-json'],
+      },
+      scan: {
+        cron: '',
+        jitter: 60000,
+        concurrency: 8,
+        batchTimeout: 900000,
+        notifications: false,
       },
     });
 
@@ -355,17 +646,62 @@ describe('getSecurityConfiguration', () => {
     delete configuration.ddEnvVars.DD_SECURITY_COSIGN_ISSUER;
     delete configuration.ddEnvVars.DD_SECURITY_SBOM_ENABLED;
     delete configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS;
+    delete configuration.ddEnvVars.DD_SECURITY_SCAN_CONCURRENCY;
+    delete configuration.ddEnvVars.DD_SECURITY_SCAN_BATCH_TIMEOUT;
   });
 
   test('should fallback to default block severities when configured list is invalid', () => {
     configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
     configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY = 'foo,bar';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = configuration.getSecurityConfiguration();
     expect(result.blockSeverities).toEqual(['CRITICAL', 'HIGH']);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Invalid DD_SECURITY_BLOCK_SEVERITY values: FOO, BAR. Allowed values: NONE, UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL. Falling back to defaults: CRITICAL, HIGH.',
+      ),
+    );
 
     delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
     delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
+    warnSpy.mockRestore();
+  });
+
+  test('should normalize and deduplicate invalid block severities in fallback warning', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY = ' foo ,FOO, bar ';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = configuration.getSecurityConfiguration();
+    expect(result.blockSeverities).toEqual(['CRITICAL', 'HIGH']);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Invalid DD_SECURITY_BLOCK_SEVERITY values: FOO, BAR. Allowed values: NONE, UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL. Falling back to defaults: CRITICAL, HIGH.',
+      ),
+    );
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
+    warnSpy.mockRestore();
+  });
+
+  test('should warn and ignore invalid block severities when valid values are present', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY = 'critical,foo,medium,foo';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = configuration.getSecurityConfiguration();
+    expect(result.blockSeverities).toEqual(['CRITICAL', 'MEDIUM']);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Invalid DD_SECURITY_BLOCK_SEVERITY values: FOO. Allowed values: NONE, UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL. Invalid values were ignored.',
+      ),
+    );
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
+    warnSpy.mockRestore();
   });
 
   test('should fallback to default block severities when list is empty after normalization', () => {
@@ -374,6 +710,28 @@ describe('getSecurityConfiguration', () => {
 
     const result = configuration.getSecurityConfiguration();
     expect(result.blockSeverities).toEqual(['CRITICAL', 'HIGH']);
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
+  });
+
+  test('should return empty block severities when set to NONE (advisory-only mode)', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY = 'NONE';
+
+    const result = configuration.getSecurityConfiguration();
+    expect(result.blockSeverities).toEqual([]);
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
+  });
+
+  test('should accept NONE case-insensitively with whitespace', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY = '  none  ';
+
+    const result = configuration.getSecurityConfiguration();
+    expect(result.blockSeverities).toEqual([]);
 
     delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
     delete configuration.ddEnvVars.DD_SECURITY_BLOCK_SEVERITY;
@@ -389,15 +747,40 @@ describe('getSecurityConfiguration', () => {
     delete configuration.ddEnvVars.DD_SECURITY_TRIVY_TIMEOUT;
   });
 
-  test('should fallback to default sbom formats when configured list is invalid', () => {
+  test('should warn and fallback to default sbom formats when configured list is invalid', () => {
     configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
     configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS = 'foo,bar';
+    const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
 
     const result = configuration.getSecurityConfiguration();
     expect(result.sbom.formats).toEqual(['spdx-json']);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Invalid DD_SECURITY_SBOM_FORMATS values: foo, bar. Allowed values: spdx-json, cyclonedx-json. Falling back to defaults: spdx-json.',
+      ),
+    );
 
     delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
     delete configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS;
+    warnSpy.mockRestore();
+  });
+
+  test('should warn and ignore invalid sbom formats when valid values are present', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS = 'spdx-json,foo,SPDX-JSON,baz';
+    const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
+
+    const result = configuration.getSecurityConfiguration();
+    expect(result.sbom.formats).toEqual(['spdx-json']);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'Invalid DD_SECURITY_SBOM_FORMATS values: foo, baz. Allowed values: spdx-json, cyclonedx-json. Invalid values were ignored.',
+      ),
+    );
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_SBOM_FORMATS;
+    warnSpy.mockRestore();
   });
 
   test('should fallback to default sbom formats when list is empty after normalization', () => {
@@ -419,6 +802,30 @@ describe('getSecurityConfiguration', () => {
 
     delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
     delete configuration.ddEnvVars.DD_SECURITY_COSIGN_TIMEOUT;
+  });
+
+  test('should throw when cosign key is not a regular file', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY = '/';
+
+    expect(() => configuration.getSecurityConfiguration()).toThrow(
+      'DD_SECURITY_COSIGN_KEY must reference an existing regular file',
+    );
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY;
+  });
+
+  test('should throw when cosign key path does not exist', () => {
+    configuration.ddEnvVars.DD_SECURITY_SCANNER = 'trivy';
+    configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY = '/tmp/drydock-non-existent-cosign-key.pub';
+
+    expect(() => configuration.getSecurityConfiguration()).toThrow(
+      'DD_SECURITY_COSIGN_KEY must reference an existing regular file',
+    );
+
+    delete configuration.ddEnvVars.DD_SECURITY_SCANNER;
+    delete configuration.ddEnvVars.DD_SECURITY_COSIGN_KEY;
   });
 });
 
@@ -482,6 +889,73 @@ describe('getPublicUrl', () => {
     });
     expect(result).toBe('/');
   });
+
+  test('should return / when DD_PUBLIC_URL uses a non-http protocol', () => {
+    configuration.ddEnvVars.DD_PUBLIC_URL = 'javascript:alert(1)';
+
+    const result = configuration.getPublicUrl({
+      protocol: 'https',
+      hostname: 'example.com',
+    });
+
+    expect(result).toBe('/');
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+  });
+
+  test('should return / when DD_PUBLIC_URL contains userinfo injection', () => {
+    configuration.ddEnvVars.DD_PUBLIC_URL = 'https://trusted.example@attacker.example';
+
+    const result = configuration.getPublicUrl({
+      protocol: 'https',
+      hostname: 'example.com',
+    });
+
+    expect(result).toBe('/');
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+  });
+
+  test('should return / when inferred hostname contains userinfo injection', () => {
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+    const result = configuration.getPublicUrl({
+      protocol: 'https',
+      hostname: 'trusted.example@attacker.example',
+    });
+    expect(result).toBe('/');
+  });
+
+  test('should return / when DD_PUBLIC_URL contains control characters', () => {
+    configuration.ddEnvVars.DD_PUBLIC_URL = 'https://example.com\u0000evil';
+
+    const result = configuration.getPublicUrl({
+      protocol: 'https',
+      hostname: 'example.com',
+    });
+
+    expect(result).toBe('/');
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+  });
+
+  test('should return / when inferred URL hostname normalization mismatches request hostname', () => {
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+
+    const result = configuration.getPublicUrl({
+      protocol: 'https',
+      hostname: '%65xample.com',
+    });
+
+    expect(result).toBe('/');
+  });
+
+  test('should return / when request protocol or hostname are not strings', () => {
+    delete configuration.ddEnvVars.DD_PUBLIC_URL;
+
+    const result = configuration.getPublicUrl({
+      protocol: ['https'],
+      hostname: ['example.com'],
+    });
+
+    expect(result).toBe('/');
+  });
 });
 
 describe('getPrometheusConfiguration errors', () => {
@@ -493,9 +967,49 @@ describe('getPrometheusConfiguration errors', () => {
 });
 
 describe('getVersion', () => {
-  test('should return unknown when DD_VERSION is not set', () => {
-    delete configuration.ddEnvVars.DD_VERSION;
-    expect(configuration.getVersion()).toBe('unknown');
+  async function importFreshConfiguration() {
+    vi.resetModules();
+    return import('./index.js');
+  }
+
+  test('should fall back to package.json version when DD_VERSION is not set', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    delete freshConfiguration.ddEnvVars.DD_VERSION;
+    expect(freshConfiguration.getVersion()).toBe(appPackageJson.version);
+  });
+
+  test('should ignore docker placeholder DD_VERSION=unknown and fall back to package.json', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars.DD_VERSION = 'unknown';
+    expect(freshConfiguration.getVersion()).toBe(appPackageJson.version);
+  });
+
+  test('should reuse cached package version after first lookup', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    delete freshConfiguration.ddEnvVars.DD_VERSION;
+
+    const readFileSpy = vi.spyOn(fs, 'readFileSync');
+    const first = freshConfiguration.getVersion();
+    const second = freshConfiguration.getVersion();
+
+    expect(first).toBe(appPackageJson.version);
+    expect(second).toBe(appPackageJson.version);
+    expect(readFileSpy).toHaveBeenCalledTimes(1);
+
+    readFileSpy.mockRestore();
+  });
+
+  test('should return unknown when package version cannot be resolved', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    delete freshConfiguration.ddEnvVars.DD_VERSION;
+
+    const readFileSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
+      throw new Error('read failure');
+    });
+
+    expect(freshConfiguration.getVersion()).toBe('unknown');
+
+    readFileSpy.mockRestore();
   });
 });
 
@@ -504,6 +1018,31 @@ describe('getServerConfiguration errors', () => {
     configuration.ddEnvVars.DD_SERVER_PORT = 'not-a-number';
     expect(() => configuration.getServerConfiguration()).toThrow();
     delete configuration.ddEnvVars.DD_SERVER_PORT;
+  });
+
+  test('should throw when session cookie sameSite is invalid', () => {
+    configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE = 'invalid';
+    expect(() => configuration.getServerConfiguration()).toThrow();
+    delete configuration.ddEnvVars.DD_SERVER_COOKIE_SAMESITE;
+  });
+
+  test('should throw when max concurrent sessions is lower than 1', () => {
+    configuration.ddEnvVars.DD_SERVER_SESSION_MAXCONCURRENTSESSIONS = '0';
+    expect(() => configuration.getServerConfiguration()).toThrow();
+    delete configuration.ddEnvVars.DD_SERVER_SESSION_MAXCONCURRENTSESSIONS;
+  });
+
+  test('should throw when metrics token is shorter than 16 characters', () => {
+    configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN = 'short-token';
+    expect(() => configuration.getServerConfiguration()).toThrow();
+    delete configuration.ddEnvVars.DD_SERVER_METRICS_TOKEN;
+  });
+
+  test('should throw when CORS is enabled without DD_SERVER_CORS_ORIGIN', () => {
+    configuration.ddEnvVars.DD_SERVER_CORS_ENABLED = 'true';
+    delete configuration.ddEnvVars.DD_SERVER_CORS_ORIGIN;
+    expect(() => configuration.getServerConfiguration()).toThrow();
+    delete configuration.ddEnvVars.DD_SERVER_CORS_ENABLED;
   });
 
   test('should fallback to defaults when nested server config is null', () => {
@@ -556,13 +1095,24 @@ describe('getAuthenticationConfigurations', () => {
 describe('getWebhookConfiguration', () => {
   beforeEach(() => {
     delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_SECRET;
     delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCHALL;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCH;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_UPDATE;
   });
 
   test('should return disabled webhook by default', () => {
     expect(configuration.getWebhookConfiguration()).toStrictEqual({
       enabled: false,
+      secret: '',
       token: '',
+      tokens: {
+        watchall: '',
+        watch: '',
+        update: '',
+      },
     });
   });
 
@@ -572,13 +1122,71 @@ describe('getWebhookConfiguration', () => {
 
     expect(configuration.getWebhookConfiguration()).toStrictEqual({
       enabled: true,
+      secret: '',
       token: 'secret-token',
+      tokens: {
+        watchall: '',
+        watch: '',
+        update: '',
+      },
     });
   });
 
-  test('should throw when webhook is enabled without token', () => {
+  test('should allow enabling registry webhooks with HMAC secret and no bearer token', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_SECRET = 'webhook-signing-secret';
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+
+    expect(configuration.getWebhookConfiguration()).toStrictEqual({
+      enabled: true,
+      secret: 'webhook-signing-secret',
+      token: '',
+      tokens: {
+        watchall: '',
+        watch: '',
+        update: '',
+      },
+    });
+  });
+
+  test('should return enabled webhook when per-endpoint tokens are provided without shared token', () => {
     configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
     delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCHALL = 'watchall-token';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCH = 'watch-token';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_UPDATE = 'update-token';
+
+    expect(configuration.getWebhookConfiguration()).toStrictEqual({
+      enabled: true,
+      secret: '',
+      token: '',
+      tokens: {
+        watchall: 'watchall-token',
+        watch: 'watch-token',
+        update: 'update-token',
+      },
+    });
+  });
+
+  test('should throw when endpoint-specific webhook tokens are partially configured', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN = 'shared-token';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCHALL = 'watchall-token';
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCH;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_UPDATE;
+
+    expect(() => configuration.getWebhookConfiguration()).toThrow(
+      'All endpoint-specific webhook tokens (DD_SERVER_WEBHOOK_TOKENS_WATCHALL, DD_SERVER_WEBHOOK_TOKENS_WATCH, DD_SERVER_WEBHOOK_TOKENS_UPDATE) must be configured together when any DD_SERVER_WEBHOOK_TOKENS_* value is set',
+    );
+  });
+
+  test('should throw when webhook is enabled without tokens or HMAC secret', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_SECRET;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCHALL;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_WATCH;
+    delete configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS_UPDATE;
 
     expect(() => configuration.getWebhookConfiguration()).toThrow();
   });
@@ -595,7 +1203,13 @@ describe('getWebhookConfiguration', () => {
 
     expect(configuration.getWebhookConfiguration()).toStrictEqual({
       enabled: false,
+      secret: '',
       token: '',
+      tokens: {
+        watchall: '',
+        watch: '',
+        update: '',
+      },
     });
 
     if (originalDd === undefined) {
@@ -613,14 +1227,26 @@ describe('getWebhookConfiguration', () => {
         ...(originalDd?.server || {}),
         webhook: {
           enabled: false,
+          secret: '',
           token: '',
+          tokens: {
+            watchall: '',
+            watch: '',
+            update: '',
+          },
         },
       },
     };
 
     expect(configuration.getWebhookConfiguration()).toStrictEqual({
       enabled: false,
+      secret: '',
       token: '',
+      tokens: {
+        watchall: '',
+        watch: '',
+        update: '',
+      },
     });
 
     if (originalDd === undefined) {
@@ -628,6 +1254,13 @@ describe('getWebhookConfiguration', () => {
     } else {
       configuration.ddEnvVars.dd = originalDd;
     }
+  });
+
+  test('should throw when webhook tokens payload is not an object', () => {
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_ENABLED = 'true';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKEN = 'shared-token';
+    configuration.ddEnvVars.DD_SERVER_WEBHOOK_TOKENS = 'invalid';
+    expect(() => configuration.getWebhookConfiguration()).toThrow();
   });
 });
 
@@ -668,5 +1301,117 @@ describe('module bootstrap env mapping', () => {
     const freshConfiguration = await import('./index.js');
 
     expect(freshConfiguration.ddEnvVars.DD_TEST_BOOTSTRAP_VAR).toBe('new-value');
+  });
+});
+
+describe('trigger env aliases', () => {
+  async function importFreshConfiguration() {
+    vi.resetModules();
+    return import('./index.js');
+  }
+
+  test('should merge DD_ACTION and DD_NOTIFICATION aliases with DD_TRIGGER legacy env vars', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars.DD_TRIGGER_DOCKER_UPDATE_THRESHOLD = 'major';
+    freshConfiguration.ddEnvVars.DD_ACTION_DOCKER_UPDATE_THRESHOLD = 'minor';
+    freshConfiguration.ddEnvVars.DD_NOTIFICATION_SMTP_ALERT_ENABLED = 'false';
+
+    expect(freshConfiguration.getTriggerConfigurations()).toStrictEqual({
+      docker: {
+        update: {
+          threshold: 'minor',
+        },
+      },
+      smtp: {
+        alert: {
+          enabled: 'false',
+        },
+      },
+    });
+  });
+
+  test('should prefer alias values over DD_TRIGGER legacy values for the same setting', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars.DD_TRIGGER_DOCKER_UPDATE_THRESHOLD = 'major';
+    freshConfiguration.ddEnvVars.DD_ACTION_DOCKER_UPDATE_THRESHOLD = 'minor';
+
+    expect(freshConfiguration.getTriggerConfigurations()).toStrictEqual({
+      docker: {
+        update: {
+          threshold: 'minor',
+        },
+      },
+    });
+  });
+
+  test('should warn once per legacy DD_TRIGGER key and record legacy env usage', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    const freshLegacyInput = await import('../prometheus/compatibility.js');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const legacyKey = 'DD_TRIGGER_DISCORD_NOTIFY_URL';
+    freshConfiguration.ddEnvVars[legacyKey] = 'https://example.invalid/webhook';
+    freshConfiguration.ddEnvVars.DD_NOTIFICATION_DISCORD_NOTIFY_ENABLED = 'true';
+
+    const summaryBefore = freshLegacyInput.getLegacyInputSummary().env.total;
+
+    freshConfiguration.getTriggerConfigurations();
+    freshConfiguration.getTriggerConfigurations();
+
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Legacy trigger environment variable'),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('v1.7.0'));
+    expect(freshLegacyInput.getLegacyInputSummary().env.total).toBeGreaterThan(summaryBefore);
+    expect(freshLegacyInput.getLegacyInputSummary().env.keys).toContain(legacyKey);
+
+    warnSpy.mockRestore();
+  });
+});
+
+describe('legacy trigger prefix tracking guards', () => {
+  const nonLegacyTriggerKey = 'DD_ACTION_DOCKER_UPDATE_THRESHOLD';
+  const tooFewSegmentsKey = 'DD_TRIGGER_DOCKER';
+  const undefinedValueKey = 'DD_TRIGGER_DOCKER_UPDATE_THRESHOLD';
+
+  async function importFreshConfiguration() {
+    vi.resetModules();
+    return import('./index.js');
+  }
+
+  test('should ignore non-DD_TRIGGER keys when tracking legacy prefixes', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars[nonLegacyTriggerKey] = 'major';
+
+    expect(freshConfiguration.getTriggerConfigurations()).toStrictEqual({
+      docker: {
+        update: {
+          threshold: 'major',
+        },
+      },
+    });
+    expect(freshConfiguration.usesLegacyTriggerPrefix('docker', 'update')).toBe(false);
+  });
+
+  test('should ignore DD_TRIGGER keys with too few path segments when tracking legacy prefixes', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars[tooFewSegmentsKey] = 'ignored';
+
+    expect(freshConfiguration.getTriggerConfigurations()).toStrictEqual({
+      docker: 'ignored',
+    });
+    expect(freshConfiguration.usesLegacyTriggerPrefix('docker', 'update')).toBe(false);
+  });
+
+  test('should ignore DD_TRIGGER keys with undefined values when tracking legacy prefixes', async () => {
+    const freshConfiguration = await importFreshConfiguration();
+    freshConfiguration.ddEnvVars[undefinedValueKey] = undefined;
+
+    expect(freshConfiguration.getTriggerConfigurations()).toStrictEqual({
+      docker: {
+        update: {},
+      },
+    });
+    expect(freshConfiguration.usesLegacyTriggerPrefix('docker', 'update')).toBe(false);
   });
 });

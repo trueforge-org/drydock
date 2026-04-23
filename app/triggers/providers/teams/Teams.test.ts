@@ -20,14 +20,16 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
   simpletitle: 'Test Title',
   simplebody: 'Test Body',
   batchtitle: 'Batch Title',
   resolvenotifications: false,
+  securitymode: 'simple',
   disabletitle: false,
+  digestcron: '0 8 * * *',
 };
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -53,9 +55,7 @@ test('maskConfiguration should mask sensitive data', async () => {
     ...configurationValid,
   };
   const masked = teams.maskConfiguration();
-  expect(masked.url).not.toEqual(configurationValid.url);
-  expect(masked.url.startsWith('h')).toBe(true);
-  expect(masked.url.endsWith('e')).toBe(true);
+  expect(masked.url).toBe('[REDACTED]');
 });
 
 test('buildMessageBody should build adaptive card payload', async () => {
@@ -83,11 +83,53 @@ test('buildMessageBody should build adaptive card payload', async () => {
   });
 });
 
+test('buildMessageBody should include clickable action when result link is provided', async () => {
+  teams.configuration = configurationValid;
+  expect(teams.buildMessageBody('Test message', 'https://example.com/releases/2.0.0')).toEqual({
+    type: 'message',
+    attachments: [
+      {
+        contentType: 'application/vnd.microsoft.card.adaptive',
+        contentUrl: null,
+        content: {
+          type: 'AdaptiveCard',
+          $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
+          version: '1.4',
+          body: [
+            {
+              type: 'TextBlock',
+              text: 'Test message',
+              wrap: true,
+            },
+          ],
+          actions: [
+            {
+              type: 'Action.OpenUrl',
+              title: 'Open release',
+              url: 'https://example.com/releases/2.0.0',
+            },
+          ],
+        },
+      },
+    ],
+  });
+});
+
 test('trigger should send title and body when disabletitle is false', async () => {
   teams.configuration = configurationValid;
   teams.postMessage = vi.fn();
   await teams.trigger({});
   expect(teams.postMessage).toHaveBeenCalledWith('Test Title\n\nTest Body');
+});
+
+test('trigger should pass result link so message includes clickable action', async () => {
+  teams.configuration = configurationValid;
+  teams.postMessage = vi.fn();
+  await teams.trigger({ result: { link: 'https://example.com/releases/2.0.0' } });
+  expect(teams.postMessage).toHaveBeenCalledWith(
+    'Test Title\n\nTest Body',
+    'https://example.com/releases/2.0.0',
+  );
 });
 
 test('trigger should send body only when disabletitle is true', async () => {
@@ -138,6 +180,7 @@ test('postMessage should call Teams webhook endpoint', async () => {
       headers: {
         'content-type': 'application/json',
       },
+      timeout: 30000,
     },
   );
 });

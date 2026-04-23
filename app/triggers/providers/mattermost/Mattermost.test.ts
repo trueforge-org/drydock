@@ -23,14 +23,16 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
   simpletitle: 'Test Title',
   simplebody: 'Test Body',
   batchtitle: 'Batch Title',
   resolvenotifications: false,
+  securitymode: 'simple',
   disabletitle: false,
+  digestcron: '0 8 * * *',
 };
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -45,9 +47,33 @@ test('validateConfiguration should apply default username when missing', async (
   expect(validatedConfiguration.username).toEqual('drydock');
 });
 
+test('validateConfiguration should apply default disabletitle when missing', async () => {
+  const validatedConfiguration = mattermost.validateConfiguration({
+    url: configurationValid.url,
+  });
+  expect(validatedConfiguration.disabletitle).toBe(false);
+});
+
 test('validateConfiguration should throw error when invalid', async () => {
   expect(() => {
     mattermost.validateConfiguration({});
+  }).toThrowError(joi.ValidationError);
+});
+
+test('validateConfiguration should throw error when url scheme is unsupported', async () => {
+  expect(() => {
+    mattermost.validateConfiguration({
+      url: 'git://mattermost.example.com/hooks/abcdefghijklmnopqrstuvwxyz',
+    });
+  }).toThrowError(joi.ValidationError);
+});
+
+test('validateConfiguration should throw error when iconurl scheme is unsupported', async () => {
+  expect(() => {
+    mattermost.validateConfiguration({
+      url: configurationValid.url,
+      iconurl: 'ftp://example.com/whale.png',
+    });
   }).toThrowError(joi.ValidationError);
 });
 
@@ -58,9 +84,7 @@ test('maskConfiguration should mask sensitive data', async () => {
   };
   const masked = mattermost.maskConfiguration();
   expect(masked.channel).toEqual('drydock');
-  expect(masked.url).not.toEqual(configurationValid.url);
-  expect(masked.url.startsWith('h')).toBe(true);
-  expect(masked.url.endsWith('z')).toBe(true);
+  expect(masked.url).toBe('[REDACTED]');
 });
 
 test('buildMessageBody should include optional fields when configured', async () => {
@@ -78,7 +102,7 @@ test('buildMessageBody should omit optional fields when not configured', async (
   mattermost.configuration = {
     url: configurationValid.url,
   };
-  expect(mattermost.buildMessageBody('Test message')).toEqual({
+  expect(mattermost.buildMessageBody('Test message')).toStrictEqual({
     text: 'Test message',
   });
 });
@@ -146,6 +170,7 @@ test('postMessage should call Mattermost webhook endpoint', async () => {
       headers: {
         'content-type': 'application/json',
       },
+      timeout: 30000,
     },
   );
 });

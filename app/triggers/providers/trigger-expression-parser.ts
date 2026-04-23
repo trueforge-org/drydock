@@ -1,10 +1,16 @@
+import logger from '../../log/index.js';
 import type { Container } from '../../model/container.js';
+
+const log = logger.child({ component: 'trigger-expression-parser' });
+const warnedLegacyTemplateVars = new Set<string>();
+const LEGACY_SIMPLE_VARS = ['id', 'name', 'watcher', 'kind', 'semver', 'local', 'remote', 'link'];
+const LEGACY_BATCH_VARS = ['count'];
 
 type TemplateVars = Record<string, unknown>;
 
 /**
  * Safely resolve a dotted property path on an object.
- * Returns undefined when any segment along the path is nullish.
+ * Returns undefined when a segment along the path is nullish.
  */
 function resolvePath(obj: unknown, path: string): unknown {
   return path.split('.').reduce<unknown>((cur, key) => {
@@ -320,12 +326,36 @@ function safeInterpolate(template: string | undefined, vars: TemplateVars): stri
   });
 }
 
+function warnLegacyTemplateVars(template: string, legacyVars: string[], replacementPrefix: string) {
+  for (const varName of legacyVars) {
+    if (warnedLegacyTemplateVars.has(varName)) continue;
+    if (template.includes(`\${${varName}}`)) {
+      warnedLegacyTemplateVars.add(varName);
+      const replacement =
+        varName === 'count'
+          ? `\${${replacementPrefix}.length}`
+          : `\${${replacementPrefix}.${varName}}`;
+      log.warn(
+        `Legacy trigger template variable "\${${varName}}" is deprecated and will be removed in v1.6.0. Use "${replacement}" instead.`,
+      );
+    }
+  }
+}
+
 /**
  * Render body or title simple template.
  */
 export function renderSimple(template: string, container: Container): string {
+  if (template) warnLegacyTemplateVars(template, LEGACY_SIMPLE_VARS, 'container');
+  const event = Reflect.get(new Object(container), 'notificationEvent');
+  const isDigest = container.updateKind?.kind === 'digest';
   const vars: TemplateVars = {
     container,
+    event: event && typeof event === 'object' ? event : {},
+    releaseNotes: container.result?.releaseNotes,
+    suggestedTag: container.result?.suggestedTag ?? container.result?.tag ?? '',
+    currentTag: container.image?.tag?.value ?? '',
+    isDigestUpdate: isDigest,
     // Deprecated vars for backward compatibility
     id: container.id,
     name: container.name,
@@ -340,6 +370,7 @@ export function renderSimple(template: string, container: Container): string {
 }
 
 export function renderBatch(template: string, containers: Container[]): string {
+  if (template) warnLegacyTemplateVars(template, LEGACY_BATCH_VARS, 'containers');
   const vars: TemplateVars = {
     containers,
     // Deprecated var for backward compatibility

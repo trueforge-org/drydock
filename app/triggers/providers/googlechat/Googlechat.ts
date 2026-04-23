@@ -1,11 +1,24 @@
-// @ts-nocheck
 import axios from 'axios';
-import Trigger from '../Trigger.js';
+import { getOutboundHttpTimeoutMs } from '../../../configuration/runtime-defaults.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+type GoogleChatMessageBody = {
+  text: string;
+  thread?: {
+    threadKey: string;
+  };
+};
+
+interface GooglechatConfiguration extends TriggerConfiguration {
+  url: string;
+  threadkey?: string;
+  messagereplyoption?: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD' | 'REPLY_MESSAGE_OR_FAIL';
+}
 
 /**
  * Google Chat Trigger implementation
  */
-class Googlechat extends Trigger {
+class Googlechat extends Trigger<GooglechatConfiguration> {
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -43,7 +56,7 @@ class Googlechat extends Trigger {
   }
 
   buildMessageBody(text) {
-    const body: any = { text };
+    const body: GoogleChatMessageBody = { text };
     if (this.configuration.threadkey) {
       body.thread = { threadKey: this.configuration.threadkey };
     }
@@ -64,6 +77,7 @@ class Googlechat extends Trigger {
       headers: {
         'content-type': 'application/json',
       },
+      timeout: getOutboundHttpTimeoutMs(),
     });
   }
 }

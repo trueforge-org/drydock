@@ -1,0 +1,86 @@
+---
+title: "Container Actions"
+description: "Start, stop, restart, update, and delete containers directly from drydock."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## Overview
+
+Drydock provides direct container management actions through both the UI and API. These actions let you control containers without leaving the drydock interface.
+
+## Available actions
+
+| Action | API endpoint | Description |
+| --- | --- | --- |
+| **Start** | `POST /api/v1/containers/:id/start` | Start a stopped container |
+| **Stop** | `POST /api/v1/containers/:id/stop` | Stop a running container |
+| **Restart** | `POST /api/v1/containers/:id/restart` | Restart a container |
+| **Update** | `POST /api/v1/containers/:id/update` | Pull new image and recreate container |
+| **Delete** | `DELETE /api/v1/containers/:id` | Remove container from drydock tracking |
+
+## Feature flags
+
+Container actions can be individually toggled with environment variables:
+
+| Env var | Required | Description | Supported values | Default value when missing |
+| --- | :---: | --- | --- | --- |
+| `DD_SERVER_FEATURE_CONTAINERACTIONS` | ⚪ | Enable start, stop, restart, and update actions | `true`, `false` | `true` |
+| `DD_SERVER_FEATURE_DELETE` | ⚪ | Enable container deletion | `true`, `false` | `true` |
+
+<Callout type="info">When a feature flag is disabled, the corresponding buttons are hidden in the UI and the API endpoints return `403 Forbidden`.</Callout>
+<Callout type="warn">Container action endpoints currently use an authentication-only, single-operator trust model. Any authenticated user can start, stop, restart, update, or delete any container. Run drydock behind trusted SSO/access controls until fine-grained RBAC is available.</Callout>
+
+## Trigger configuration aliases
+
+Container updates are executed by action triggers (Docker, Docker Compose, Command). These triggers can be configured with three environment variable prefixes that are treated identically:
+
+| Prefix | Status |
+| --- | --- |
+| `DD_ACTION_*` | Current — recommended for action triggers |
+| `DD_NOTIFICATION_*` | Current — recommended for notification triggers |
+| `DD_TRIGGER_*` | Deprecated — removal in v1.7.0 |
+
+When the same trigger is defined under multiple prefixes, the merge priority is: `DD_NOTIFICATION_*` > `DD_ACTION_*` > `DD_TRIGGER_*`.
+
+Container labels follow the same pattern: `dd.action.include` / `dd.action.exclude` replace the deprecated `dd.trigger.include` / `dd.trigger.exclude`.
+
+<Callout type="info">Action triggers (Docker, Docker Compose, Command) default to `AUTO=oninclude`, meaning they only auto-update containers that have an explicit `dd.action.include` label matching the trigger name. Notification triggers default to `AUTO=true`.</Callout>
+
+See [Triggers](/docs/configuration/triggers) for full trigger configuration reference and the [migration CLI](/docs/configuration/triggers#migration) for automated prefix rewriting.
+
+## Update action
+
+The update action triggers the Docker or Docker Compose trigger for the selected container. It will:
+
+1. Pull the latest image
+2. Backup the current image
+3. Run lifecycle hooks (if configured)
+4. Stop and remove the current container
+5. Create and start the new container
+6. Monitor health (if auto-rollback is enabled)
+
+See [Lifecycle Hooks](/docs/configuration/hooks) and [Backup & Rollback](/docs/configuration/rollback) for related configuration.
+
+## Preview
+
+Before updating, you can preview what will change using the dry-run endpoint:
+
+`POST /api/v1/containers/:id/preview`
+
+This returns the proposed changes without executing them.
+
+## Metrics
+
+All container actions are tracked via Prometheus counters. See [Monitoring](/docs/monitoring) for details.
+
+## Example — disable all actions
+
+```yaml
+services:
+  drydock:
+    image: codeswhat/drydock
+    environment:
+      - DD_SERVER_FEATURE_CONTAINERACTIONS=false
+      - DD_SERVER_FEATURE_DELETE=false
+```

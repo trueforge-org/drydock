@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import axios from 'axios';
@@ -24,7 +22,17 @@ vi.mock('../store/container.js', () => ({
   deleteContainer: vi.fn(),
 }));
 vi.mock('../event/index.js', () => ({
+  emitAgentConnected: vi.fn().mockResolvedValue(undefined),
+  emitAgentDisconnected: vi.fn().mockResolvedValue(undefined),
   emitContainerReport: vi.fn(),
+  emitContainerReports: vi.fn(),
+  emitContainerUpdateApplied: vi.fn().mockResolvedValue(undefined),
+  emitContainerUpdateFailed: vi.fn().mockResolvedValue(undefined),
+  emitSecurityAlert: vi.fn().mockResolvedValue(undefined),
+  emitSecurityScanCycleComplete: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../util/uuid.js', () => ({
+  uuidv7: vi.fn(() => '00000000-0000-7000-8000-000000000001'),
 }));
 vi.mock('../registry/index.js', () => ({
   deregisterAgentComponents: vi.fn(),
@@ -122,6 +130,17 @@ describe('AgentClient', () => {
       expect(c.axiosOptions.httpsAgent).toBeDefined();
     });
 
+    test('should create https agent when cafile provided without certfile', () => {
+      const c = new AgentClient('a', {
+        host: 'myhost',
+        port: 4000,
+        secret: 's',
+        cafile: '/path/to/ca.pem',
+      });
+      expect(c.baseUrl).toBe('https://myhost:4000');
+      expect(c.axiosOptions.httpsAgent).toBeDefined();
+    });
+
     test('should skip cert file read when resolved cert path is empty', () => {
       mockResolveConfiguredPath.mockImplementation((path, options) => {
         if (options?.label === 'a cert file') {
@@ -151,6 +170,18 @@ describe('AgentClient', () => {
           }),
       ).toThrowError('Invalid agent URL protocol: httpx:');
     });
+
+    test('should warn when secret is configured over plaintext http', () => {
+      const c = new AgentClient('a', {
+        host: 'myhost',
+        port: 4000,
+        secret: 's',
+      });
+
+      expect(c.log.warn).toHaveBeenCalledWith(
+        'Agent a is configured with a secret over insecure HTTP (http://myhost:4000). Configure HTTPS (certfile/cafile) to protect X-Dd-Agent-Secret.',
+      );
+    });
   });
 
   describe('init', () => {
@@ -162,6 +193,36 @@ describe('AgentClient', () => {
   });
 
   describe('processContainer', () => {
+    test('should await emitContainerReport before resolving', async () => {
+      let resolveEmit;
+      const emitPromise = new Promise<void>((resolve) => {
+        resolveEmit = resolve;
+      });
+      event.emitContainerReport.mockReturnValueOnce(emitPromise);
+      storeContainer.getContainer.mockReturnValue(undefined);
+      storeContainer.insertContainer.mockReturnValue({ id: 'c1', updateAvailable: true });
+
+      let resolved = false;
+      const processPromise = client.processContainer({ id: 'c1', name: 'test' });
+      void processPromise.then(() => {
+        resolved = true;
+      });
+
+      await Promise.resolve();
+
+      expect(event.emitContainerReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          container: expect.objectContaining({ id: 'c1' }),
+          changed: true,
+        }),
+      );
+      expect(resolved).toBe(false);
+
+      resolveEmit();
+      await processPromise;
+      expect(resolved).toBe(true);
+    });
+
     test('should insert new container and emit report with changed=true', async () => {
       storeContainer.getContainer.mockReturnValue(undefined);
       storeContainer.insertContainer.mockReturnValue({ id: 'c1', updateAvailable: false });
@@ -227,6 +288,34 @@ describe('AgentClient', () => {
       );
     });
 
+    test('should strip sensitive field from env entries before storing', async () => {
+      storeContainer.getContainer.mockReturnValue(undefined);
+      storeContainer.insertContainer.mockReturnValue({ id: 'c1' });
+      const container = {
+        id: 'c1',
+        name: 'test',
+        details: {
+          ports: [],
+          volumes: [],
+          env: [
+            { key: 'NORMAL', value: 'foo', sensitive: false },
+            { key: 'API_KEY', value: '[REDACTED]', sensitive: true },
+          ],
+        },
+      };
+      await client.processContainer(container);
+      expect(storeContainer.insertContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.objectContaining({
+            env: [
+              { key: 'NORMAL', value: 'foo' },
+              { key: 'API_KEY', value: '[REDACTED]' },
+            ],
+          }),
+        }),
+      );
+    });
+
     test('should handle existing container without resultChanged function', async () => {
       const existing = { id: 'c1' }; // no resultChanged
       storeContainer.getContainer.mockReturnValue(existing);
@@ -239,6 +328,192 @@ describe('AgentClient', () => {
       expect(event.emitContainerReport).toHaveBeenCalledWith(
         expect.objectContaining({ changed: false }),
       );
+    });
+
+    test('should ignore invalid ids when managing pending freshness state', () => {
+      const internal = client as unknown as {
+        markPendingFreshState: (containerId: unknown) => void;
+        clearPendingFreshState: (containerId: unknown) => void;
+        pendingFreshStateAfterRemoteUpdate: Set<string>;
+      };
+
+      internal.pendingFreshStateAfterRemoteUpdate.add('c1');
+      internal.markPendingFreshState(undefined);
+      internal.markPendingFreshState('');
+      internal.clearPendingFreshState(undefined);
+      internal.clearPendingFreshState('');
+
+      expect([...internal.pendingFreshStateAfterRemoteUpdate]).toEqual(['c1']);
+    });
+
+    test('should preserve cleared updateAvailable for stale incremental events after remote update', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const existing = {
+        id: 'c1',
+        updateAvailable: false,
+        resultChanged: vi.fn().mockReturnValue(true),
+      };
+      storeContainer.getContainer.mockReturnValue(existing);
+      storeContainer.updateContainer.mockReturnValue({
+        id: 'c1',
+        updateAvailable: false,
+      });
+
+      await client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update');
+      await client.handleEvent('dd:container-updated', {
+        id: 'c1',
+        name: 'test',
+        result: {
+          digest: 'sha256:new',
+        },
+        updateAvailable: true,
+      });
+
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'c1',
+          name: 'test',
+          agent: 'test-agent',
+          result: undefined,
+          updateAvailable: false,
+        }),
+      );
+      expect(event.emitContainerReport).toHaveBeenCalledWith(
+        expect.objectContaining({ changed: false }),
+      );
+    });
+
+    test('should clear stale update suppression after agent reports updateAvailable false', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const existing = {
+        id: 'c1',
+        updateAvailable: false,
+        resultChanged: vi.fn().mockReturnValue(true),
+      };
+      storeContainer.getContainer.mockReturnValue(existing);
+      storeContainer.updateContainer
+        .mockReturnValueOnce({
+          id: 'c1',
+          updateAvailable: false,
+        })
+        .mockReturnValueOnce({
+          id: 'c1',
+          updateAvailable: true,
+        });
+
+      await client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update');
+      await client.handleEvent('dd:container-updated', {
+        id: 'c1',
+        name: 'test',
+        updateAvailable: false,
+      });
+      await client.handleEvent('dd:container-updated', {
+        id: 'c1',
+        name: 'test',
+        updateAvailable: true,
+      });
+
+      expect(storeContainer.updateContainer).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          id: 'c1',
+          name: 'test',
+          agent: 'test-agent',
+          updateAvailable: false,
+        }),
+      );
+      expect(storeContainer.updateContainer).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          id: 'c1',
+          name: 'test',
+          agent: 'test-agent',
+          updateAvailable: true,
+        }),
+      );
+    });
+
+    test('should accept authoritative watcher snapshot state after remote update suppression', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const existing = {
+        id: 'c1',
+        updateAvailable: false,
+        resultChanged: vi.fn().mockReturnValue(true),
+      };
+      storeContainer.getContainer.mockReturnValue(existing);
+      storeContainer.updateContainer.mockReturnValue({
+        id: 'c1',
+        watcher: 'local',
+        updateAvailable: true,
+      });
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update');
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'local' },
+        containers: [{ id: 'c1', name: 'test', watcher: 'local', updateAvailable: true }],
+      });
+
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'c1',
+          name: 'test',
+          watcher: 'local',
+          agent: 'test-agent',
+          updateAvailable: true,
+        }),
+      );
+      expect(event.emitContainerReport).toHaveBeenCalledWith(
+        expect.objectContaining({ changed: true }),
+      );
+    });
+  });
+
+  describe('processAuthoritativeContainers', () => {
+    test('should await emitContainerReports before resolving', async () => {
+      let resolveEmit;
+      const emitPromise = new Promise<void>((resolve) => {
+        resolveEmit = resolve;
+      });
+      event.emitContainerReports.mockReturnValueOnce(emitPromise);
+      storeContainer.getContainer.mockReturnValue(undefined);
+      storeContainer.insertContainer.mockImplementation((container) => ({
+        ...container,
+        updateAvailable: true,
+      }));
+
+      const internal = client as unknown as {
+        processAuthoritativeContainers: (
+          containers: Array<Record<string, unknown>>,
+        ) => Promise<unknown>;
+      };
+
+      let resolved = false;
+      const processPromise = internal.processAuthoritativeContainers([{ id: 'c1', name: 'test' }]);
+      void processPromise.then(() => {
+        resolved = true;
+      });
+
+      await vi.waitFor(() =>
+        expect(event.emitContainerReports).toHaveBeenCalledWith([
+          expect.objectContaining({
+            container: expect.objectContaining({ id: 'c1' }),
+            changed: true,
+          }),
+        ]),
+      );
+
+      expect(event.emitContainerReports).toHaveBeenCalledWith([
+        expect.objectContaining({
+          container: expect.objectContaining({ id: 'c1' }),
+          changed: true,
+        }),
+      ]);
+      expect(resolved).toBe(false);
+
+      resolveEmit();
+      await processPromise;
+      expect(resolved).toBe(true);
     });
   });
 
@@ -266,6 +541,134 @@ describe('AgentClient', () => {
       expect(client.isConnected).toBe(true);
     });
 
+    test('should emit agent-connected when transitioning to connected state', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+
+      storeContainer.getContainers.mockReturnValue([]);
+      await client.handshake();
+
+      expect(event.emitAgentConnected).toHaveBeenCalledWith({
+        agentName: 'test-agent',
+        reconnected: false,
+      });
+    });
+
+    test('should emit batched container reports after handshake processing', async () => {
+      axios.get
+        .mockResolvedValueOnce({
+          data: [
+            { id: 'c1', name: 'one', watcher: 'local' },
+            { id: 'c2', name: 'two', watcher: 'local' },
+          ],
+        })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+
+      storeContainer.getContainer.mockReturnValue(undefined);
+      storeContainer.insertContainer.mockImplementation((container) => ({
+        ...container,
+        updateAvailable: true,
+      }));
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handshake();
+
+      expect(event.emitContainerReports).toHaveBeenCalledWith([
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({ id: 'c1', agent: 'test-agent' }),
+        }),
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({ id: 'c2', agent: 'test-agent' }),
+        }),
+      ]);
+    });
+
+    test('should not emit agent-connected when already connected', async () => {
+      client.isConnected = true;
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+
+      storeContainer.getContainers.mockReturnValue([]);
+      await client.handshake();
+
+      expect(event.emitAgentConnected).not.toHaveBeenCalled();
+    });
+
+    test('should log debug when agent-connected emission fails', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+      event.emitAgentConnected.mockRejectedValueOnce(new Error('emit failed'));
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handshake();
+      await Promise.resolve();
+
+      expect(event.emitAgentConnected).toHaveBeenCalledWith({
+        agentName: 'test-agent',
+        reconnected: false,
+      });
+      expect(client.log.debug).toHaveBeenCalledWith(
+        'Failed to emit agent connected event (emit failed)',
+      );
+    });
+
+    test('should emit agent-connected with reconnected=true after a prior disconnect', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handshake();
+      client.scheduleReconnect(1_000);
+      clearTimeout((client as any).reconnectTimer);
+      (client as any).reconnectTimer = null;
+
+      await client.handshake();
+
+      expect(event.emitAgentConnected).toHaveBeenNthCalledWith(1, {
+        agentName: 'test-agent',
+        reconnected: false,
+      });
+      expect(event.emitAgentConnected).toHaveBeenNthCalledWith(2, {
+        agentName: 'test-agent',
+        reconnected: true,
+      });
+    });
+
+    test('should keep reconnected=false on the first successful handshake after startup retries', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({ data: [] });
+
+      storeContainer.getContainers.mockReturnValue([]);
+
+      client.scheduleReconnect(1_000);
+      clearTimeout((client as any).reconnectTimer);
+      (client as any).reconnectTimer = null;
+
+      await client.handshake();
+
+      expect(event.emitAgentConnected).toHaveBeenCalledWith({
+        agentName: 'test-agent',
+        reconnected: false,
+      });
+    });
+
     test('should handle watcher fetch failure gracefully', async () => {
       axios.get
         .mockResolvedValueOnce({ data: [] }) // containers
@@ -275,6 +678,29 @@ describe('AgentClient', () => {
       storeContainer.getContainers.mockReturnValue([]);
       await client.handshake();
       expect(client.isConnected).toBe(true);
+    });
+
+    test('should ignore invalid watcher descriptors when seeding the snapshot cache', async () => {
+      (client as any).seedWatcherSnapshotCacheFromHandshake([
+        null,
+        { type: 123, name: 'bad-type', configuration: { cron: '0 * * * *' } },
+        { type: 'docker', name: ['bad-name'], configuration: { cron: '0 * * * *' } },
+        {
+          type: 'docker',
+          name: 'remote',
+          configuration: { cron: '*/5 * * * *' },
+          metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+        },
+      ]);
+
+      expect(client.getWatcherSnapshot('docker', 'remote')).toEqual({
+        type: 'docker',
+        name: 'remote',
+        configuration: { cron: '*/5 * * * *' },
+        metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+      });
+      expect(client.getWatcherSnapshot('123', 'bad-type')).toBeUndefined();
+      expect(client.getWatcherSnapshot('docker', 'bad-name')).toBeUndefined();
     });
 
     test('should handle trigger fetch failure gracefully', async () => {
@@ -322,6 +748,40 @@ describe('AgentClient', () => {
       await client.watch('docker', 'local');
       expect(storeContainer.deleteContainer).toHaveBeenCalledWith('c2');
     });
+
+    test('should use near-linear id lookups when pruning old containers', () => {
+      let newIdReads = 0;
+      let storeIdReads = 0;
+      const newContainers = Array.from({ length: 30 }, (_, index) => {
+        const container = {};
+        Object.defineProperty(container, 'id', {
+          enumerable: true,
+          get: () => {
+            newIdReads += 1;
+            return `id-${index}`;
+          },
+        });
+        return container;
+      });
+      const containersInStore = Array.from({ length: 30 }, (_, index) => {
+        const container = { name: `container-${index}` };
+        Object.defineProperty(container, 'id', {
+          enumerable: true,
+          get: () => {
+            storeIdReads += 1;
+            return `id-${index + 15}`;
+          },
+        });
+        return container;
+      });
+      storeContainer.getContainers.mockReturnValue(containersInStore);
+
+      client.pruneOldContainers(newContainers);
+
+      expect(storeContainer.deleteContainer).toHaveBeenCalledTimes(15);
+      expect(newIdReads).toBeLessThanOrEqual(80);
+      expect(storeIdReads).toBeLessThanOrEqual(80);
+    });
   });
 
   describe('scheduleReconnect', () => {
@@ -340,6 +800,37 @@ describe('AgentClient', () => {
       client.scheduleReconnect(1000); // second call should be ignored
       vi.advanceTimersByTime(1000);
       expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    test('should emit agent-disconnect only on connected -> disconnected transition', () => {
+      client.isConnected = true;
+      client.scheduleReconnect(1000);
+      expect(event.emitAgentDisconnected).toHaveBeenCalledWith({
+        agentName: 'test-agent',
+        reason: 'SSE connection lost',
+      });
+    });
+
+    test('should not emit agent-disconnect when already disconnected', () => {
+      client.isConnected = false;
+      client.scheduleReconnect(1000);
+      expect(event.emitAgentDisconnected).not.toHaveBeenCalled();
+    });
+
+    test('should log debug when agent-disconnect emission fails', async () => {
+      event.emitAgentDisconnected.mockRejectedValueOnce(new Error('emit failed'));
+      client.isConnected = true;
+
+      client.scheduleReconnect(1000);
+      await Promise.resolve();
+
+      expect(event.emitAgentDisconnected).toHaveBeenCalledWith({
+        agentName: 'test-agent',
+        reason: 'SSE connection lost',
+      });
+      expect(client.log.debug).toHaveBeenCalledWith(
+        'Failed to emit agent disconnected event (emit failed)',
+      );
     });
   });
 
@@ -364,7 +855,22 @@ describe('AgentClient', () => {
       const handleSpy = vi.spyOn(client, 'handleEvent').mockResolvedValue(undefined);
       stream.emit('data', Buffer.from('data: {"type":"dd:ack","data":{"version":"1.0"}}\n\n'));
 
-      expect(handleSpy).toHaveBeenCalledWith('dd:ack', { version: '1.0' });
+      await vi.waitFor(() => expect(handleSpy).toHaveBeenCalledWith('dd:ack', { version: '1.0' }));
+    });
+
+    test('should ignore empty SSE data chunks', async () => {
+      const stream = new EventEmitter();
+      axios.mockResolvedValue({ data: stream });
+
+      client.startSse();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const handleSpy = vi.spyOn(client, 'handleEvent').mockResolvedValue(undefined);
+      stream.emit('data', Buffer.alloc(0));
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(handleSpy).not.toHaveBeenCalled();
     });
 
     test('should handle SSE data split across chunks', async () => {
@@ -379,7 +885,125 @@ describe('AgentClient', () => {
       stream.emit('data', Buffer.from('data: {"type":"dd:ac'));
       stream.emit('data', Buffer.from('k","data":{"version":"1.0"}}\n\n'));
 
-      expect(handleSpy).toHaveBeenCalledWith('dd:ack', { version: '1.0' });
+      await vi.waitFor(() => expect(handleSpy).toHaveBeenCalledWith('dd:ack', { version: '1.0' }));
+    });
+
+    test('should process streamed container and watcher snapshot events in order', async () => {
+      const stream = new EventEmitter();
+      axios.mockResolvedValue({ data: stream });
+
+      client.startSse();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const callOrder: string[] = [];
+      let resolveFirstEvent;
+      const firstEventHandled = new Promise<void>((resolve) => {
+        resolveFirstEvent = resolve;
+      });
+      const handleSpy = vi
+        .spyOn(client, 'handleEvent')
+        .mockImplementationOnce(async (eventName) => {
+          callOrder.push(`start:${eventName}`);
+          await firstEventHandled;
+          callOrder.push(`end:${eventName}`);
+        })
+        .mockImplementationOnce(async (eventName) => {
+          callOrder.push(`run:${eventName}`);
+        });
+
+      stream.emit(
+        'data',
+        Buffer.from('data: {"type":"dd:container-updated","data":{"id":"c1"}}\n\n'),
+      );
+      await vi.waitFor(() => expect(handleSpy).toHaveBeenCalledTimes(1));
+
+      stream.emit(
+        'data',
+        Buffer.from(
+          'data: {"type":"dd:watcher-snapshot","data":{"watcher":{"name":"local"},"containers":[]}}\n\n',
+        ),
+      );
+      await Promise.resolve();
+
+      expect(handleSpy).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(['start:dd:container-updated']);
+
+      resolveFirstEvent();
+      await vi.waitFor(() => expect(handleSpy).toHaveBeenCalledTimes(2));
+
+      expect(callOrder).toEqual([
+        'start:dd:container-updated',
+        'end:dd:container-updated',
+        'run:dd:watcher-snapshot',
+      ]);
+      expect(handleSpy).toHaveBeenNthCalledWith(1, 'dd:container-updated', { id: 'c1' });
+      expect(handleSpy).toHaveBeenNthCalledWith(2, 'dd:watcher-snapshot', {
+        watcher: { name: 'local' },
+        containers: [],
+      });
+    });
+
+    test('should log and continue when streamed event handling fails', async () => {
+      const stream = new EventEmitter();
+      axios.mockResolvedValue({ data: stream });
+      const unhandledRejectionSpy = vi.fn();
+      const onUnhandledRejection = (error: unknown) => {
+        unhandledRejectionSpy(error);
+      };
+      process.on('unhandledRejection', onUnhandledRejection);
+
+      try {
+        client.startSse();
+        await vi.advanceTimersByTimeAsync(0);
+
+        event.emitContainerReports.mockRejectedValueOnce(new Error('emit failed'));
+        storeContainer.getContainer.mockReturnValue(undefined);
+        storeContainer.insertContainer.mockImplementation((container) => ({
+          ...container,
+          updateAvailable: true,
+        }));
+        storeContainer.getContainers.mockReturnValue([]);
+        const processSpy = vi.spyOn(client, 'processContainer');
+
+        stream.emit(
+          'data',
+          Buffer.from(
+            'data: {"type":"dd:watcher-snapshot","data":{"watcher":{"type":"docker","name":"local"},"containers":[{"id":"c1","name":"current","watcher":"local"}]}}\n\n',
+          ),
+        );
+        stream.emit(
+          'data',
+          Buffer.from('data: {"type":"dd:container-updated","data":{"id":"c2","name":"next"}}\n\n'),
+        );
+
+        await vi.waitFor(() =>
+          expect(client.log.error).toHaveBeenCalledWith(
+            'Error handling SSE event dd:watcher-snapshot (emit failed)',
+          ),
+        );
+        await vi.waitFor(() =>
+          expect(processSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'c2', name: 'next', agent: 'test-agent' }),
+          ),
+        );
+        expect(unhandledRejectionSpy).not.toHaveBeenCalled();
+      } finally {
+        process.off('unhandledRejection', onUnhandledRejection);
+      }
+    });
+
+    test('should log SSE data processing failures', async () => {
+      const stream = new EventEmitter();
+      axios.mockResolvedValue({ data: stream });
+      vi.spyOn(client as any, 'processSseBuffer').mockRejectedValueOnce(new Error('buffer failed'));
+
+      client.startSse();
+      await vi.advanceTimersByTimeAsync(0);
+
+      stream.emit('data', Buffer.from('data: {"type":"dd:ack","data":{"version":"1.0"}}\n\n'));
+      await vi.waitFor(() =>
+        expect(client.log.error).toHaveBeenCalledWith('SSE data processing failed: buffer failed'),
+      );
     });
 
     test('should handle malformed JSON in SSE data', async () => {
@@ -426,7 +1050,7 @@ describe('AgentClient', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       stream.emit('error', new Error('connection lost'));
-      expect(reconnectSpy).toHaveBeenCalledWith(1000);
+      expect(reconnectSpy).toHaveBeenCalledWith();
     });
 
     test('should reconnect on stream end', async () => {
@@ -438,7 +1062,7 @@ describe('AgentClient', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       stream.emit('end');
-      expect(reconnectSpy).toHaveBeenCalledWith(1000);
+      expect(reconnectSpy).toHaveBeenCalledWith();
     });
 
     test('should reconnect on connection failure', async () => {
@@ -448,15 +1072,99 @@ describe('AgentClient', () => {
       client.startSse();
       await vi.advanceTimersByTimeAsync(0);
 
-      expect(reconnectSpy).toHaveBeenCalledWith(5000);
+      expect(reconnectSpy).toHaveBeenCalledWith();
+    });
+
+    test('should use exponential reconnect backoff and cap at 60 seconds', async () => {
+      axios.mockRejectedValue(new Error('connection refused'));
+
+      const setTimeoutSpy = vi.spyOn(global, 'setTimeout');
+
+      client.startSse();
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await vi.advanceTimersByTimeAsync(4_000);
+      await vi.advanceTimersByTimeAsync(8_000);
+      await vi.advanceTimersByTimeAsync(16_000);
+      await vi.advanceTimersByTimeAsync(32_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      const reconnectDelays = setTimeoutSpy.mock.calls
+        .map(([, delay]) => delay)
+        .filter((delay): delay is number => typeof delay === 'number');
+
+      expect(reconnectDelays).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000]);
     });
   });
 
   describe('handleEvent', () => {
-    test('should call handshake on dd:ack', async () => {
+    test('should cache runtime info and call handshake on dd:ack', async () => {
       const spy = vi.spyOn(client, 'handshake').mockResolvedValue(undefined);
-      await client.handleEvent('dd:ack', { version: '1.0' });
+      await client.handleEvent('dd:ack', {
+        version: '1.0',
+        os: 'linux',
+        arch: 'x64',
+        cpus: 8,
+        memoryGb: 15.7,
+        uptimeSeconds: 102,
+        lastSeen: '2026-02-28T12:00:00.000Z',
+      });
       expect(spy).toHaveBeenCalled();
+      expect(client.info).toEqual({
+        version: '1.0',
+        os: 'linux',
+        arch: 'x64',
+        cpus: 8,
+        memoryGb: 15.7,
+        uptimeSeconds: 102,
+        lastSeen: '2026-02-28T12:00:00.000Z',
+      });
+    });
+
+    test('should preserve existing runtime info when dd:ack payload fields are invalid', async () => {
+      client.info = {
+        version: 'existing-version',
+        os: 'existing-os',
+        arch: 'existing-arch',
+        cpus: 2,
+        memoryGb: 4,
+        uptimeSeconds: 10,
+        lastSeen: '2026-02-28T12:00:00.000Z',
+      };
+      const spy = vi.spyOn(client, 'handshake').mockResolvedValue(undefined);
+
+      await client.handleEvent('dd:ack', {
+        version: 123,
+        os: null,
+        arch: {},
+        cpus: 'NaN',
+        memoryGb: 'NaN',
+        uptimeSeconds: Infinity,
+        lastSeen: '',
+      });
+
+      expect(spy).toHaveBeenCalled();
+      expect(client.info.version).toBe('existing-version');
+      expect(client.info.os).toBe('existing-os');
+      expect(client.info.arch).toBe('existing-arch');
+      expect(client.info.cpus).toBe(2);
+      expect(client.info.memoryGb).toBe(4);
+      expect(client.info.uptimeSeconds).toBe(10);
+      expect(typeof client.info.lastSeen).toBe('string');
+      expect(client.info.lastSeen).not.toBe('');
+    });
+
+    test('should log when handshake fails after dd:ack', async () => {
+      const spy = vi.spyOn(client, 'handshake').mockRejectedValue(new Error('handshake failed'));
+
+      await client.handleEvent('dd:ack', { version: '1.0' });
+      await Promise.resolve();
+
+      expect(spy).toHaveBeenCalled();
+      expect(client.log.error).toHaveBeenCalledWith(
+        'Handshake failed after dd:ack: handshake failed',
+      );
     });
 
     test('should process container on dd:container-added', async () => {
@@ -478,6 +1186,640 @@ describe('AgentClient', () => {
       expect(storeContainer.deleteContainer).toHaveBeenCalledWith('c1');
     });
 
+    test('should ignore watcher-cycle cleanup for invalid container ids', () => {
+      (client as any).pendingWatcherCycleReports.set(
+        'watcher',
+        new Map([
+          [
+            'c1',
+            {
+              container: {
+                id: 'c1',
+                name: 'test',
+                watcher: 'watcher',
+              },
+              changed: true,
+            },
+          ],
+        ]),
+      );
+
+      (client as any).clearPendingWatcherCycleReportByContainerId('');
+
+      expect((client as any).pendingWatcherCycleReports.get('watcher')?.has('c1')).toBe(true);
+    });
+
+    test('should clear watcher-cycle reports when the last container in a watcher is removed', () => {
+      (client as any).pendingWatcherCycleReports.set(
+        'watcher',
+        new Map([
+          [
+            'c1',
+            {
+              container: {
+                id: 'c1',
+                name: 'test',
+                watcher: 'watcher',
+              },
+              changed: true,
+            },
+          ],
+        ]),
+      );
+
+      (client as any).clearPendingWatcherCycleReportByContainerId('c1');
+
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(false);
+    });
+
+    test('should ignore watcher-cycle reports that do not have a resolvable container key', () => {
+      const beforeSize = (client as any).pendingWatcherCycleReports.size;
+
+      (client as any).rememberPendingWatcherCycleReport({
+        container: {
+          watcher: 'watcher',
+        },
+        changed: true,
+      });
+
+      expect((client as any).pendingWatcherCycleReports.size).toBe(beforeSize);
+    });
+
+    test('should ignore invalid watcher-cycle lookups before taking a pending report', () => {
+      const report = {
+        container: {
+          id: 'c1',
+          name: 'test',
+          watcher: 'watcher',
+        },
+        changed: true,
+      };
+      (client as any).pendingWatcherCycleReports.set('watcher', new Map([['c1', report]]));
+
+      expect((client as any).takePendingWatcherCycleReport('', report.container)).toBeUndefined();
+      expect(
+        (client as any).takePendingWatcherCycleReport('watcher', { watcher: 'watcher' } as any),
+      ).toBeUndefined();
+      expect(
+        (client as any).takePendingWatcherCycleReport('watcher', {
+          ...report.container,
+          id: 'missing',
+        }),
+      ).toBeUndefined();
+      expect((client as any).takePendingWatcherCycleReport('watcher', report.container)).toBe(
+        report,
+      );
+    });
+
+    test('should return undefined when deriving a watcher-cycle key from a non-container', () => {
+      expect((client as any).getPendingWatcherCycleContainerKey(undefined)).toBeUndefined();
+      expect((client as any).getPendingWatcherCycleContainerKey(null)).toBeUndefined();
+    });
+
+    test('should fall back to watcher:name when id is missing', () => {
+      expect(
+        (client as any).getPendingWatcherCycleContainerKey({
+          name: 'test',
+          watcher: 'watcher',
+        }),
+      ).toBe('watcher:test');
+    });
+
+    test('should remove the watcher bucket after taking the last pending watcher-cycle report', () => {
+      const report = {
+        container: {
+          id: 'c1',
+          name: 'test',
+          watcher: 'watcher',
+        },
+        changed: true,
+      };
+      (client as any).pendingWatcherCycleReports.set('watcher', new Map([['c1', report]]));
+
+      expect((client as any).takePendingWatcherCycleReport('watcher', report.container)).toBe(
+        report,
+      );
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(false);
+    });
+
+    test('should keep the watcher bucket after taking one report when others remain', () => {
+      const firstReport = {
+        container: {
+          id: 'c1',
+          name: 'test',
+          watcher: 'watcher',
+        },
+        changed: true,
+      };
+      const secondReport = {
+        container: {
+          id: 'c2',
+          name: 'test-2',
+          watcher: 'watcher',
+        },
+        changed: true,
+      };
+      (client as any).pendingWatcherCycleReports.set(
+        'watcher',
+        new Map([
+          ['c1', firstReport],
+          ['c2', secondReport],
+        ]),
+      );
+
+      expect((client as any).takePendingWatcherCycleReport('watcher', firstReport.container)).toBe(
+        firstReport,
+      );
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(true);
+      expect((client as any).pendingWatcherCycleReports.get('watcher')?.has('c2')).toBe(true);
+    });
+
+    test('should remove the watcher bucket when clearing the last pending watcher-cycle report by id', () => {
+      const report = {
+        container: {
+          id: 'c1',
+          name: 'test',
+          watcher: 'watcher',
+        },
+        changed: true,
+      };
+      (client as any).pendingWatcherCycleReports.set('watcher', new Map([['c1', report]]));
+
+      (client as any).clearPendingWatcherCycleReportByContainerId('c1');
+
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(false);
+    });
+
+    test('should keep the watcher bucket when clearing one watcher-cycle container id and others remain', () => {
+      (client as any).pendingWatcherCycleReports.set(
+        'watcher',
+        new Map([
+          [
+            'c1',
+            {
+              container: {
+                id: 'c1',
+                name: 'test',
+                watcher: 'watcher',
+              },
+              changed: true,
+            },
+          ],
+          [
+            'c2',
+            {
+              container: {
+                id: 'c2',
+                name: 'test-2',
+                watcher: 'watcher',
+              },
+              changed: true,
+            },
+          ],
+        ]),
+      );
+
+      (client as any).clearPendingWatcherCycleReportByContainerId('c1');
+
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(true);
+      expect((client as any).pendingWatcherCycleReports.get('watcher')?.has('c2')).toBe(true);
+    });
+
+    test('should remove the watcher bucket after clearing the last watcher-cycle container id', () => {
+      (client as any).pendingWatcherCycleReports.set(
+        'watcher',
+        new Map([
+          [
+            'c1',
+            {
+              container: {
+                id: 'c1',
+                name: 'test',
+                watcher: 'watcher',
+              },
+              changed: true,
+            },
+          ],
+        ]),
+      );
+
+      (client as any).clearPendingWatcherCycleReportByContainerId('c1');
+
+      expect((client as any).pendingWatcherCycleReports.has('watcher')).toBe(false);
+    });
+
+    test('should emit update-applied when agent sends dd:update-applied', async () => {
+      await client.handleEvent('dd:update-applied', 'local_nginx');
+
+      expect(event.emitContainerUpdateApplied).toHaveBeenCalledWith('local_nginx');
+    });
+
+    test('should emit update-applied payload with agent context when agent sends object payload', async () => {
+      await client.handleEvent('dd:update-applied', {
+        containerName: 'local_nginx',
+        container: {
+          id: 'c1',
+          name: 'nginx',
+          watcher: 'local',
+          updateAvailable: true,
+          updateKind: { kind: 'tag', semverDiff: 'major' },
+        },
+      });
+
+      expect(event.emitContainerUpdateApplied).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        container: expect.objectContaining({
+          id: 'c1',
+          name: 'nginx',
+          watcher: 'local',
+          agent: 'test-agent',
+        }),
+      });
+    });
+
+    test('should omit non-object container payloads for update-applied events', async () => {
+      await client.handleEvent('dd:update-applied', {
+        containerName: 'local_nginx',
+        container: 'not-an-object',
+      });
+
+      expect(event.emitContainerUpdateApplied).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        container: undefined,
+      });
+    });
+
+    test('should ignore update-applied when data is an empty string', async () => {
+      await client.handleEvent('dd:update-applied', '');
+
+      expect(event.emitContainerUpdateApplied).not.toHaveBeenCalled();
+    });
+
+    test('should emit update-failed when agent sends dd:update-failed', async () => {
+      await client.handleEvent('dd:update-failed', {
+        containerName: 'local_nginx',
+        error: 'compose pull failed',
+      });
+
+      expect(event.emitContainerUpdateFailed).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        error: 'compose pull failed',
+      });
+    });
+
+    test('should ignore invalid update-failed payloads from agents', async () => {
+      await client.handleEvent('dd:update-failed', null);
+      await client.handleEvent('dd:update-failed', {
+        containerName: '',
+        error: 'compose pull failed',
+      });
+      await client.handleEvent('dd:update-failed', {
+        containerName: 'local_nginx',
+        error: '',
+      });
+
+      expect(event.emitContainerUpdateFailed).not.toHaveBeenCalled();
+    });
+
+    test('should emit security-alert when agent sends dd:security-alert', async () => {
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+      });
+
+      expect(event.emitSecurityAlert).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        cycleId: '00000000-0000-7000-8000-000000000001',
+      });
+    });
+
+    test('should include parsed security alert summaries from agents', async () => {
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        summary: {
+          unknown: 0,
+          low: 0,
+          medium: 0,
+          high: 0,
+          critical: 1,
+        },
+      });
+
+      expect(event.emitSecurityAlert).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        summary: {
+          unknown: 0,
+          low: 0,
+          medium: 0,
+          high: 0,
+          critical: 1,
+        },
+        cycleId: '00000000-0000-7000-8000-000000000001',
+      });
+    });
+
+    test('should ignore invalid security-alert payloads from agents', async () => {
+      await client.handleEvent('dd:security-alert', null);
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '',
+      });
+
+      expect(event.emitSecurityAlert).not.toHaveBeenCalled();
+    });
+
+    test('should omit invalid security alert summary metadata from agents', async () => {
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: '',
+        summary: {
+          unknown: 0,
+          low: 0,
+          medium: 0,
+          high: 'invalid',
+          critical: 1,
+        },
+      });
+
+      expect(event.emitSecurityAlert).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        cycleId: '00000000-0000-7000-8000-000000000001',
+      });
+    });
+
+    test('should pass through cycleId from modern agents and skip synthesis', async () => {
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        cycleId: 'modern-cycle-abc',
+      });
+
+      expect(event.emitSecurityAlert).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        cycleId: 'modern-cycle-abc',
+      });
+      expect(event.emitSecurityScanCycleComplete).not.toHaveBeenCalled();
+    });
+
+    test('should synthesize cycleId and emit cycle-complete for legacy agents', async () => {
+      await client.handleEvent('dd:security-alert', {
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+      });
+
+      expect(event.emitSecurityAlert).toHaveBeenCalledWith({
+        containerName: 'local_nginx',
+        details: '1 critical vulnerability',
+        status: 'blocked',
+        blockingCount: 1,
+        cycleId: '00000000-0000-7000-8000-000000000001',
+      });
+      expect(event.emitSecurityScanCycleComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cycleId: '00000000-0000-7000-8000-000000000001',
+          scannedCount: 1,
+          alertCount: 1,
+          scope: 'agent-forwarded',
+        }),
+      );
+    });
+
+    test('should emit forwarded security-scan-cycle-complete from agents', async () => {
+      await client.handleEvent('dd:security-scan-cycle-complete', {
+        cycleId: 'agent-cycle-42',
+        scannedCount: 7,
+        alertCount: 2,
+        startedAt: '2026-04-17T22:30:00.000Z',
+        completedAt: '2026-04-17T22:30:10.000Z',
+      });
+
+      expect(event.emitSecurityScanCycleComplete).toHaveBeenCalledWith({
+        cycleId: 'agent-cycle-42',
+        scannedCount: 7,
+        alertCount: 2,
+        startedAt: '2026-04-17T22:30:00.000Z',
+        completedAt: '2026-04-17T22:30:10.000Z',
+        scope: 'agent-forwarded',
+      });
+    });
+
+    test('should omit invalid optional forwarded security-scan-cycle-complete fields from agents', async () => {
+      await client.handleEvent('dd:security-scan-cycle-complete', {
+        cycleId: 'agent-cycle-43',
+        scannedCount: 4,
+        alertCount: '2',
+        startedAt: '',
+        completedAt: 123,
+      });
+
+      expect(event.emitSecurityScanCycleComplete).toHaveBeenCalledWith({
+        cycleId: 'agent-cycle-43',
+        scannedCount: 4,
+        scope: 'agent-forwarded',
+      });
+    });
+
+    test('should ignore invalid security-scan-cycle-complete payloads', async () => {
+      await client.handleEvent('dd:security-scan-cycle-complete', null);
+      await client.handleEvent('dd:security-scan-cycle-complete', {
+        cycleId: '',
+        scannedCount: 3,
+      });
+      await client.handleEvent('dd:security-scan-cycle-complete', {
+        cycleId: 'ok',
+        scannedCount: 'not-a-number',
+      });
+
+      expect(event.emitSecurityScanCycleComplete).not.toHaveBeenCalled();
+    });
+
+    test('should reconcile watcher snapshot by processing current containers and pruning missing ones', async () => {
+      const processSpy = vi.spyOn(client, 'processContainer').mockResolvedValue(undefined);
+      const containersInStore = [
+        { id: 'c1', name: 'current', watcher: 'local', agent: 'test-agent' },
+        { id: 'c2', name: 'stale-old', watcher: 'local', agent: 'test-agent' },
+        { id: 'c3', name: 'other-watcher', watcher: 'remote', agent: 'test-agent' },
+      ];
+      storeContainer.getContainers.mockImplementation((query = {}) =>
+        containersInStore.filter(
+          (container) =>
+            (!query.agent || container.agent === query.agent) &&
+            (!query.watcher || container.watcher === query.watcher),
+        ),
+      );
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'local' },
+        containers: [{ id: 'c1', name: 'current', watcher: 'local' }],
+      });
+
+      expect(processSpy).toHaveBeenCalledWith({ id: 'c1', name: 'current', watcher: 'local' });
+      expect(storeContainer.deleteContainer).toHaveBeenCalledWith('c2');
+      expect(storeContainer.deleteContainer).not.toHaveBeenCalledWith('c3');
+    });
+
+    test('should emit batched container reports for watcher snapshots', async () => {
+      storeContainer.getContainer.mockReturnValue(undefined);
+      storeContainer.insertContainer.mockImplementation((container) => ({
+        ...container,
+        updateAvailable: true,
+      }));
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'local' },
+        containers: [
+          { id: 'c1', name: 'current', watcher: 'local' },
+          { id: 'c2', name: 'next', watcher: 'local' },
+        ],
+      });
+
+      expect(event.emitContainerReports).toHaveBeenCalledWith([
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({ id: 'c1', agent: 'test-agent' }),
+        }),
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({ id: 'c2', agent: 'test-agent' }),
+        }),
+      ]);
+    });
+
+    test('should preserve changed=true for remote container updates when watcher snapshot closes the same cycle', async () => {
+      const changedBeforeSnapshot = {
+        id: 'c1',
+        name: 'qBittorrent',
+        watcher: 'mediavault',
+        agent: 'test-agent',
+        updateAvailable: true,
+        resultChanged: vi.fn().mockReturnValue(true),
+      };
+      const unchangedAfterSnapshot = {
+        id: 'c1',
+        name: 'qBittorrent',
+        watcher: 'mediavault',
+        agent: 'test-agent',
+        updateAvailable: true,
+        resultChanged: vi.fn().mockReturnValue(false),
+      };
+
+      storeContainer.getContainer
+        .mockReturnValueOnce(changedBeforeSnapshot)
+        .mockReturnValueOnce(unchangedAfterSnapshot);
+      storeContainer.updateContainer.mockImplementation((container) => ({
+        ...container,
+        updateAvailable: true,
+      }));
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handleEvent('dd:container-updated', {
+        id: 'c1',
+        name: 'qBittorrent',
+        watcher: 'mediavault',
+        updateAvailable: true,
+      });
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'mediavault' },
+        containers: [
+          {
+            id: 'c1',
+            name: 'qBittorrent',
+            watcher: 'mediavault',
+            updateAvailable: true,
+          },
+        ],
+      });
+
+      expect(event.emitContainerReport).toHaveBeenCalledTimes(1);
+      expect(event.emitContainerReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({
+            id: 'c1',
+            watcher: 'mediavault',
+            agent: 'test-agent',
+          }),
+        }),
+      );
+      expect(event.emitContainerReports).toHaveBeenCalledWith([
+        expect.objectContaining({
+          changed: true,
+          container: expect.objectContaining({
+            id: 'c1',
+            watcher: 'mediavault',
+            agent: 'test-agent',
+          }),
+        }),
+      ]);
+    });
+
+    test('should prune all containers for a watcher when a watcher snapshot is empty', async () => {
+      const containersInStore = [
+        { id: 'c1', name: 'stale-1', watcher: 'local', agent: 'test-agent' },
+        { id: 'c2', name: 'stale-2', watcher: 'local', agent: 'test-agent' },
+        { id: 'c3', name: 'other-watcher', watcher: 'remote', agent: 'test-agent' },
+      ];
+      storeContainer.getContainers.mockImplementation((query = {}) =>
+        containersInStore.filter(
+          (container) =>
+            (!query.agent || container.agent === query.agent) &&
+            (!query.watcher || container.watcher === query.watcher),
+        ),
+      );
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'local' },
+        containers: [],
+      });
+
+      expect(storeContainer.deleteContainer).toHaveBeenCalledWith('c1');
+      expect(storeContainer.deleteContainer).toHaveBeenCalledWith('c2');
+      expect(storeContainer.deleteContainer).not.toHaveBeenCalledWith('c3');
+    });
+
+    test('should ignore invalid watcher snapshot payloads without pruning', async () => {
+      const processSpy = vi.spyOn(client, 'processContainer').mockResolvedValue(undefined);
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 42 },
+        containers: { id: 'c1' },
+      });
+
+      expect(processSpy).not.toHaveBeenCalled();
+      expect(storeContainer.deleteContainer).not.toHaveBeenCalled();
+      expect(storeContainer.getContainers).not.toHaveBeenCalled();
+    });
+
+    test('should skip watcher snapshot cache updates when the watcher type is not a string', async () => {
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 42, name: 'local' },
+        containers: [],
+      });
+
+      expect(client.getWatcherSnapshot('docker', 'local')).toBeUndefined();
+    });
+
     test('should ignore unknown event types', async () => {
       const processSpy = vi.spyOn(client, 'processContainer');
       await client.handleEvent('dd:unknown', {});
@@ -489,19 +1831,144 @@ describe('AgentClient', () => {
   describe('runRemoteTrigger', () => {
     test('should post to remote trigger endpoint', async () => {
       axios.post.mockResolvedValue({ data: {} });
-      const container = { id: 'c1' };
+      const container = { id: 'c1', name: 'my-container' };
       await client.runRemoteTrigger(container, 'docker', 'update');
       expect(axios.post).toHaveBeenCalledWith(
         expect.stringContaining('/api/triggers/docker/update'),
-        container,
+        expect.objectContaining({ id: 'c1', name: 'my-container' }),
         expect.any(Object),
       );
+    });
+
+    test('should post only id and name for docker update triggers (avoids agent 256kb 413)', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const container = {
+        id: 'c1',
+        name: 'calibre',
+        status: 'running',
+        watcher: 'mediavault',
+        displayName: 'calibre',
+        image: { id: 'sha256:abc', name: 'linuxserver/calibre', tag: { value: 'latest' } },
+        result: { tag: 'latest', releaseNotes: { body: 'x'.repeat(300 * 1024) } },
+        details: { env: [{ key: 'A', value: 'B' }], labels: { foo: 'bar' } },
+      };
+      await client.runRemoteTrigger(container, 'docker', 'update');
+      const [, postedPayload] = axios.post.mock.calls[0];
+      expect(postedPayload).toStrictEqual({ id: 'c1', name: 'calibre' });
+    });
+
+    test('should post only id and name for dockercompose update triggers', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const container = {
+        id: 'c2',
+        name: 'web',
+        result: { releaseNotes: { body: 'x'.repeat(400 * 1024) } },
+      };
+      await client.runRemoteTrigger(container, 'dockercompose', 'update');
+      const [, postedPayload] = axios.post.mock.calls[0];
+      expect(postedPayload).toStrictEqual({ id: 'c2', name: 'web' });
+    });
+
+    test('should post the full container for non-update (notification) trigger types', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const container = {
+        id: 'c3',
+        name: 'api',
+        status: 'running',
+        result: { releaseNotes: { body: 'release body' } },
+      };
+      await client.runRemoteTrigger(container, 'smtp', 'notify');
+      const [, postedPayload] = axios.post.mock.calls[0];
+      expect(postedPayload).toBe(container);
     });
 
     test('should throw on failure', async () => {
       axios.post.mockRejectedValue(new Error('trigger failed'));
       await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toThrow(
         'trigger failed',
+      );
+    });
+
+    test('should stringify non-object remote trigger failures', async () => {
+      axios.post.mockRejectedValue('trigger failed as string');
+
+      await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toThrow(
+        'trigger failed as string',
+      );
+    });
+
+    test('should fall back to generic error message when remote payload is not an object', async () => {
+      axios.post.mockRejectedValue({
+        message: 'Request failed with status code 500',
+        response: {
+          status: 500,
+          data: 'unexpected response shape',
+        },
+      });
+
+      await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toThrow(
+        'Request failed with status code 500',
+      );
+    });
+
+    test('should fall back to transport error message when remote payload has no error field', async () => {
+      axios.post.mockRejectedValue({
+        message: 'Request failed with status code 500',
+        response: {
+          status: 500,
+          data: {
+            details: {
+              reason: 'No watcher found',
+            },
+          },
+        },
+      });
+
+      await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toThrow(
+        'Request failed with status code 500',
+      );
+    });
+
+    test('should rethrow original error preserving response for proxy forwarding', async () => {
+      const axiosError = {
+        message: 'Request failed with status code 500',
+        response: {
+          status: 500,
+          data: {
+            error: 'Error when running trigger docker.update',
+            details: {
+              reason: 'No watcher found for container c1 (docker.default)',
+            },
+          },
+        },
+      };
+      axios.post.mockRejectedValue(axiosError);
+
+      await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toBe(
+        axiosError,
+      );
+      // Original error is rethrown with response intact for proxy forwarding
+      expect(axiosError.response.status).toBe(500);
+      expect(axiosError.response.data.details.reason).toBe(
+        'No watcher found for container c1 (docker.default)',
+      );
+    });
+
+    test('should rethrow original error when details lack reason field', async () => {
+      const axiosError = {
+        message: 'Request failed with status code 500',
+        response: {
+          status: 500,
+          data: {
+            error: 'Error when running trigger docker.update',
+            details: { info: 'missing reason field' },
+          },
+        },
+      };
+      axios.post.mockRejectedValue(axiosError);
+
+      await expect(client.runRemoteTrigger({ id: 'c1' }, 'docker', 'update')).rejects.toBe(
+        axiosError,
       );
     });
 
@@ -524,6 +1991,36 @@ describe('AgentClient', () => {
         expect.stringContaining('/api/triggers/docker/update/batch'),
         containers,
         expect.any(Object),
+      );
+    });
+
+    test('should not preserve stale updateAvailable after non-update batch triggers', async () => {
+      axios.post.mockResolvedValue({ data: {} });
+      const existing = {
+        id: 'c1',
+        updateAvailable: false,
+        resultChanged: vi.fn().mockReturnValue(true),
+      };
+      storeContainer.getContainer.mockReturnValue(existing);
+      storeContainer.updateContainer.mockReturnValue({
+        id: 'c1',
+        updateAvailable: true,
+      });
+
+      await client.runRemoteTriggerBatch([{ id: 'c1' }], 'mock', 'notify');
+      await client.handleEvent('dd:container-updated', {
+        id: 'c1',
+        name: 'test',
+        updateAvailable: true,
+      });
+
+      expect(storeContainer.updateContainer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'c1',
+          name: 'test',
+          agent: 'test-agent',
+          updateAvailable: true,
+        }),
       );
     });
 
@@ -579,6 +2076,40 @@ describe('AgentClient', () => {
     test('should throw on failure', async () => {
       axios.post.mockRejectedValue(new Error('watch failed'));
       await expect(client.watch('docker', 'local')).rejects.toThrow('watch failed');
+    });
+  });
+
+  describe('getWatcher', () => {
+    test('should fetch watcher detail from the agent', async () => {
+      axios.get.mockResolvedValue({
+        data: {
+          id: 'docker.local',
+          type: 'docker',
+          name: 'local',
+          configuration: { cron: '0 * * * *' },
+          metadata: { nextRunAt: '2026-04-09T13:00:00.000Z' },
+        },
+      });
+
+      const result = await client.getWatcher('docker', 'local');
+
+      expect(axios.get).toHaveBeenCalledWith(
+        expect.stringContaining('/api/watchers/docker/local'),
+        expect.any(Object),
+      );
+      expect(result).toEqual({
+        id: 'docker.local',
+        type: 'docker',
+        name: 'local',
+        configuration: { cron: '0 * * * *' },
+        metadata: { nextRunAt: '2026-04-09T13:00:00.000Z' },
+      });
+    });
+
+    test('should throw when fetching watcher detail fails', async () => {
+      axios.get.mockRejectedValue(new Error('watcher fetch failed'));
+
+      await expect(client.getWatcher('docker', 'local')).rejects.toThrow('watcher fetch failed');
     });
   });
 
@@ -664,6 +2195,195 @@ describe('AgentClient', () => {
       await client.getContainerLogs('../../etc/passwd', { tail: 100, since: 0, timestamps: true });
       const url = axios.get.mock.calls[0][0];
       expect(url).toContain(encodeURIComponent('../../etc/passwd'));
+    });
+  });
+
+  describe('watcher snapshot cache', () => {
+    test('getWatcherSnapshot returns undefined before handshake or SSE event fires', () => {
+      expect(client.getWatcherSnapshot('docker', 'remote')).toBeUndefined();
+    });
+
+    test('handshake seeds the watcher snapshot cache from GET /api/watchers response', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] }) // containers
+        .mockResolvedValueOnce({
+          data: [
+            {
+              type: 'docker',
+              name: 'remote',
+              configuration: { cron: '*/5 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+            },
+          ],
+        }) // watchers
+        .mockResolvedValueOnce({ data: [] }); // triggers
+
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handshake();
+
+      expect(client.getWatcherSnapshot('docker', 'remote')).toEqual({
+        type: 'docker',
+        name: 'remote',
+        configuration: { cron: '*/5 * * * *' },
+        metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+      });
+    });
+
+    test('handshake ignores watcher descriptors missing type or name when seeding the cache', async () => {
+      axios.get
+        .mockResolvedValueOnce({ data: [] }) // containers
+        .mockResolvedValueOnce({
+          data: [
+            {
+              type: 'docker',
+              name: 'remote',
+              configuration: { cron: '*/5 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+            },
+            {
+              type: 'docker',
+              configuration: { cron: '*/10 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T00:10:00.000Z' },
+            },
+            {
+              name: 'missing-type',
+              configuration: { cron: '*/15 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T00:15:00.000Z' },
+            },
+          ],
+        }) // watchers
+        .mockResolvedValueOnce({ data: [] }); // triggers
+
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handshake();
+
+      expect(client.getWatcherSnapshot('docker', 'remote')).toEqual({
+        type: 'docker',
+        name: 'remote',
+        configuration: { cron: '*/5 * * * *' },
+        metadata: { nextRunAt: '2026-04-19T00:05:00.000Z' },
+      });
+      expect(
+        (
+          client as unknown as {
+            watcherSnapshotCache: Map<string, unknown>;
+          }
+        ).watcherSnapshotCache.size,
+      ).toBe(1);
+    });
+
+    test('dd:watcher-snapshot SSE event updates the cache with fresh configuration and metadata', async () => {
+      // Seed via handshake first
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              type: 'docker',
+              name: 'remote',
+              configuration: { cron: '0 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T01:00:00.000Z' },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ data: [] });
+      storeContainer.getContainers.mockReturnValue([]);
+      await client.handshake();
+
+      // Now fire a snapshot SSE with updated values
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: {
+          type: 'docker',
+          name: 'remote',
+          configuration: { cron: '*/15 * * * *' },
+          metadata: { nextRunAt: '2026-04-19T01:15:00.000Z' },
+        },
+        containers: [],
+      });
+
+      expect(client.getWatcherSnapshot('docker', 'remote')).toEqual({
+        type: 'docker',
+        name: 'remote',
+        configuration: { cron: '*/15 * * * *' },
+        metadata: { nextRunAt: '2026-04-19T01:15:00.000Z' },
+      });
+    });
+
+    test('dd:watcher-snapshot event with only partial watcher fields preserves existing cache values', async () => {
+      // Seed with full data via handshake
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({
+          data: [
+            {
+              type: 'docker',
+              name: 'remote',
+              configuration: { cron: '0 * * * *' },
+              metadata: { nextRunAt: '2026-04-19T01:00:00.000Z' },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ data: [] });
+      storeContainer.getContainers.mockReturnValue([]);
+      await client.handshake();
+
+      // Fire a snapshot with only type and name (no configuration or metadata)
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'remote' },
+        containers: [],
+      });
+
+      // Existing values must be preserved
+      expect(client.getWatcherSnapshot('docker', 'remote')).toEqual({
+        type: 'docker',
+        name: 'remote',
+        configuration: { cron: '0 * * * *' },
+        metadata: { nextRunAt: '2026-04-19T01:00:00.000Z' },
+      });
+    });
+
+    test('dd:watcher-snapshot event without a watcher type does not seed the cache', async () => {
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { name: 'remote' },
+        containers: [],
+      });
+
+      expect(client.getWatcherSnapshot('docker', 'remote')).toBeUndefined();
+    });
+
+    test('dd:watcher-snapshot event with only type and name populates the cache with undefined configuration and metadata', async () => {
+      // No prior handshake — first SSE event for an unknown watcher
+      storeContainer.getContainers.mockReturnValue([]);
+
+      await client.handleEvent('dd:watcher-snapshot', {
+        watcher: { type: 'docker', name: 'newbie' },
+        containers: [],
+      });
+
+      expect(client.getWatcherSnapshot('docker', 'newbie')).toEqual({
+        type: 'docker',
+        name: 'newbie',
+        configuration: undefined,
+        metadata: undefined,
+      });
+    });
+
+    test('getWatcherSnapshot with unknown watcher returns undefined', async () => {
+      // Populate cache with docker.a
+      axios.get
+        .mockResolvedValueOnce({ data: [] })
+        .mockResolvedValueOnce({
+          data: [{ type: 'docker', name: 'a', configuration: {}, metadata: {} }],
+        })
+        .mockResolvedValueOnce({ data: [] });
+      storeContainer.getContainers.mockReturnValue([]);
+      await client.handshake();
+
+      expect(client.getWatcherSnapshot('docker', 'b')).toBeUndefined();
     });
   });
 });

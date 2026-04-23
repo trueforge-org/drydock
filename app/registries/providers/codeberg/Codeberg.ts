@@ -1,10 +1,16 @@
-// @ts-nocheck
 import Forgejo from '../forgejo/Forgejo.js';
+import type { SelfHostedBasicConfiguration } from '../shared/SelfHostedBasic.js';
+
+interface CodebergRegistryConfiguration extends SelfHostedBasicConfiguration {
+  login?: string;
+  password?: string;
+  auth?: string;
+}
 
 /**
  * Codeberg Container Registry integration.
  */
-class Codeberg extends Forgejo {
+class Codeberg extends Forgejo<CodebergRegistryConfiguration> {
   getConfigurationSchema() {
     const authSchema = this.joi
       .alternatives()
@@ -20,7 +26,7 @@ class Codeberg extends Forgejo {
       .and('login', 'password')
       .without('login', 'auth');
 
-    return this.joi.alternatives().try(this.joi.string().allow(''), credentialsSchema);
+    return credentialsSchema.allow('');
   }
 
   init() {

@@ -1,18 +1,51 @@
-// @ts-nocheck
+import semver from 'semver';
 import logger from '../log/index.js';
+import { classifyTagPrecision } from '../tag/precision.js';
+import * as storeContainer from './container.js';
 
 const log = logger.child({ component: 'store' });
+const TAG_PRECISION_BACKFILL_VERSION = '1.5.0';
 
-import * as container from './container.js';
+function backfillMissingTagPrecision() {
+  const containers = storeContainer.getContainersRaw();
 
-const { getContainers, deleteContainer } = container;
+  for (const container of containers) {
+    const tag = container.image?.tag;
+    if (!tag || tag.tagPrecision !== undefined) {
+      continue;
+    }
 
-/**
- * Delete all containers from state.
- */
-function deleteAllContainersFromState() {
-  log.info('Incompatible state found; reset');
-  getContainers({}).forEach((container) => deleteContainer(container.id));
+    storeContainer.updateContainer({
+      ...container,
+      image: {
+        ...container.image,
+        tag: {
+          ...tag,
+          tagPrecision: classifyTagPrecision(tag.value, container.transformTags),
+        },
+      },
+    });
+  }
+}
+
+function shouldBackfillMissingTagPrecision(from?: string, to?: string) {
+  if (
+    typeof to !== 'string' ||
+    !semver.valid(to) ||
+    semver.lt(to, TAG_PRECISION_BACKFILL_VERSION)
+  ) {
+    return false;
+  }
+
+  if (typeof from !== 'string') {
+    return false;
+  }
+
+  return semver.valid(from) ? semver.lt(from, TAG_PRECISION_BACKFILL_VERSION) : true;
+}
+
+export function repairDataOnStartup() {
+  backfillMissingTagPrecision();
 }
 
 /**
@@ -20,11 +53,9 @@ function deleteAllContainersFromState() {
  * @param from version
  * @param to version
  */
-export function migrate(from, to) {
-  const safeFrom = String(from).replaceAll(/[^a-zA-Z0-9._\-+]/g, '');
-  const safeTo = String(to).replaceAll(/[^a-zA-Z0-9._\-+]/g, '');
-  log.info(`Migrate data from version ${safeFrom} to version ${safeTo}`);
-  if (from?.startsWith?.('8') === false && to?.startsWith?.('8') === true) {
-    deleteAllContainersFromState();
+export function migrate(from?: string, to?: string) {
+  log.info('Migrate data between schema versions');
+  if (shouldBackfillMissingTagPrecision(from, to)) {
+    backfillMissingTagPrecision();
   }
 }

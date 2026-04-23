@@ -1,4 +1,3 @@
-// @ts-nocheck
 import joi from 'joi';
 import log from '../../../log/index.js';
 import Smtp from './Smtp.js';
@@ -16,16 +15,19 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
-  simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+  simpletitle:
+    '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
 
   simplebody:
-    'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+    '${isDigestUpdate ? container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running tag " + currentTag + " has a newer image available" : container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
   batchtitle: '${containers.length} updates available',
   resolvenotifications: false,
+  securitymode: 'simple',
+  digestcron: '0 8 * * *',
 };
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -186,7 +188,7 @@ test('maskConfiguration should mask sensitive data', async () => {
     host: configurationValid.host,
     port: configurationValid.port,
     user: configurationValid.user,
-    pass: 'p**s',
+    pass: '[REDACTED]',
   });
 });
 
@@ -268,6 +270,53 @@ test('trigger should format mail as expected', async () => {
   );
 });
 
+test('trigger should format agent disconnect mail without container update wording', async () => {
+  smtp.configuration = configurationValid;
+  smtp.transporter = {
+    sendMail: (conf) => conf,
+  };
+  const response = await smtp.trigger({
+    id: 'agent-servicevault',
+    name: 'servicevault',
+    displayName: 'servicevault',
+    displayIcon: 'mdi:server-network-off',
+    status: 'disconnected',
+    watcher: 'agent',
+    image: {
+      id: 'agent-servicevault',
+      registry: {
+        name: 'agent',
+        url: 'agent://servicevault',
+      },
+      name: 'servicevault',
+      tag: {
+        value: 'disconnected',
+        semver: false,
+      },
+      digest: {
+        watch: false,
+      },
+      architecture: 'unknown',
+      os: 'unknown',
+    },
+    error: {
+      message: 'SSE connection lost',
+    },
+    updateAvailable: false,
+    updateKind: {
+      kind: 'unknown',
+    },
+    notificationEvent: {
+      kind: 'agent-disconnect',
+      agentName: 'servicevault',
+      reason: 'SSE connection lost',
+    },
+  } as any);
+
+  expect(response.subject).toBe('Agent servicevault disconnected');
+  expect(response.text).toBe('Agent servicevault disconnected: SSE connection lost');
+});
+
 test('triggerBatch should format mail as expected', async () => {
   smtp.configuration = configurationValid;
   smtp.transporter = {
@@ -342,4 +391,112 @@ test('triggerBatch should format mail as expected', async () => {
   expect(response.text).toEqual(
     '- Container homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog\n\n- Container homeassistant running with tag 1.0.0 can be updated to tag 2.0.0\nhttps://test-2.0.0/changelog\n',
   );
+});
+
+test('triggerBatch should include watcher context for same container names on different watchers', async () => {
+  smtp.configuration = configurationValid;
+  smtp.transporter = {
+    sendMail: (conf) => conf,
+  };
+
+  const response = await smtp.triggerBatch([
+    {
+      id: 'container-1',
+      name: 'docker-socket-proxy',
+      watcher: 'servicevault',
+      image: {
+        id: 'sha256:image-1',
+        registry: {
+          url: 'docker://servicevault',
+        },
+        name: 'socket-proxy',
+        tag: {
+          value: 'latest',
+          semver: false,
+        },
+        digest: {
+          watch: false,
+        },
+        architecture: 'amd64',
+        os: 'linux',
+      },
+      updateKind: {
+        kind: 'digest',
+        localValue: 'sha256:old-1',
+        remoteValue: 'sha256:new-1',
+      },
+    },
+    {
+      id: 'container-2',
+      name: 'docker-socket-proxy',
+      watcher: 'mediavault',
+      image: {
+        id: 'sha256:image-2',
+        registry: {
+          url: 'docker://mediavault',
+        },
+        name: 'socket-proxy',
+        tag: {
+          value: 'latest',
+          semver: false,
+        },
+        digest: {
+          watch: false,
+        },
+        architecture: 'amd64',
+        os: 'linux',
+      },
+      updateKind: {
+        kind: 'digest',
+        localValue: 'sha256:old-2',
+        remoteValue: 'sha256:new-2',
+      },
+    },
+  ] as any);
+
+  expect(response.text).toBe(
+    '- Container docker-socket-proxy (servicevault) running tag latest has a newer image available\n' +
+      '\n' +
+      '- Container docker-socket-proxy (mediavault) running tag latest has a newer image available\n',
+  );
+});
+
+test('triggerBatch should use event-specific wording for update-applied notifications', async () => {
+  smtp.configuration = configurationValid;
+  smtp.transporter = {
+    sendMail: (conf) => conf,
+  };
+
+  const response = await smtp.triggerBatch([
+    {
+      id: 'container-1',
+      name: 'homeassistant',
+      watcher: 'local',
+      image: {
+        id: 'sha256:image',
+        registry: {
+          url: 'docker://local',
+        },
+        name: 'test',
+        tag: {
+          value: '2021.6.4',
+          semver: true,
+        },
+        digest: {
+          watch: false,
+        },
+        architecture: 'amd64',
+        os: 'linux',
+      },
+      updateKind: {
+        kind: 'tag',
+      },
+      notificationEvent: {
+        kind: 'update-applied',
+      },
+    },
+  ] as any);
+
+  expect(response.subject).toBe('1 updates applied');
+  expect(response.text).toBe('- Container homeassistant updated successfully\n');
 });

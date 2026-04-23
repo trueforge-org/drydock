@@ -20,9 +20,24 @@ describe('Backup Service', () => {
 
       const result = await getBackups('container-1');
 
-      expect(fetch).toHaveBeenCalledWith('/api/containers/container-1/backups', {
+      expect(fetch).toHaveBeenCalledWith('/api/v1/containers/container-1/backups', {
         credentials: 'include',
       });
+      expect(result).toEqual(mockBackups);
+    });
+
+    it('unwraps backups from data envelope payloads', async () => {
+      const mockBackups = [
+        { id: 'b1', imageTag: '1.0.0', timestamp: '2025-01-01T00:00:00Z' },
+        { id: 'b2', imageTag: '0.9.0', timestamp: '2024-12-01T00:00:00Z' },
+      ];
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: mockBackups, total: 2 }),
+      } as any);
+
+      const result = await getBackups('container-1');
+
       expect(result).toEqual(mockBackups);
     });
 
@@ -48,10 +63,13 @@ describe('Backup Service', () => {
 
       const result = await rollback('container-1', 'backup-1');
 
-      expect(fetch).toHaveBeenCalledWith('/api/containers/container-1/rollback', {
+      expect(fetch).toHaveBeenCalledWith('/api/v1/containers/container-1/rollback', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-DD-Confirm-Action': 'container-rollback',
+        },
         body: JSON.stringify({ backupId: 'backup-1' }),
       });
       expect(result).toEqual(mockResult);
@@ -66,10 +84,13 @@ describe('Backup Service', () => {
 
       const result = await rollback('container-1');
 
-      expect(fetch).toHaveBeenCalledWith('/api/containers/container-1/rollback', {
+      expect(fetch).toHaveBeenCalledWith('/api/v1/containers/container-1/rollback', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-DD-Confirm-Action': 'container-rollback',
+        },
       });
       expect(result).toEqual(mockResult);
     });

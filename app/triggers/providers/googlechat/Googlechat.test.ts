@@ -21,14 +21,16 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
   simpletitle: 'Test Title',
   simplebody: 'Test Body',
   batchtitle: 'Batch Title',
   resolvenotifications: false,
+  securitymode: 'simple',
   disabletitle: false,
+  digestcron: '0 8 * * *',
 };
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -42,12 +44,35 @@ test('validateConfiguration should throw error when invalid', async () => {
   }).toThrowError(joi.ValidationError);
 });
 
+test('validateConfiguration should reject non-https webhook URLs', async () => {
+  expect(() => {
+    googlechat.validateConfiguration({
+      url: 'git://chat.googleapis.com/v1/spaces/AAA/messages?key=key123&token=token123',
+    });
+  }).toThrowError(joi.ValidationError);
+});
+
+test('validateConfiguration should accept the fallback reply option', async () => {
+  const validatedConfiguration = googlechat.validateConfiguration({
+    ...configurationValid,
+    messagereplyoption: 'REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD',
+  });
+
+  expect(validatedConfiguration.messagereplyoption).toBe('REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD');
+});
+
+test('validateConfiguration should default disabletitle to false', async () => {
+  const validatedConfiguration = googlechat.validateConfiguration({
+    url: configurationValid.url,
+  });
+
+  expect(validatedConfiguration.disabletitle).toBe(false);
+});
+
 test('maskConfiguration should mask sensitive data', async () => {
   googlechat.configuration = configurationValid;
   const masked = googlechat.maskConfiguration();
-  expect(masked.url).not.toEqual(configurationValid.url);
-  expect(masked.url.startsWith('h')).toBe(true);
-  expect(masked.url.endsWith('3')).toBe(true);
+  expect(masked.url).toBe('[REDACTED]');
 });
 
 test('buildMessageBody should include thread key when configured', async () => {
@@ -125,6 +150,7 @@ test('postMessage should call Google Chat webhook endpoint', async () => {
       headers: {
         'content-type': 'application/json',
       },
+      timeout: 30000,
     },
   );
 });

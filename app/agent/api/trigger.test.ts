@@ -1,5 +1,5 @@
-// @ts-nocheck
 import { beforeEach, describe, expect, test } from 'vitest';
+import { mapComponentsToList } from '../../api/component.js';
 import * as apiTrigger from '../../api/trigger.js';
 import * as registry from '../../registry/index.js';
 import * as triggerApi from './trigger.js';
@@ -38,6 +38,7 @@ describe('agent API trigger', () => {
       const triggers = { 'docker.update': {} };
       registry.getState.mockReturnValue({ trigger: triggers });
       triggerApi.getTriggers(req, res);
+      expect(mapComponentsToList).toHaveBeenCalledWith(triggers, 'trigger');
       expect(res.json).toHaveBeenCalled();
     });
   });
@@ -103,7 +104,27 @@ describe('agent API trigger', () => {
       });
       await triggerApi.runTriggerBatch(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'trigger failed' }));
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'Error when running batch trigger docker.update' }),
+      );
+    });
+
+    test('should return default 500 message when trigger throws non-object error', async () => {
+      req.params = { type: 'docker', name: 'update' };
+      req.body = [{ id: 'c1' }];
+      const mockTrigger = {
+        triggerBatch: vi.fn().mockRejectedValue(42),
+      };
+      registry.getState.mockReturnValue({
+        trigger: { 'docker.update': mockTrigger },
+      });
+
+      await triggerApi.runTriggerBatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: 'Internal Server Error' }),
+      );
     });
   });
 });

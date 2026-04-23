@@ -1,12 +1,28 @@
-// @ts-nocheck
-import axios from 'axios';
-import Custom from '../custom/Custom.js';
+import axios, { type AxiosRequestConfig } from 'axios';
+import type { ContainerImage } from '../../../model/container.js';
+import Custom, { type CustomRegistryConfiguration } from '../custom/Custom.js';
 import { getTokenAuthConfigurationSchema } from '../shared/tokenAuthConfigurationSchema.js';
+
+interface HubTokenResponse {
+  token?: unknown;
+}
+
+interface HubTagMetadataResponse {
+  last_updated?: unknown;
+}
+
+interface HubRegistryConfiguration extends CustomRegistryConfiguration {
+  token?: string;
+}
 
 /**
  * Docker Hub integration.
  */
-class Hub extends Custom {
+class Hub extends Custom<HubRegistryConfiguration> {
+  protected getTrustedAuthHosts(): string[] {
+    return ['auth.docker.io'];
+  }
+
   init() {
     this.configuration.url = 'https://registry-1.docker.io';
     if (this.configuration.token) {
@@ -36,11 +52,12 @@ class Hub extends Custom {
    * @returns {boolean}
    */
 
-  match(image) {
+  match(image: ContainerImage) {
+    const registryUrl = image?.registry?.url;
     return (
-      !image.registry.url ||
-      image.registry.url === 'docker.io' ||
-      (image.registry.url.endsWith('.docker.io') && /^[a-zA-Z0-9.-]+$/.test(image.registry.url))
+      !registryUrl ||
+      registryUrl === 'docker.io' ||
+      (registryUrl.endsWith('.docker.io') && /^[a-zA-Z0-9.-]+$/.test(registryUrl))
     );
   }
 
@@ -49,7 +66,7 @@ class Hub extends Custom {
    * @param image
    * @returns {*}
    */
-  normalizeImage(image) {
+  normalizeImage(image: ContainerImage) {
     const imageNormalized = super.normalizeImage(image);
     if (imageNormalized.name) {
       imageNormalized.name = imageNormalized.name.includes('/')
@@ -65,32 +82,48 @@ class Hub extends Custom {
    * @param requestOptions
    * @returns {Promise<*>}
    */
-  async authenticate(image, requestOptions) {
-    const axiosConfig = {
-      method: 'GET',
-      url: `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${image.name}:pull&grant_type=password`,
-      headers: {
-        Accept: 'application/json',
-      },
-    };
-
-    // Add Authorization if any
+  async authenticate(image: ContainerImage, requestOptions: AxiosRequestConfig) {
+    const scope = encodeURIComponent(`repository:${image.name}:pull`);
     const credentials = this.getAuthCredentials();
-    if (credentials) {
-      axiosConfig.headers.Authorization = `Basic ${credentials}`;
-    }
-
-    const response = await axios(axiosConfig);
-    const requestOptionsWithAuth = requestOptions;
-    requestOptionsWithAuth.headers.Authorization = `Bearer ${response.data.token}`;
-    return requestOptionsWithAuth;
+    return this.authenticateBearerFromAuthUrlWithPublicFallback(
+      requestOptions,
+      `https://auth.docker.io/token?service=registry.docker.io&scope=${scope}&grant_type=password`,
+      credentials || undefined,
+      {
+        providerLabel: 'Docker Hub',
+        tokenFailureMessage: `Unable to authenticate registry ${this.getId()}: Docker Hub token endpoint response does not contain token`,
+        tokenExtractor: (response: { data?: HubTokenResponse }) => response.data?.token,
+      },
+    );
   }
 
-  getImageFullName(image, tagOrDigest) {
+  getImageFullName(image: ContainerImage, tagOrDigest: string) {
     let fullName = super.getImageFullName(image, tagOrDigest);
     fullName = fullName.replaceAll('registry-1.docker.io/', '');
     fullName = fullName.replaceAll('library/', '');
     return fullName;
+  }
+
+  async getImagePublishedAt(image: ContainerImage, tag?: string): Promise<string | undefined> {
+    const tagToLookup = typeof tag === 'string' && tag.length > 0 ? tag : image.tag?.value;
+    if (typeof image.name !== 'string' || image.name.length === 0 || !tagToLookup) {
+      return undefined;
+    }
+
+    const response = await axios<HubTagMetadataResponse>({
+      method: 'GET',
+      url: `https://hub.docker.com/v2/repositories/${image.name}/tags/${encodeURIComponent(
+        tagToLookup,
+      )}`,
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    const publishedAt = response?.data?.last_updated;
+    if (typeof publishedAt !== 'string') {
+      return undefined;
+    }
+    return Number.isNaN(Date.parse(publishedAt)) ? undefined : publishedAt;
   }
 }
 

@@ -1,6 +1,12 @@
-// @ts-nocheck
 import axios from 'axios';
-import Trigger from '../Trigger.js';
+import { getOutboundHttpTimeoutMs } from '../../../configuration/runtime-defaults.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+interface TelegramConfiguration extends TriggerConfiguration {
+  bottoken: string;
+  chatid: string;
+  messageformat: 'Markdown' | 'HTML';
+}
 
 /**
  * Escape special characters.
@@ -28,7 +34,7 @@ function escapeHtml(text) {
 /**
  * Telegram Trigger implementation
  */
-class Telegram extends Trigger {
+class Telegram extends Trigger<TelegramConfiguration> {
   private apiUrl: string;
 
   /**
@@ -69,22 +75,26 @@ class Telegram extends Trigger {
     const body = this.renderSimpleBody(container);
 
     if (this.configuration.disabletitle) {
-      return this.sendMessage(body);
+      return this.sendMessage(this.escape(body));
     }
 
     const title = this.renderSimpleTitle(container);
 
-    return this.sendMessage(`${this.bold(title)}\n\n${escapeMarkdown(body)}`);
+    return this.sendMessage(`${this.bold(title)}\n\n${this.escape(body)}`);
   }
 
   async triggerBatch(containers) {
     const body = this.renderBatchBody(containers);
     if (this.configuration.disabletitle) {
-      return this.sendMessage(body);
+      return this.sendMessage(this.escape(body));
     }
 
     const title = this.renderBatchTitle(containers);
-    return this.sendMessage(`${this.bold(title)}\n\n${body}`);
+    return this.sendMessage(`${this.bold(title)}\n\n${this.escape(body)}`);
+  }
+
+  private escape(text: string): string {
+    return this.getParseMode() === 'MarkdownV2' ? escapeMarkdown(text) : escapeHtml(text);
   }
 
   /**
@@ -93,23 +103,29 @@ class Telegram extends Trigger {
    * @returns {Promise<>}
    */
   async sendMessage(text) {
-    const response = await axios.post(`${this.apiUrl}/sendMessage`, {
-      chat_id: this.configuration.chatid,
-      text,
-      parse_mode: this.getParseMode(),
-    });
+    const response = await axios.post(
+      `${this.apiUrl}/sendMessage`,
+      {
+        chat_id: this.configuration.chatid,
+        text,
+        parse_mode: this.getParseMode(),
+      },
+      { timeout: getOutboundHttpTimeoutMs() },
+    );
 
     return response.data;
   }
 
   bold(text) {
-    return this.configuration.messageformat.toLowerCase() === 'markdown'
+    return (this.configuration.messageformat as string).toLowerCase() === 'markdown'
       ? `*${escapeMarkdown(text)}*`
       : `<b>${escapeHtml(text)}</b>`;
   }
 
   getParseMode() {
-    return this.configuration.messageformat.toLowerCase() === 'markdown' ? 'MarkdownV2' : 'HTML';
+    return (this.configuration.messageformat as string).toLowerCase() === 'markdown'
+      ? 'MarkdownV2'
+      : 'HTML';
   }
 }
 

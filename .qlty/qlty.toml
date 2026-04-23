@@ -21,29 +21,18 @@ exclude_patterns = [
   "**/.yarn/**",
   "**/bower_components/**",
   "**/build/**",
+  "**/coverage/**",
   "**/cache/**",
-  "**/config/**",
-  "**/db/**",
-  "**/deps/**",
   "**/dist/**",
-  "**/extern/**",
-  "**/external/**",
   "**/generated/**",
-  "**/Godeps/**",
-  "**/gradlew/**",
-  "**/mvnw/**",
   "**/node_modules/**",
-  "**/protos/**",
-  "**/seed/**",
   "**/target/**",
   "**/testdata/**",
   "**/vendor/**",
-  "**/assets/**",
   ".qlty/out/**",
   ".qlty/logs/**",
   ".qlty/results/**",
   ".qlty/plugin_cachedir/**",
-  "prototypes/**/style.css",
   ".playwright-cli/**",
   "output/**",
 ]
@@ -79,10 +68,6 @@ default = true
 name = "actionlint"
 
 [[plugin]]
-name = "biome"
-version = "2.3.7"
-
-[[plugin]]
 name = "checkov"
 
 [[plugin]]
@@ -97,7 +82,6 @@ mode = "comment"
 
 [[plugin]]
 name = "osv-scanner"
-
 
 [[plugin]]
 name = "radarlint-iac"
@@ -117,8 +101,8 @@ name = "shfmt"
 name = "trivy"
 drivers = [
   "config",
-  "fs-vuln",
 ]
+version = "0.69.3"
 
 [[plugin]]
 name = "trufflehog"
@@ -128,5 +112,15 @@ name = "yamllint"
 
 # Entrypoint uses su-exec for runtime privilege drop; no static USER needed
 [[triage]]
-match.rules = ["trivy:DS002"]
+match.rules = ["trivy:DS002", "trivy:DS-0002"]
+set.ignored = true
+
+# markdownlint table style is low-signal for this repository's docs format
+[[triage]]
+match.rules = ["markdownlint:MD060"]
+set.ignored = true
+
+# next@16.2.2 — no patch available as of 2026-04-02; latest stable is affected
+[[triage]]
+match.rules = ["osv-scanner:CVE-2025-59472"]
 set.ignored = true

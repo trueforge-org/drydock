@@ -1,7 +1,16 @@
 import type joi from 'joi';
-import Component, { type ComponentConfiguration } from '../../registry/Component.js';
+import Component from '../../registry/Component.js';
 
-export default class Agent extends Component {
+export interface AgentConfiguration {
+  host: string;
+  port: number;
+  secret: string;
+  cafile?: string;
+  certfile?: string;
+  keyfile?: string;
+}
+
+export default class Agent extends Component<AgentConfiguration> {
   /**
    * Get the component configuration schema.
    * @returns {*}
@@ -22,11 +31,12 @@ export default class Agent extends Component {
    * @param configuration
    * @returns {*}
    */
-  maskConfiguration(configuration?: ComponentConfiguration): ComponentConfiguration {
+  maskConfiguration(configuration?: AgentConfiguration): AgentConfiguration {
     const config = configuration || this.configuration;
+    const secret = typeof config.secret === 'string' ? config.secret : undefined;
     return {
       ...config,
-      secret: Component.mask(config.secret),
+      secret: Component.mask(secret),
     };
   }
 }

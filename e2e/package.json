@@ -2,25 +2,45 @@
   "name": "drydock-e2e",
   "version": "1.0.0",
   "description": "drydock - e2e",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "main": "index.js",
   "scripts": {
     "format": "biome format --write .",
-    "lint:fix": "biome lint --write .",
-    "lint": "biome lint .",
+    "lint:fix": "biome check --fix .",
+    "lint": "biome check .",
     "cucumber": "cucumber-js **/*.feature",
+    "test:security": "node --test tests/security/*.test.js",
+    "test:playwright": "playwright test",
+    "test:playwright:ui": "playwright test --headed",
     "test:local": "dotenvx run -- ../scripts/run-e2e-tests.sh",
     "test:setup": "dotenvx run -- ../scripts/setup-test-containers.sh",
     "test:start-drydock": "dotenvx run -- ../scripts/start-drydock.sh",
-    "test:cleanup": "../scripts/cleanup-test-containers.sh"
+    "test:cleanup": "../scripts/cleanup-test-containers.sh",
+    "load:ci": "ARTILLERY_ENV=ci ../scripts/run-load-test.sh",
+    "load:behavior": "ARTILLERY_FILE=./test/test-behavior.yml ARTILLERY_ENV=behavior ../scripts/run-load-test.sh",
+    "load:stress": "ARTILLERY_ENV=stress ../scripts/run-load-test.sh"
   },
   "author": "CodesWhat",
   "repository": "CodesWhat/drydock",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "dependencies": {
-    "@cucumber/cucumber": "^12.6.0"
+    "@cucumber/cucumber": "12.7.0",
+    "socket.io-parser": "4.2.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.3.7",
-    "@dotenvx/dotenvx": "1.52.0"
+    "@dotenvx/dotenvx": "1.57.1",
+    "@playwright/test": "1.58.2",
+    "artillery": "2.0.30",
+    "lodash": "4.18.1"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.5",
+    "fast-xml-parser": "5.7.1",
+    "minimatch": "10.2.4",
+    "picomatch": "4.0.4",
+    "uuid": "14.0.0",
+    "yaml": "2.8.3"
   }
 }

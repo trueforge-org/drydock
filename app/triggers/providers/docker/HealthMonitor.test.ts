@@ -6,9 +6,9 @@ vi.mock('../../../store/audit.js', () => ({
   insertAudit: mockInsertAudit,
 }));
 
-var mockGetBackups = vi.hoisted(() => vi.fn());
+var mockGetBackupsByName = vi.hoisted(() => vi.fn());
 vi.mock('../../../store/backup.js', () => ({
-  getBackups: mockGetBackups,
+  getBackupsByName: mockGetBackupsByName,
 }));
 
 var mockAuditCounterInc = vi.hoisted(() => vi.fn());
@@ -136,7 +136,7 @@ describe('HealthMonitor', () => {
       }),
     };
 
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -186,7 +186,7 @@ describe('HealthMonitor', () => {
       State: { Running: true, Health: { Status: 'unhealthy' } },
     });
 
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -215,6 +215,8 @@ describe('HealthMonitor', () => {
       expect.objectContaining({
         action: 'auto-rollback',
         containerName: 'test-container',
+        fromVersion: '2.0.0',
+        toVersion: '1.0.0',
         status: 'success',
         details: 'Automatic rollback triggered by health check failure',
       }),
@@ -231,7 +233,7 @@ describe('HealthMonitor', () => {
       State: { Running: true, Health: { Status: 'unhealthy' } },
     });
 
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-latest',
         containerId: 'container-123',
@@ -397,7 +399,7 @@ describe('HealthMonitor', () => {
       State: { Running: true, Health: { Status: 'unhealthy' } },
     });
 
-    mockGetBackups.mockReturnValue([]);
+    mockGetBackupsByName.mockReturnValue([]);
 
     var abortController = startHealthMonitor({
       dockerApi,
@@ -426,7 +428,7 @@ describe('HealthMonitor', () => {
       State: { Running: true, Health: { Status: 'unhealthy' } },
     });
 
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -495,7 +497,7 @@ describe('HealthMonitor', () => {
       State: { Running: true, Health: { Status: 'unhealthy' } },
     });
 
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -540,7 +542,7 @@ describe('HealthMonitor', () => {
     });
 
     mockGetAuditCounter.mockReturnValue(undefined);
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -585,7 +587,7 @@ describe('HealthMonitor', () => {
     });
 
     mockGetAuditCounter.mockReturnValue(undefined);
-    mockGetBackups.mockReturnValue([
+    mockGetBackupsByName.mockReturnValue([
       {
         id: 'backup-1',
         containerId: 'container-123',
@@ -618,6 +620,61 @@ describe('HealthMonitor', () => {
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringContaining('Auto-rollback failed'));
     expect(mockAuditCounterInc).not.toHaveBeenCalled();
+
+    abortController.abort();
+  });
+
+  test('should prevent overlapping health checks when previous check is still in flight', async () => {
+    const log = createMockLog();
+    let inspectCallCount = 0;
+    let resolveInspect: (() => void) | undefined;
+
+    // First inspect hangs until we resolve it; second resolves immediately
+    const dockerApi = {
+      getContainer: vi.fn().mockReturnValue({
+        inspect: vi.fn().mockImplementation(() => {
+          inspectCallCount++;
+          if (inspectCallCount === 1) {
+            return new Promise((resolve) => {
+              resolveInspect = () =>
+                resolve({ State: { Running: true, Health: { Status: 'healthy' } } });
+            });
+          }
+          return Promise.resolve({ State: { Running: true, Health: { Status: 'healthy' } } });
+        }),
+      }),
+    };
+
+    var abortController = startHealthMonitor({
+      dockerApi,
+      containerId: 'container-123',
+      containerName: 'test-container',
+      backupImageTag: '1.0.0',
+      window: 300000,
+      interval: 5000,
+      triggerInstance: createMockTriggerInstance(),
+      log,
+    });
+
+    // First interval fires — inspect starts but hangs
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(inspectCallCount).toBe(1);
+
+    // Second interval fires while first is still in-flight — should be skipped
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(inspectCallCount).toBe(1);
+
+    // Third interval fires while first is still in-flight — should also be skipped
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(inspectCallCount).toBe(1);
+
+    // Resolve the first inspect
+    if (resolveInspect) resolveInspect();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Fourth interval fires — first is done, so this should proceed
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(inspectCallCount).toBe(2);
 
     abortController.abort();
   });

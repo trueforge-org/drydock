@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { mockApp, mockServerConfig } = vi.hoisted(() => {
+const { mockApp, mockServerConfig, mockHashToken, mockLog } = vi.hoisted(() => {
   const mockApp = {
     disable: vi.fn(),
     use: vi.fn(),
@@ -15,7 +14,16 @@ const { mockApp, mockServerConfig } = vi.hoisted(() => {
     tls: { enabled: false },
     cors: { enabled: false },
   };
-  return { mockApp, mockServerConfig };
+  const mockHashToken = vi.fn((token: string) =>
+    Buffer.from(token.padEnd(32, '_').slice(0, 32), 'utf8'),
+  );
+  const mockLog = {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  };
+  return { mockApp, mockServerConfig, mockHashToken, mockLog };
 });
 
 vi.mock('node:fs', () => ({
@@ -27,7 +35,7 @@ vi.mock('node:https', () => ({
 }));
 
 vi.mock('../../log/index.js', () => ({
-  default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
+  default: { child: () => mockLog },
 }));
 
 vi.mock('../../configuration/index.js', () => ({
@@ -48,6 +56,7 @@ vi.mock('./container.js', () => ({
   deleteContainer: vi.fn(),
 }));
 vi.mock('./watcher.js', () => ({
+  getWatcher: vi.fn(),
   getWatchers: vi.fn(),
   watchWatcher: vi.fn(),
   watchContainer: vi.fn(),
@@ -63,6 +72,9 @@ vi.mock('./event.js', () => ({
 }));
 vi.mock('../../log/buffer.js', () => ({
   getEntries: vi.fn().mockReturnValue([]),
+}));
+vi.mock('../../util/crypto.js', () => ({
+  hashToken: mockHashToken,
 }));
 
 import { authenticate, init } from './index.js';
@@ -93,6 +105,20 @@ describe('Agent API index', () => {
       const res = { status: vi.fn().mockReturnThis(), send: vi.fn() };
       const next = vi.fn();
       authenticate(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    test('should return 401 when secret header is not a string', async () => {
+      process.env.DD_AGENT_SECRET = 'correct-secret';
+      await init();
+
+      const req = { headers: { 'x-dd-agent-secret': ['correct-secret'] }, ip: '127.0.0.1' };
+      const res = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+      const next = vi.fn();
+
+      authenticate(req, res, next);
+
       expect(res.status).toHaveBeenCalledWith(401);
       expect(next).not.toHaveBeenCalled();
     });
@@ -138,6 +164,41 @@ describe('Agent API index', () => {
         throw new Error('ENOENT');
       });
       await expect(init()).rejects.toThrow('Error reading secret file');
+    });
+
+    test('should handle non-object secret file read errors', async () => {
+      process.env.DD_AGENT_SECRET_FILE = '/nonexistent';
+      const fs = await import('node:fs');
+      fs.default.readFileSync.mockImplementation(() => {
+        throw 'ENOENT';
+      });
+
+      await expect(init()).rejects.toThrow('Error reading secret file: undefined');
+      expect(mockLog.error).toHaveBeenCalledWith('Error reading secret file: ');
+    });
+
+    test('should stringify symbol secret file read messages in thrown error', async () => {
+      process.env.DD_AGENT_SECRET_FILE = '/nonexistent';
+      const fs = await import('node:fs');
+      fs.default.readFileSync.mockImplementation(() => {
+        throw { message: Symbol('boom') };
+      });
+
+      await expect(init()).rejects.toThrow('Error reading secret file: Symbol(boom)');
+      expect(mockLog.error).toHaveBeenCalledWith('Error reading secret file: Symbol(boom)');
+    });
+
+    test('should sanitize secret file read errors before logging', async () => {
+      process.env.DD_AGENT_SECRET_FILE = '/nonexistent';
+      const fs = await import('node:fs');
+      fs.default.readFileSync.mockImplementation(() => {
+        throw new Error('ENOENT\nforged-log-line');
+      });
+
+      await expect(init()).rejects.toThrow('Error reading secret file');
+      expect(mockLog.error).toHaveBeenCalledWith(
+        'Error reading secret file: ENOENTforged-log-line',
+      );
     });
 
     test('should enable cors when configured', async () => {
@@ -227,6 +288,25 @@ describe('Agent API index', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
+    test('authenticate should compare hashed secrets with hashToken utility', async () => {
+      process.env.DD_AGENT_SECRET = 'correct-secret';
+      await init();
+
+      const { hashToken } = await import('../../util/crypto.js');
+      (hashToken as any).mockClear();
+
+      const req = { headers: { 'x-dd-agent-secret': 'wrong-secret' }, ip: '127.0.0.1' };
+      const res = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+      const next = vi.fn();
+      authenticate(req, res, next);
+
+      expect(hashToken).toHaveBeenCalledTimes(2);
+      expect(hashToken).toHaveBeenCalledWith('wrong-secret');
+      expect(hashToken).toHaveBeenCalledWith('correct-secret');
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(next).not.toHaveBeenCalled();
+    });
+
     describe('/api/log/entries route handler', () => {
       let logEntriesHandler;
 
@@ -244,7 +324,9 @@ describe('Agent API index', () => {
 
       test('should return entries with empty query', async () => {
         const { getEntries } = await import('../../log/buffer.js');
-        getEntries.mockReturnValue([{ msg: 'test' }]);
+        getEntries.mockReturnValue([
+          { timestamp: 1000, level: 'info', component: 'drydock', msg: 'test' },
+        ]);
         const req = { query: {} };
         const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
         logEntriesHandler(req, res);
@@ -255,7 +337,15 @@ describe('Agent API index', () => {
           since: undefined,
         });
         expect(res.status).toHaveBeenCalledWith(200);
-        expect(res.json).toHaveBeenCalledWith([{ msg: 'test' }]);
+        expect(res.json).toHaveBeenCalledWith([
+          expect.objectContaining({
+            timestamp: 1000,
+            level: 'info',
+            component: 'drydock',
+            msg: 'test',
+            displayTimestamp: expect.stringMatching(/^\[\d{2}:\d{2}:\d{2}\.\d{3}\]$/u),
+          }),
+        ]);
       });
 
       test('should parse all query params', async () => {
@@ -271,6 +361,45 @@ describe('Agent API index', () => {
           since: 99999,
         });
         expect(res.status).toHaveBeenCalledWith(200);
+      });
+
+      test('should return 400 when level query parameter is invalid', async () => {
+        const { getEntries } = await import('../../log/buffer.js');
+        const req = { query: { level: 'verbose' } };
+        const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+        logEntriesHandler(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({ error: 'Invalid level query parameter' });
+        expect(getEntries).not.toHaveBeenCalled();
+      });
+
+      test('should return 400 when component query parameter is invalid', async () => {
+        const { getEntries } = await import('../../log/buffer.js');
+        const req = { query: { component: 'docker;rm -rf /' } };
+        const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+        logEntriesHandler(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({ error: 'Invalid component query parameter' });
+        expect(getEntries).not.toHaveBeenCalled();
+      });
+
+      test.each([
+        ['level', 123, 'Invalid level query parameter'],
+        ['component', ['docker'], 'Invalid component query parameter'],
+      ])('should return 400 when %s query parameter is not a string', async (param, value, error) => {
+        const { getEntries } = await import('../../log/buffer.js');
+        const req = { query: { [param]: value } };
+        const res = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+        logEntriesHandler(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({ error });
+        expect(getEntries).not.toHaveBeenCalled();
       });
     });
   });

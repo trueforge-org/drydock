@@ -1,10 +1,4 @@
-/**
- * Get registry component icon.
- * @returns {string}
- */
-function getRegistryIcon() {
-  return 'fas fa-database';
-}
+import { extractCollectionData } from '../utils/api';
 
 /**
  * Get registry provider icon (acr, ecr...).
@@ -12,34 +6,40 @@ function getRegistryIcon() {
  * @returns {string}
  */
 const REGISTRY_PROVIDER_ICONS = {
-  acr: 'fab fa-microsoft',
-  alicr: 'fas fa-cloud',
-  artifactory: 'fas fa-frog',
-  custom: 'fas fa-cubes',
-  ecr: 'fab fa-aws',
-  forgejo: 'fas fa-code-branch',
-  gar: 'fab fa-google',
-  gcr: 'fab fa-google',
-  ghcr: 'fab fa-github',
-  gitea: 'fas fa-code-branch',
-  gitlab: 'fab fa-gitlab',
-  harbor: 'fas fa-anchor',
-  hub: 'fab fa-docker',
-  ibmcr: 'fas fa-cloud',
-  nexus: 'fas fa-box',
-  ocir: 'fas fa-cloud',
-  quay: 'fab fa-redhat',
-  lscr: 'fab fa-linux',
-  codeberg: 'fas fa-mountain',
-  dhi: 'fab fa-docker',
-  docr: 'fab fa-digital-ocean',
+  acr: 'sh-microsoft',
+  alicr: 'sh-alibaba-cloud',
+  artifactory: 'sh-jfrog-artifactory',
+  custom: 'sh-docker',
+  ecr: 'sh-amazon-web-services',
+  forgejo: 'sh-forgejo',
+  gar: 'sh-google',
+  gcr: 'sh-google',
+  ghcr: 'sh-github',
+  gitea: 'sh-gitea',
+  gitlab: 'sh-gitlab',
+  harbor: 'sh-harbor',
+  hub: 'sh-docker',
+  ibmcr: 'sh-ibm',
+  nexus: 'sh-sonatype-nexus-repository',
+  ocir: 'sh-oracle-cloud',
+  quay: 'sh-quay',
+  lscr: 'sh-linux',
+  codeberg: 'sh-codeberg',
+  dhi: 'sh-docker',
+  docr: 'sh-digitalocean',
 };
 
-function getRegistryProviderName(provider) {
+interface RegistryDetailPathOptions {
+  type: string;
+  name: string;
+  agent?: string;
+}
+
+function getRegistryProviderName(provider: string) {
   return `${provider || ''}`.split('.')[0];
 }
 
-function getRegistryDisplayName(registryName) {
+function getRegistryDisplayName(registryName: string) {
   const [provider, name] = `${registryName || ''}`.split('.');
   if (provider === 'custom' && name) {
     return name;
@@ -47,9 +47,9 @@ function getRegistryDisplayName(registryName) {
   return provider || '';
 }
 
-function getRegistryProviderIcon(provider) {
+function getRegistryProviderIcon(provider: string) {
   const providerName = getRegistryProviderName(provider);
-  return REGISTRY_PROVIDER_ICONS[providerName] || 'fas fa-cube';
+  return REGISTRY_PROVIDER_ICONS[providerName] || 'sh-docker';
 }
 
 /**
@@ -82,24 +82,48 @@ const REGISTRY_PROVIDER_COLORS = {
   trueforge: '#6B7280',
 };
 
-function getRegistryProviderColor(provider) {
+function getRegistryProviderColor(provider: string) {
   return REGISTRY_PROVIDER_COLORS[getRegistryProviderName(provider)] || '#6B7280';
 }
 
 /**
  * get all registries.
- * @returns {Promise<any>}
+ * @returns {Promise<unknown>}
  */
 async function getAllRegistries() {
-  const response = await fetch('/api/registries', { credentials: 'include' });
+  const response = await fetch('/api/v1/registries', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to get registries: ${response.statusText}`);
+  }
+  const payload = await response.json();
+  return extractCollectionData(payload);
+}
+
+function buildRegistryDetailPath({ type, name, agent }: RegistryDetailPathOptions) {
+  const segments = ['/api/v1/registries'];
+  segments.push(encodeURIComponent(type), encodeURIComponent(name));
+  if (agent) {
+    segments.push(encodeURIComponent(agent));
+  }
+  return segments.join('/');
+}
+
+async function getRegistry({ type, name, agent }: RegistryDetailPathOptions) {
+  const response = await fetch(buildRegistryDetailPath({ type, name, agent }), {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get registry: ${response.statusText}`);
+  }
   return response.json();
 }
 
 export {
+  getAllRegistries,
+  getRegistry,
   getRegistryIcon,
   getRegistryProviderName,
   getRegistryDisplayName,
   getRegistryProviderIcon,
   getRegistryProviderColor,
-  getAllRegistries,
 };

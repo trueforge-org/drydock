@@ -1,9 +1,21 @@
-// @ts-nocheck
 vi.mock('../log/index.js', () => ({
   default: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) },
 }));
 
 import * as backup from './backup.js';
+
+function getPathValue(document: Record<string, any>, path: string) {
+  return path.split('.').reduce((value, key) => value?.[key], document);
+}
+
+function matchesQuery(document: Record<string, any>, query: Record<string, any> | undefined) {
+  if (!query || Object.keys(query).length === 0) {
+    return true;
+  }
+  return Object.entries(query).every(
+    ([path, expected]) => getPathValue(document, path) === expected,
+  );
+}
 
 function createDb() {
   const collections = {};
@@ -16,7 +28,9 @@ function createDb() {
           doc.$loki = docs.length;
           docs.push(doc);
         },
-        find: () => [...docs],
+        find: (query = undefined) => docs.filter((doc) => matchesQuery(doc, query)),
+        findOne: (query = undefined) => docs.find((doc) => matchesQuery(doc, query)) ?? null,
+        ensureIndex: vi.fn(),
         remove: (doc) => {
           const idx = docs.indexOf(doc);
           if (idx >= 0) docs.splice(idx, 1);
@@ -39,7 +53,9 @@ describe('Backup Store', () => {
       addCollection: vi.fn(() => ({ insert: vi.fn(), find: vi.fn() })),
     };
     backup.createCollections(db);
-    expect(db.addCollection).toHaveBeenCalledWith('backups');
+    expect(db.addCollection).toHaveBeenCalledWith('backups', {
+      indices: ['data.containerName', 'data.id'],
+    });
   });
 
   test('createCollections should not create collection when already exists', () => {
@@ -82,7 +98,7 @@ describe('Backup Store', () => {
     expect(result.id).toBe('custom-id');
   });
 
-  test('getBackups should return backups for a specific container sorted by timestamp desc', () => {
+  test('getBackupsByName should return backups for a specific container sorted by timestamp desc', () => {
     backup.insertBackup({
       containerId: 'c1',
       containerName: 'nginx',
@@ -108,14 +124,14 @@ describe('Backup Store', () => {
       timestamp: '2024-03-01T00:00:00.000Z',
     });
 
-    const result = backup.getBackups('c1');
+    const result = backup.getBackupsByName('nginx');
     expect(result).toHaveLength(2);
     expect(result[0].imageTag).toBe('1.23');
     expect(result[1].imageTag).toBe('1.22');
   });
 
-  test('getBackups should return empty array for unknown container', () => {
-    const result = backup.getBackups('unknown');
+  test('getBackupsByName should return empty array for unknown container', () => {
+    const result = backup.getBackupsByName('unknown');
     expect(result).toEqual([]);
   });
 
@@ -185,6 +201,44 @@ describe('Backup Store', () => {
     expect(deleted).toBe(false);
   });
 
+  test('getBackup/deleteBackup should fall back to find() when findOne is unavailable', () => {
+    const docs = [] as Array<{ data: Record<string, unknown> }>;
+    const db = {
+      getCollection: vi.fn(() => null),
+      addCollection: vi.fn(() => ({
+        ensureIndex: vi.fn(),
+        insert: (doc) => {
+          docs.push(doc);
+        },
+        find: (query = {}) =>
+          docs.filter((doc) =>
+            Object.entries(query).every(([key, expected]) => {
+              const [, path] = key.split('.');
+              return (doc.data as Record<string, unknown>)[path] === expected;
+            }),
+          ),
+        remove: (doc) => {
+          const idx = docs.indexOf(doc);
+          if (idx >= 0) docs.splice(idx, 1);
+        },
+      })),
+    };
+
+    backup.createCollections(db as any);
+    backup.insertBackup({
+      id: 'legacy-find-path',
+      containerId: 'c1',
+      containerName: 'nginx',
+      imageName: 'library/nginx',
+      imageTag: '1.24',
+      triggerName: 'docker.default',
+    });
+
+    expect(backup.getBackup('legacy-find-path')?.id).toBe('legacy-find-path');
+    expect(backup.deleteBackup('legacy-find-path')).toBe(true);
+    expect(backup.getBackup('legacy-find-path')).toBeUndefined();
+  });
+
   test('pruneOldBackups should keep only the N most recent backups', () => {
     backup.insertBackup({
       containerId: 'c1',
@@ -219,10 +273,10 @@ describe('Backup Store', () => {
       timestamp: '2024-09-01T00:00:00.000Z',
     });
 
-    const pruned = backup.pruneOldBackups('c1', 2);
+    const pruned = backup.pruneOldBackups('nginx', 2);
     expect(pruned).toBe(2);
 
-    const remaining = backup.getBackups('c1');
+    const remaining = backup.getBackupsByName('nginx');
     expect(remaining).toHaveLength(2);
     expect(remaining[0].imageTag).toBe('1.23');
     expect(remaining[1].imageTag).toBe('1.22');
@@ -246,10 +300,34 @@ describe('Backup Store', () => {
       timestamp: '2024-01-01T00:00:00.000Z',
     });
 
-    backup.pruneOldBackups('c1', 0);
+    backup.pruneOldBackups('nginx', 0);
 
-    expect(backup.getBackups('c1')).toHaveLength(0);
-    expect(backup.getBackups('c2')).toHaveLength(1);
+    expect(backup.getBackupsByName('nginx')).toHaveLength(0);
+    expect(backup.getBackupsByName('redis')).toHaveLength(1);
+  });
+
+  test('pruneOldBackups should not remove backups when maxCount is undefined', () => {
+    backup.insertBackup({
+      containerId: 'c1',
+      containerName: 'nginx',
+      imageName: 'library/nginx',
+      imageTag: '1.20',
+      triggerName: 'docker.default',
+      timestamp: '2024-01-01T00:00:00.000Z',
+    });
+    backup.insertBackup({
+      containerId: 'c1',
+      containerName: 'nginx',
+      imageName: 'library/nginx',
+      imageTag: '1.21',
+      triggerName: 'docker.default',
+      timestamp: '2024-03-01T00:00:00.000Z',
+    });
+
+    const pruned = backup.pruneOldBackups('nginx', undefined as any);
+
+    expect(pruned).toBe(0);
+    expect(backup.getBackupsByName('nginx')).toHaveLength(2);
   });
 
   test('pruneOldBackups should return 0 when collection not initialized', async () => {
@@ -259,10 +337,10 @@ describe('Backup Store', () => {
     expect(count).toBe(0);
   });
 
-  test('getBackups should return empty when collection not initialized', async () => {
+  test('getBackupsByName should return empty when collection not initialized', async () => {
     vi.resetModules();
     const freshBackup = await import('./backup.js');
-    const result = freshBackup.getBackups('c1');
+    const result = freshBackup.getBackupsByName('nginx');
     expect(result).toEqual([]);
   });
 

@@ -1,23 +1,76 @@
 import { createApp } from 'vue';
 import App from './App.vue';
-import { useEventBus } from './composables/useEventBus';
-import { registerGlobalProperties } from './filters';
-import { createVuetify } from './plugins/vuetify';
+import { disableIconifyApi, registerIcons } from './boot/icons';
+import AppButton from './components/AppButton.vue';
+import AppIcon from './components/AppIcon.vue';
+import AppToast from './components/AppToast.vue';
+import ConfirmDialog from './components/ConfirmDialog.vue';
+import ContainerIcon from './components/ContainerIcon.vue';
+import CopyableTag from './components/CopyableTag.vue';
+import DataCardGrid from './components/DataCardGrid.vue';
+import DataFilterBar from './components/DataFilterBar.vue';
+import DataListAccordion from './components/DataListAccordion.vue';
+import DataTable from './components/DataTable.vue';
+import DataViewLayout from './components/DataViewLayout.vue';
+import DetailPanel from './components/DetailPanel.vue';
+import EmptyState from './components/EmptyState.vue';
+import ThemeToggle from './components/ThemeToggle.vue';
+import ToggleSwitch from './components/ToggleSwitch.vue';
+import { loadServerFeatures } from './composables/useServerFeatures';
+import { tooltip as Tooltip } from './directives/tooltip';
+import AppLayout from './layouts/AppLayout.vue';
+import { applyFontSize } from './preferences/font-size';
+import { applyRadius } from './preferences/radius';
+import { preferences } from './preferences/store';
+import { isValidFontSize } from './preferences/validators';
 import router from './router';
-import './registerServiceWorker';
+import { getSettings } from './services/settings';
+import './theme/tokens.css';
+import './style.css';
+
+// Pre-register only the icons we use so they render offline (no CDN fetch)
+registerIcons();
+
+// Restore persisted appearance settings on boot so they apply before first paint
+if (isValidFontSize(preferences.appearance.fontSize)) {
+  applyFontSize(preferences.appearance.fontSize);
+}
+if (preferences.appearance.radius && preferences.appearance.radius !== 'sharp') {
+  applyRadius(preferences.appearance.radius);
+}
+
+// Disable Iconify CDN fetching when internetless mode is active.
+// Runs async — bundled icons are already registered above, so the UI renders
+// immediately while this check completes in the background.
+getSettings()
+  .then((s) => {
+    if (s.internetlessMode) disableIconifyApi();
+  })
+  .catch(() => {
+    // Settings unavailable (e.g. backend not ready yet) — leave CDN enabled;
+    // the CSP will block fetches anyway if the network is unreachable.
+  });
+
+// Load server feature flags once during bootstrap so UI action gating is ready early.
+void loadServerFeatures();
 
 const app = createApp(App);
-
-// Register global properties (replacing filters)
-registerGlobalProperties(app);
-
-// Global event bus
-const eventBus = useEventBus();
-app.config.globalProperties.$eventBus = eventBus;
-app.provide('eventBus', eventBus);
-
-// Use plugins
-app.use(createVuetify());
+app.component('AppIcon', AppIcon);
+app.component('AppButton', AppButton);
+app.component('AppLayout', AppLayout);
+app.component('ContainerIcon', ContainerIcon);
+app.component('ThemeToggle', ThemeToggle);
+app.component('ToggleSwitch', ToggleSwitch);
+app.component('DataFilterBar', DataFilterBar);
+app.component('DataTable', DataTable);
+app.component('DataCardGrid', DataCardGrid);
+app.component('DataListAccordion', DataListAccordion);
+app.component('DataViewLayout', DataViewLayout);
+app.component('DetailPanel', DetailPanel);
+app.component('EmptyState', EmptyState);
+app.component('AppToast', AppToast);
+app.component('ConfirmDialog', ConfirmDialog);
+app.component('CopyableTag', CopyableTag);
+app.directive('tooltip', Tooltip);
 app.use(router);
-
 app.mount('#app');

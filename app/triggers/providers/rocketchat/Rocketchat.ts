@@ -1,11 +1,37 @@
-// @ts-nocheck
 import axios from 'axios';
-import Trigger from '../Trigger.js';
+import { getOutboundHttpTimeoutMs } from '../../../configuration/runtime-defaults.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+interface RocketchatMessageBody {
+  channel: string;
+  text: string;
+  alias?: string;
+  avatar?: string;
+  emoji?: string;
+  parseUrls?: boolean;
+}
+
+interface RocketchatConfiguration extends TriggerConfiguration {
+  url: string;
+  user: {
+    id: string;
+  };
+  auth: {
+    token: string;
+  };
+  channel: string;
+  alias?: string;
+  avatar?: string;
+  emoji?: string;
+  parse?: {
+    urls?: boolean;
+  };
+}
 
 /**
  * Rocket Chat Trigger implementation
  */
-class Rocketchat extends Trigger {
+class Rocketchat extends Trigger<RocketchatConfiguration> {
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -78,9 +104,9 @@ class Rocketchat extends Trigger {
    * @returns {Object} The message body
    */
   buildMessageBody(text) {
-    const body = {
+    const body: RocketchatMessageBody = {
       channel: this.configuration.channel,
-      text: text,
+      text,
     };
     if (this.configuration.alias) {
       body.alias = this.configuration.alias;
@@ -111,6 +137,7 @@ class Rocketchat extends Trigger {
         'content-type': 'application/json',
         accept: 'application/json',
       },
+      timeout: getOutboundHttpTimeoutMs(),
     };
   }
 }

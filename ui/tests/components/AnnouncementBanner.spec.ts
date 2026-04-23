@@ -1,0 +1,130 @@
+import { mount } from '@vue/test-utils';
+import AnnouncementBanner from '@/components/AnnouncementBanner.vue';
+
+const stubs = {
+  AppIcon: { template: '<span />', props: ['name', 'size'] },
+};
+
+function factory(props: Record<string, unknown> = {}, attrs: Record<string, string> = {}) {
+  return mount(AnnouncementBanner, {
+    props: { title: 'Maintenance Notice', ...props },
+    attrs,
+    slots: { default: 'Dashboard updates may be delayed.' },
+    global: { stubs },
+  });
+}
+
+describe('AnnouncementBanner', () => {
+  it('renders title and slot content', () => {
+    const wrapper = factory();
+
+    expect(wrapper.text()).toContain('Maintenance Notice');
+    expect(wrapper.text()).toContain('Dashboard updates may be delayed.');
+  });
+
+  it('uses warning icon by default', () => {
+    const wrapper = factory();
+    const icon = wrapper.findComponent(stubs.AppIcon);
+
+    expect(icon.props('name')).toBe('warning');
+    expect(icon.props('size')).toBe(14);
+  });
+
+  it('uses custom icon when provided', () => {
+    const wrapper = factory({ icon: 'info' });
+    const icon = wrapper.findComponent(stubs.AppIcon);
+
+    expect(icon.props('name')).toBe('info');
+  });
+
+  it('uses error styling when tone is error', () => {
+    const wrapper = factory({ tone: 'error' });
+    expect(wrapper.attributes('style')).toContain('var(--dd-danger)');
+    expect(wrapper.attributes('style')).not.toContain('var(--dd-warning)');
+  });
+
+  it('renders only the session dismiss button by default', () => {
+    const wrapper = factory();
+    const buttons = wrapper.findAll('button');
+
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].text()).toBe('Dismiss');
+  });
+
+  it('renders a link button when linkHref is provided', () => {
+    const wrapper = factory({
+      linkHref: 'https://example.com/docs',
+      linkLabel: 'View docs',
+    });
+    const link = wrapper.find('a[href="https://example.com/docs"]');
+
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toContain('View docs');
+    expect(link.attributes('target')).toBe('_blank');
+  });
+
+  it('defaults link label to "View migration guide" when linkHref is provided without linkLabel', () => {
+    const wrapper = factory({ linkHref: 'https://example.com/docs' });
+    const link = wrapper.find('a[href="https://example.com/docs"]');
+
+    expect(link.exists()).toBe(true);
+    expect(link.text()).toContain('View migration guide');
+  });
+
+  it('shows permanent dismiss checkbox when permanentDismissLabel is provided', () => {
+    const wrapper = factory({ permanentDismissLabel: "Don't show again" });
+    const label = wrapper.find('[data-testid="announcement-dismiss-forever"]');
+
+    expect(label.exists()).toBe(false);
+
+    const wrapper2 = factory(
+      { permanentDismissLabel: "Don't show again" },
+      { 'data-testid': 'announcement' },
+    );
+    const checkbox = wrapper2.find(
+      '[data-testid="announcement-dismiss-forever"] input[type="checkbox"]',
+    );
+
+    expect(checkbox.exists()).toBe(true);
+    expect(wrapper2.text()).toContain("Don't show again");
+  });
+
+  it('emits dismiss when dismiss button is clicked without checkbox', async () => {
+    const wrapper = factory(
+      { permanentDismissLabel: "Don't show again" },
+      { 'data-testid': 'announcement' },
+    );
+
+    await wrapper.get('[data-testid="announcement-dismiss-session"]').trigger('click');
+
+    expect(wrapper.emitted('dismiss')).toHaveLength(1);
+    expect(wrapper.emitted('dismiss-permanent')).toBeUndefined();
+  });
+
+  it('emits dismiss-permanent when dismiss is clicked with checkbox checked', async () => {
+    const wrapper = factory(
+      { permanentDismissLabel: "Don't show again" },
+      { 'data-testid': 'announcement' },
+    );
+
+    const checkbox = wrapper.find(
+      '[data-testid="announcement-dismiss-forever"] input[type="checkbox"]',
+    );
+    await checkbox.setValue(true);
+    await wrapper.get('[data-testid="announcement-dismiss-session"]').trigger('click');
+
+    expect(wrapper.emitted('dismiss-permanent')).toHaveLength(1);
+    expect(wrapper.emitted('dismiss')).toBeUndefined();
+  });
+
+  it('adds action data-testids from the provided data-testid attr', () => {
+    const wrapper = factory(
+      { permanentDismissLabel: "Don't show again", linkHref: 'https://example.com' },
+      { 'data-testid': 'announcement' },
+    );
+
+    expect(wrapper.find('[data-testid="announcement-dismiss-session"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="announcement-dismiss-forever"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="announcement-link"]').exists()).toBe(true);
+  });
+});

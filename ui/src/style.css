@@ -1,0 +1,786 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-mono/300.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+@import "@fontsource/ibm-plex-mono/700.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+html,
+body {
+  overflow: hidden;
+  height: 100%;
+  margin: 0;
+}
+
+/* Drydock design tokens */
+:root {
+  --dd-radius: 3px; /* Global border-radius — cards, buttons */
+  --dd-radius-sm: 2px; /* Small elements (badges, chips) */
+  --dd-radius-lg: 4px; /* Large panels (modals, detail panels) */
+  --dd-font-size: 1; /* Font size scale factor (1 = 100% = default) */
+  --dd-space-4: 4px;
+  --dd-space-6: 6px;
+  --dd-space-8: 8px;
+  --dd-space-12: 12px;
+  --dd-letter-spacing-brand: 0.15em;
+  --dd-letter-spacing-section: 0.12em;
+  --dd-letter-spacing-badge: 0.02em;
+  --dd-opacity-dim: 0.75;
+  --dd-opacity-handle-idle: 0.8;
+  --dd-motion-hover-lift-y: -2px;
+  --dd-motion-panel-enter-x: 20px;
+  --dd-motion-menu-enter-y: -4px;
+  --dd-motion-bounce-y: -8px;
+  --dd-motion-card-enter-y: 8px;
+  --dd-layout-sidebar-collapsed-width: 56px;
+  --dd-layout-sidebar-expanded-width: 240px;
+  --dd-layout-filter-max-width: 240px;
+  --dd-layout-main-viewport-offset: 96px;
+  --dd-layout-panel-width-sm: 420px;
+  --dd-layout-panel-width-md: 560px;
+  --dd-layout-panel-width-lg: 720px;
+  --dd-layout-dialog-max-width: 420px;
+  --dd-layout-dialog-min-width: 340px;
+  --dd-layout-about-max-width: 340px;
+  --dd-layout-search-max-width: 560px;
+  --dd-layout-overlay-max-width: 320px;
+  --drydock-font: "IBM Plex Mono", monospace;
+  background-color: var(--dd-bg);
+  color: var(--dd-text);
+}
+
+html {
+  font-size: calc(16px * var(--dd-font-size));
+}
+
+/* Font scale presets (80% to 130%, 5% steps) */
+html.dd-font-size-80 {
+  --dd-font-size: 0.8;
+}
+html.dd-font-size-85 {
+  --dd-font-size: 0.85;
+}
+html.dd-font-size-90 {
+  --dd-font-size: 0.9;
+}
+html.dd-font-size-95 {
+  --dd-font-size: 0.95;
+}
+html.dd-font-size-100 {
+  --dd-font-size: 1;
+}
+html.dd-font-size-105 {
+  --dd-font-size: 1.05;
+}
+html.dd-font-size-110 {
+  --dd-font-size: 1.1;
+}
+html.dd-font-size-115 {
+  --dd-font-size: 1.15;
+}
+html.dd-font-size-120 {
+  --dd-font-size: 1.2;
+}
+html.dd-font-size-125 {
+  --dd-font-size: 1.25;
+}
+html.dd-font-size-130 {
+  --dd-font-size: 1.3;
+}
+
+/* Radius presets */
+html.dd-radius-none {
+  --dd-radius: 0px;
+  --dd-radius-sm: 0px;
+  --dd-radius-lg: 0px;
+}
+html.dd-radius-sharp {
+  --dd-radius: 3px;
+  --dd-radius-sm: 2px;
+  --dd-radius-lg: 4px;
+}
+html.dd-radius-modern {
+  --dd-radius: 8px;
+  --dd-radius-sm: 4px;
+  --dd-radius-lg: 12px;
+}
+html.dd-radius-soft {
+  --dd-radius: 12px;
+  --dd-radius-sm: 6px;
+  --dd-radius-lg: 16px;
+}
+html.dd-radius-round {
+  --dd-radius: 16px;
+  --dd-radius-sm: 8px;
+  --dd-radius-lg: 24px;
+}
+
+/* Font family presets */
+html.dd-font-ibm-plex-mono {
+  --drydock-font: "IBM Plex Mono", monospace;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+html.dd-font-jetbrains-mono {
+  --drydock-font: "JetBrains Mono", monospace;
+  --font-mono: "JetBrains Mono", monospace;
+}
+html.dd-font-source-code-pro {
+  --drydock-font: "Source Code Pro", monospace;
+  --font-mono: "Source Code Pro", monospace;
+}
+html.dd-font-inconsolata {
+  --drydock-font: "Inconsolata", monospace;
+  --font-mono: "Inconsolata", monospace;
+}
+html.dd-font-commit-mono {
+  --drydock-font: "Commit Mono", monospace;
+  --font-mono: "Commit Mono", monospace;
+}
+html.dd-font-comic-mono {
+  --drydock-font: "Comic Mono", monospace;
+  --font-mono: "Comic Mono", monospace;
+}
+
+@theme {
+  --color-drydock-primary: #00355e;
+  --color-drydock-secondary: var(--dd-primary);
+  --color-drydock-accent: var(--dd-success);
+  --font-mono: var(--drydock-font, "IBM Plex Mono", monospace);
+  --text-5xs: 0.4375rem; /* 7px */
+  --text-4xs: 0.5rem; /* 8px */
+  --text-3xs: 0.5625rem; /* 9px */
+  --text-2xs: 0.625rem; /* 10px */
+  --text-2xs-plus: 0.6875rem; /* 11px */
+  --text-xs-plus: 0.8125rem; /* 13px */
+  --text-sm-plus: 0.9375rem; /* 15px */
+  --z-popover: 60;
+  --z-overlay: 100;
+  --z-modal: 200;
+  --dd-duration-fast: 0.15s;
+  --dd-duration-standard: 0.25s;
+  --dd-duration-enter: 0.3s;
+  --dd-duration-emphasis: 0.35s;
+  --dd-duration-slow: 0.6s;
+  --dd-duration-spinner-fast: 0.8s;
+  --dd-duration-spinner: 1.5s;
+  --dd-duration-pulse: 2s;
+  --dd-duration-spinner-slow: 2.5s;
+  --dd-duration-decorative: 6s;
+  --dd-duration-short: 0.2s;
+  --dd-duration-delay: 0.05s;
+}
+
+/* Utility: apply global radius token via Tailwind-style class */
+.dd-rounded {
+  border-radius: var(--dd-radius);
+}
+.dd-rounded-sm {
+  border-radius: var(--dd-radius-sm);
+}
+.dd-rounded-lg {
+  border-radius: var(--dd-radius-lg);
+}
+
+/* ─── Token-based theme utilities ─── */
+/* Background */
+.dd-bg {
+  background-color: var(--dd-bg);
+}
+.dd-bg-sidebar {
+  background-color: var(--dd-bg-sidebar);
+}
+.dd-bg-card {
+  background-color: var(--dd-bg-card);
+}
+.dd-bg-elevated {
+  background-color: var(--dd-bg-elevated);
+}
+.dd-bg-button {
+  background-color: var(--dd-border-strong);
+}
+.dd-bg-inset {
+  background-color: var(--dd-bg-inset);
+}
+.dd-bg-code {
+  background-color: var(--dd-bg-code);
+}
+
+/* Text */
+.dd-text {
+  color: var(--dd-text);
+}
+.dd-text-secondary {
+  color: var(--dd-text-secondary);
+}
+.dd-text-muted {
+  color: var(--dd-text-muted);
+}
+
+/* ─── Z-index utilities ───
+   Tailwind v4's @theme doesn't map --z-* variables to z-* utilities
+   (z-index isn't in the theme namespace), so these must be declared
+   as explicit @utility rules that pull from the same tokens. */
+@utility z-popover {
+  z-index: var(--z-popover);
+}
+@utility z-overlay {
+  z-index: var(--z-overlay);
+}
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+
+/* ─── Table row "updating" state ───
+   Marker class put on a <tr> by DataTable's row-class callback. Each
+   direct grandchild of every <td> is dimmed to 50% so the row reads
+   as inactive, while the centered "Updating / Queued" badge — marked
+   `.dd-row-overlay` — stays at full opacity.
+
+   `position: relative` alone on <tr> does not reliably establish a
+   containing block for absolutely-positioned descendants (the CSS
+   spec is undefined for table-internal elements and most browsers
+   let the overlay escape up the ancestor chain, producing a
+   badge floating near viewport-center instead of on the row).
+   Adding `transform: translateZ(0)` forces the <tr> to create a
+   stacking context and containing block, pinning the `.dd-row-overlay`
+   to the row's bounding box so it centers horizontally and vertically
+   on the row like the card view. */
+tr.dd-row-updating {
+  position: relative;
+  transform: translateZ(0);
+}
+tr.dd-row-updating > td > *:not(.dd-row-overlay) {
+  opacity: 0.3;
+  transition: opacity var(--dd-duration-enter);
+}
+
+/* ─── Semantic typography ─── */
+@utility dd-text-body {
+  font-size: var(--text-2xs-plus); /* 11px — primary body text */
+}
+@utility dd-text-body-sm {
+  font-size: var(--text-2xs); /* 10px — secondary/compact body */
+}
+@utility dd-text-caption {
+  font-size: var(--text-2xs); /* 10px */
+  color: var(--dd-text-muted);
+}
+@utility dd-text-label {
+  font-size: var(--text-2xs); /* 10px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+@utility dd-text-badge {
+  font-size: var(--text-3xs); /* 9px */
+  font-weight: 700;
+  text-transform: uppercase;
+}
+@utility dd-text-badge-lg {
+  font-size: var(--text-2xs); /* 10px */
+  font-weight: 600;
+}
+@utility dd-text-value {
+  font-size: var(--text-xs); /* 12px */
+  font-family: var(--font-mono);
+}
+@utility dd-text-value-sm {
+  font-size: var(--text-2xs-plus); /* 11px */
+  font-family: var(--font-mono);
+}
+@utility dd-text-code {
+  font-size: var(--text-2xs); /* 10px */
+  font-family: var(--font-mono);
+}
+@utility dd-text-heading-section {
+  font-size: var(--text-sm); /* 14px */
+  font-weight: 600;
+}
+@utility dd-text-heading-panel {
+  font-size: var(--text-sm); /* 14px */
+  font-weight: 700;
+}
+@utility dd-text-heading-page {
+  font-size: var(--text-base); /* 16px */
+  font-weight: 700;
+}
+@utility dd-text-nav {
+  font-size: var(--text-xs); /* 12px */
+  font-weight: 500;
+}
+@utility dd-text-tab {
+  font-size: var(--text-2xs-plus); /* 11px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+@utility dd-text-column {
+  font-size: var(--text-2xs); /* 10px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Border */
+.dd-border {
+  border-color: var(--dd-border);
+}
+.dd-border-strong {
+  border-color: var(--dd-border-strong);
+}
+
+/* Semantic backgrounds */
+.dd-bg-success {
+  background-color: var(--dd-success);
+}
+.dd-bg-danger {
+  background-color: var(--dd-danger);
+}
+.dd-bg-warning {
+  background-color: var(--dd-warning);
+}
+.dd-bg-caution {
+  background-color: var(--dd-caution);
+}
+.dd-bg-info {
+  background-color: var(--dd-info);
+}
+.dd-bg-primary {
+  background-color: var(--dd-primary);
+}
+.dd-bg-alt {
+  background-color: var(--dd-alt);
+}
+.dd-bg-neutral {
+  background-color: var(--dd-neutral);
+}
+
+/* Semantic muted backgrounds */
+.dd-bg-success-muted {
+  background-color: var(--dd-success-muted);
+}
+.dd-bg-danger-muted {
+  background-color: var(--dd-danger-muted);
+}
+.dd-bg-warning-muted {
+  background-color: var(--dd-warning-muted);
+}
+.dd-bg-caution-muted {
+  background-color: var(--dd-caution-muted);
+}
+.dd-bg-info-muted {
+  background-color: var(--dd-info-muted);
+}
+.dd-bg-primary-muted {
+  background-color: var(--dd-primary-muted);
+}
+.dd-bg-alt-muted {
+  background-color: var(--dd-alt-muted);
+}
+.dd-bg-neutral-muted {
+  background-color: var(--dd-neutral-muted);
+}
+
+/* Semantic text */
+.dd-text-success {
+  color: var(--dd-success);
+}
+.dd-text-danger {
+  color: var(--dd-danger);
+}
+.dd-text-warning {
+  color: var(--dd-warning);
+}
+.dd-text-caution {
+  color: var(--dd-caution);
+}
+.dd-text-info {
+  color: var(--dd-info);
+}
+.dd-text-primary {
+  color: var(--dd-primary);
+}
+.dd-text-alt {
+  color: var(--dd-alt);
+}
+.dd-text-neutral {
+  color: var(--dd-neutral);
+}
+
+/* Semantic borders */
+.dd-border-success {
+  border-color: var(--dd-success);
+}
+.dd-border-danger {
+  border-color: var(--dd-danger);
+}
+.dd-border-warning {
+  border-color: var(--dd-warning);
+}
+.dd-border-caution {
+  border-color: var(--dd-caution);
+}
+.dd-border-info {
+  border-color: var(--dd-info);
+}
+.dd-border-primary {
+  border-color: var(--dd-primary);
+}
+.dd-border-alt {
+  border-color: var(--dd-alt);
+}
+.dd-border-neutral {
+  border-color: var(--dd-neutral);
+}
+
+/* Hover variants */
+.hover\:dd-bg-hover:hover {
+  background-color: var(--dd-hover-overlay);
+}
+.hover\:dd-bg-elevated:hover {
+  background-color: var(--dd-bg-elevated);
+}
+.hover\:dd-bg-card:hover {
+  background-color: var(--dd-bg-card);
+}
+.hover\:dd-border-primary:hover {
+  border-color: var(--dd-primary);
+}
+.hover\:dd-border-strong:hover {
+  border-color: var(--dd-border-strong);
+}
+.hover\:dd-text:hover {
+  color: var(--dd-text);
+}
+.hover\:dd-text-danger:hover {
+  color: var(--dd-danger);
+}
+.hover\:dd-text-success:hover {
+  color: var(--dd-success);
+}
+.hover\:dd-text-warning:hover {
+  color: var(--dd-warning);
+}
+.hover\:dd-text-primary:hover {
+  color: var(--dd-primary);
+}
+.hover\:dd-text-caution:hover {
+  color: var(--dd-caution);
+}
+.hover\:dd-text-info:hover {
+  color: var(--dd-info);
+}
+.dd-placeholder::placeholder {
+  color: var(--dd-text-muted);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+button:not(:disabled) {
+  cursor: pointer;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  font-family: var(--drydock-font, "IBM Plex Mono", monospace);
+}
+
+body.dd-col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Tooltip directive — shared singleton appended to body */
+.dd-tooltip-popup {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.1;
+  padding: var(--dd-space-4) var(--dd-space-8);
+  border-radius: var(--dd-radius-sm);
+  border: 1px solid var(--dd-border-strong);
+  box-shadow: var(--dd-shadow-tooltip);
+  background: var(--dd-bg-card);
+  color: var(--dd-text);
+  transition: opacity var(--dd-duration-fast) ease;
+}
+.dd-tooltip-popup.dd-tooltip-visible {
+  opacity: 1;
+}
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dd-scrollbar) transparent;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--dd-scrollbar);
+  border-radius: var(--dd-radius-sm);
+}
+
+/* Prevent layout shifts when scrollbars appear/disappear in bounded scroll areas */
+.dd-scroll-stable {
+  scrollbar-gutter: stable;
+}
+
+/* Allow vertical page scroll to pass through widget scroll containers on touch devices.
+   Ensures swiping vertically on a widget boundary scrolls the dashboard, not the widget. */
+.dd-touch-scroll {
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hidden scrollbar utility (for horizontal tab bars) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sidebar transitions */
+.sidebar-transition {
+  transition:
+    width var(--dd-duration-standard) cubic-bezier(0.4, 0, 0.2, 1),
+    min-width var(--dd-duration-standard) cubic-bezier(0.4, 0, 0.2, 1),
+    transform var(--dd-duration-standard) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Nav item transitions */
+.nav-item {
+  transition:
+    background-color var(--dd-duration-fast) ease,
+    color var(--dd-duration-fast) ease,
+    padding var(--dd-duration-fast) ease;
+}
+
+/* Overlay backdrop */
+.sidebar-overlay {
+  transition: opacity var(--dd-duration-standard) ease;
+}
+
+/* Fade text in sidebar */
+.sidebar-label {
+  transition:
+    opacity var(--dd-duration-short) ease var(--dd-duration-delay),
+    max-width var(--dd-duration-short) ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-collapsed .sidebar-label {
+  opacity: 0;
+  max-width: 0;
+  transition:
+    opacity 0.1s ease,
+    max-width var(--dd-duration-fast) ease;
+}
+
+/* Stat card left border */
+.stat-card {
+  border-left: 4px solid transparent;
+}
+
+/* Spinner speeds */
+.dd-spin {
+  animation: spin var(--dd-duration-spinner) linear infinite;
+}
+.dd-spin-slow {
+  animation: spin var(--dd-duration-spinner-slow) linear infinite;
+}
+.dd-spin-fast {
+  animation: spin var(--dd-duration-spinner-fast) linear infinite;
+}
+
+/* Donut chart */
+.donut-ring {
+  transition: stroke-dasharray var(--dd-duration-slow) ease;
+}
+
+/* Badge pulse */
+@keyframes pulse-badge {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+.badge-pulse {
+  animation: pulse-badge var(--dd-duration-pulse) ease-in-out infinite;
+}
+
+/* Tooltip for collapsed sidebar */
+.nav-tooltip {
+  position: fixed;
+  left: 64px;
+  padding: 4px 10px;
+  border-radius: var(--dd-radius-sm);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dd-duration-fast) ease;
+  z-index: 1000;
+}
+.sidebar-collapsed .nav-item-wrapper:hover .nav-tooltip {
+  opacity: 1;
+}
+
+/* Status badge styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: var(--dd-radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: var(--dd-letter-spacing-badge);
+}
+
+/* Hamburger line */
+.hamburger-line {
+  transition:
+    transform var(--dd-duration-short) ease,
+    opacity var(--dd-duration-short) ease;
+}
+
+/* Search modal */
+.search-backdrop {
+  transition: opacity var(--dd-duration-short) ease;
+}
+
+/* Container card hover */
+.container-card {
+  transition:
+    transform var(--dd-duration-short) ease,
+    box-shadow var(--dd-duration-short) ease;
+}
+.container-card:hover {
+  transform: translateY(var(--dd-motion-hover-lift-y));
+  box-shadow: var(--dd-shadow-lg);
+}
+
+/* Detail panel inline */
+.detail-panel-inline {
+  animation: panel-slide-in var(--dd-duration-standard) ease-out;
+}
+@keyframes panel-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--dd-motion-panel-enter-x));
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Filter inputs */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 24px;
+}
+
+/* ── View Transition: Circular Reveal (theme switch only) ── */
+html.dd-transitioning::view-transition-old(*),
+html.dd-transitioning::view-transition-new(*) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+html.dd-transitioning::view-transition-old(*) {
+  z-index: 1;
+}
+
+html.dd-transitioning::view-transition-new(*) {
+  z-index: 9999;
+  animation: theme-circle-reveal 0.4s ease-in-out;
+}
+
+@keyframes theme-circle-reveal {
+  0% {
+    clip-path: circle(0% at var(--dd-transition-x, 50%) var(--dd-transition-y, 50%));
+  }
+  100% {
+    clip-path: circle(150% at var(--dd-transition-x, 50%) var(--dd-transition-y, 50%));
+  }
+}
+
+@supports not (clip-path: circle(0% at 50% 50%)) {
+  html.dd-transitioning::view-transition-new(*) {
+    animation: theme-fade-in var(--dd-duration-slow) ease-out;
+  }
+
+  @keyframes theme-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Dropdown menu transition */
+.menu-fade-enter-active,
+.menu-fade-leave-active {
+  transition:
+    opacity var(--dd-duration-fast) ease,
+    transform var(--dd-duration-fast) ease;
+}
+.menu-fade-enter-from,
+.menu-fade-leave-to {
+  opacity: 0;
+  transform: translateY(var(--dd-motion-menu-enter-y));
+}
+
+/* Table-cell responsive visibility via container queries.
+   Note: @container (inline-size) evaluates the td's *content* box, not border box —
+   so a 130px-wide td with px-3 (24px) padding queries as ~106px. Thresholds are
+   content-box widths. */
+.dd-cell-show-80,
+.dd-cell-show-100,
+.dd-cell-show-160 {
+  display: none;
+}
+@container (min-width: 80px) {
+  .dd-cell-show-80 {
+    display: inline-flex;
+  }
+}
+@container (min-width: 100px) {
+  .dd-cell-show-100 {
+    display: inline-flex;
+  }
+}
+@container (min-width: 160px) {
+  .dd-cell-show-160 {
+    display: inline-flex;
+  }
+}

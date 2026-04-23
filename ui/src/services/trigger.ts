@@ -1,55 +1,66 @@
-function getTriggerIcon() {
-  return 'fas fa-bolt';
+import { extractCollectionData } from '../utils/api';
+
+interface TriggerDetailPathOptions {
+  type: string;
+  name: string;
+  agent?: string;
 }
 
-function getTriggerProviderIcon(type) {
+interface RunTriggerRequest {
+  triggerType: string;
+  triggerName: string;
+  container: unknown;
+  triggerAgent?: string;
+}
+
+function getTriggerProviderIcon(type: string) {
   switch (type) {
     case 'http':
-      return 'fas fa-globe';
+      return 'sh-globe';
     case 'smtp':
-      return 'fas fa-envelope';
+      return 'sh-envelope';
     case 'slack':
-      return 'fab fa-slack';
+      return 'sh-slack';
     case 'discord':
-      return 'fab fa-discord';
+      return 'sh-discord';
     case 'telegram':
-      return 'fab fa-telegram';
+      return 'sh-telegram';
     case 'mqtt':
-      return 'fas fa-tower-broadcast';
+      return 'sh-mqtt';
     case 'kafka':
-      return 'fas fa-bars-staggered';
+      return 'sh-apache-kafka';
     case 'pushover':
-      return 'fas fa-bell';
+      return 'sh-pushover';
     case 'gotify':
-      return 'fas fa-bell';
+      return 'sh-gotify';
     case 'ntfy':
-      return 'fas fa-bell';
+      return 'sh-ntfy';
     case 'ifttt':
-      return 'fas fa-wand-magic-sparkles';
+      return 'sh-ifttt';
     case 'apprise':
-      return 'fas fa-paper-plane';
+      return 'sh-apprise';
     case 'command':
-      return 'fas fa-terminal';
+      return 'sh-terminal';
     case 'dockercompose':
-      return 'fab fa-docker';
+      return 'sh-docker';
     case 'rocketchat':
-      return 'fas fa-comment';
+      return 'sh-rocket-chat';
     case 'mattermost':
-      return 'fab fa-mattermost';
+      return 'sh-mattermost';
     case 'teams':
-      return 'fab fa-microsoft';
+      return 'sh-microsoft-teams';
     case 'matrix':
-      return 'fas fa-hashtag';
+      return 'sh-matrix';
     case 'googlechat':
-      return 'fab fa-google';
+      return 'sh-google-chat';
     case 'docker':
-      return 'fab fa-docker';
+      return 'sh-docker';
     default:
-      return 'fas fa-bolt';
+      return 'sh-bolt';
   }
 }
 
-function getTriggerProviderColor(type) {
+function getTriggerProviderColor(type: string) {
   switch (type) {
     case 'slack':
       return '#4A154B';
@@ -96,12 +107,43 @@ function getTriggerProviderColor(type) {
 }
 
 async function getAllTriggers() {
-  const response = await fetch('/api/triggers', { credentials: 'include' });
+  const response = await fetch('/api/v1/triggers', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to get triggers: ${response.statusText}`);
+  }
+  const payload = await response.json();
+  return extractCollectionData(payload);
+}
+
+function buildTriggerDetailPath({ type, name, agent }: TriggerDetailPathOptions) {
+  const segments = ['/api/v1/triggers'];
+  segments.push(encodeURIComponent(type), encodeURIComponent(name));
+  if (agent) {
+    segments.push(encodeURIComponent(agent));
+  }
+  return segments.join('/');
+}
+
+async function getTrigger({ type, name, agent }: TriggerDetailPathOptions) {
+  const response = await fetch(buildTriggerDetailPath({ type, name, agent }), {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get trigger: ${response.statusText}`);
+  }
   return response.json();
 }
 
-async function runTrigger({ triggerType, triggerName, container }) {
-  const response = await fetch(`/api/triggers/${triggerType}/${triggerName}`, {
+async function runTrigger({
+  triggerType,
+  triggerName,
+  container,
+  triggerAgent,
+}: RunTriggerRequest) {
+  const path = triggerAgent
+    ? `/api/v1/triggers/${encodeURIComponent(triggerType)}/${encodeURIComponent(triggerName)}/${encodeURIComponent(triggerAgent)}`
+    : `/api/v1/triggers/${encodeURIComponent(triggerType)}/${encodeURIComponent(triggerName)}`;
+  const response = await fetch(path, {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -114,10 +156,4 @@ async function runTrigger({ triggerType, triggerName, container }) {
   return json;
 }
 
-export {
-  getTriggerIcon,
-  getTriggerProviderIcon,
-  getTriggerProviderColor,
-  getAllTriggers,
-  runTrigger,
-};
+export { getAllTriggers, getTrigger, getTriggerProviderColor, getTriggerProviderIcon, runTrigger };

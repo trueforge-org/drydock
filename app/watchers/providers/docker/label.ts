@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Supported Docker labels (dd.* preferred, wud.* legacy fallback).
  */
@@ -26,6 +25,11 @@ export const wudTagExclude = 'wud.tag.exclude';
  */
 export const ddTagTransform = 'dd.tag.transform';
 export const wudTagTransform = 'wud.tag.transform';
+
+/**
+ * Optional tag family policy ('strict' by default, or 'loose' to allow cross-family updates).
+ */
+export const ddTagFamily = 'dd.tag.family';
 
 /**
  * Optional path in Docker inspect JSON to derive the running tag value.
@@ -72,6 +76,8 @@ export const wudDisplayIcon = 'wud.display.icon';
 /**
  * Optional list of triggers to include
  */
+export const ddActionInclude = 'dd.action.include';
+export const ddNotificationInclude = 'dd.notification.include';
 export const ddTriggerInclude = 'dd.trigger.include';
 export const wudTriggerInclude = 'wud.trigger.include';
 
@@ -133,8 +139,15 @@ export const wudComposeThreshold = 'wud.compose.threshold';
 /**
  * Optional list of triggers to exclude
  */
+export const ddActionExclude = 'dd.action.exclude';
+export const ddNotificationExclude = 'dd.notification.exclude';
 export const ddTriggerExclude = 'dd.trigger.exclude';
 export const wudTriggerExclude = 'wud.trigger.exclude';
+
+/**
+ * Optional source repository override used for release-notes lookup.
+ */
+export const ddSourceRepo = 'dd.source.repo';
 
 /**
  * Optional group name for container grouping / stack views.
@@ -165,6 +178,20 @@ export const wudHookPreAbort = 'wud.hook.pre.abort';
  */
 export const ddHookTimeout = 'dd.hook.timeout';
 export const wudHookTimeout = 'wud.hook.timeout';
+
+/**
+ * Per-container opt-out for webhook API calls (default: true).
+ * Set to 'false' to return 403 when the webhook API targets this container.
+ */
+export const ddWebhookEnabled = 'dd.webhook.enabled';
+export const wudWebhookEnabled = 'wud.webhook.enabled';
+
+/**
+ * Update mode for infrastructure containers (e.g. 'infrastructure' for socket proxies).
+ * When set to 'infrastructure', the container is updated via the helper-swap path
+ * which connects directly to /var/run/docker.sock, bypassing any socket proxy.
+ */
+export const ddUpdateMode = 'dd.update.mode';
 
 /**
  * Whether to automatically rollback on health check failure (default: false).

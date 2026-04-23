@@ -1,4 +1,8 @@
-// @ts-nocheck
+const mockLogWarn = vi.hoisted(() => vi.fn());
+vi.mock('../../log/index.js', () => ({
+  default: { child: () => ({ warn: mockLogWarn, info: vi.fn(), debug: vi.fn(), error: vi.fn() }) },
+}));
+
 import { renderBatch, renderSimple } from './trigger-expression-parser.js';
 
 const baseContainer = {
@@ -13,6 +17,7 @@ const baseContainer = {
   },
   result: {
     link: 'https://example.com/release',
+    suggestedTag: '1.2.3',
   },
 };
 
@@ -88,5 +93,92 @@ describe('trigger-expression-parser', () => {
       },
     });
     expect(output).toBe('suffix');
+  });
+
+  test('renderSimple should expose suggestedTag template variable', () => {
+    const output = renderSimple('Pin to ${suggestedTag}', baseContainer as any);
+    expect(output).toBe('Pin to 1.2.3');
+  });
+
+  test('renderSimple should expose releaseNotes template variable', () => {
+    const output = renderSimple('${releaseNotes.title}', {
+      ...baseContainer,
+      result: {
+        ...baseContainer.result,
+        releaseNotes: {
+          title: 'Release title',
+        },
+      },
+    } as any);
+    expect(output).toBe('Release title');
+  });
+
+  test('renderSimple should expose currentTag variable from container image tag', () => {
+    const output = renderSimple('Tag is ${currentTag}', {
+      ...baseContainer,
+      image: { tag: { value: 'latest' } },
+    } as any);
+    expect(output).toBe('Tag is latest');
+  });
+
+  test('renderSimple should set isDigestUpdate to true for digest updates', () => {
+    const output = renderSimple('${isDigestUpdate ? "digest" : "not digest"}', {
+      ...baseContainer,
+      updateKind: { kind: 'digest', localValue: 'sha256:abc', remoteValue: 'sha256:def' },
+    } as any);
+    expect(output).toBe('digest');
+  });
+
+  test('renderSimple should set isDigestUpdate to false for tag updates', () => {
+    const output = renderSimple(
+      '${isDigestUpdate ? "digest" : "not digest"}',
+      baseContainer as any,
+    );
+    expect(output).toBe('not digest');
+  });
+
+  test('renderSimple should default currentTag to empty when image has no tag', () => {
+    const output = renderSimple('Tag=[${currentTag}]', baseContainer as any);
+    expect(output).toBe('Tag=[]');
+  });
+});
+
+describe('legacy template variable deprecation warnings', () => {
+  beforeEach(() => {
+    mockLogWarn.mockClear();
+  });
+
+  test('renderSimple should warn about legacy template variables', async () => {
+    vi.resetModules();
+    const { renderSimple: freshRenderSimple } = await import('./trigger-expression-parser.js');
+
+    freshRenderSimple('Hello ${name}, id=${id}', baseContainer);
+
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining('Legacy trigger template variable "${name}" is deprecated'),
+    );
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining('Legacy trigger template variable "${id}" is deprecated'),
+    );
+  });
+
+  test('renderBatch should warn about legacy count variable', async () => {
+    vi.resetModules();
+    const { renderBatch: freshRenderBatch } = await import('./trigger-expression-parser.js');
+
+    freshRenderBatch('Total: ${count}', [baseContainer]);
+
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining('Legacy trigger template variable "${count}" is deprecated'),
+    );
+  });
+
+  test('should not warn for non-legacy template variables', async () => {
+    vi.resetModules();
+    const { renderSimple: freshRenderSimple } = await import('./trigger-expression-parser.js');
+
+    freshRenderSimple('Hello ${container.name}', baseContainer);
+
+    expect(mockLogWarn).not.toHaveBeenCalled();
   });
 });
