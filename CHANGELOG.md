@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Tag update display accuracy** — Fixed update classification/display so tag-based updates are shown correctly as tag updates.
+
 ## [1.5.0-rc.12] — 2026-04-22
 
 ### Fixed

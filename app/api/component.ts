@@ -73,18 +73,6 @@ export function mapComponentToItem(
       ? redactTriggerConfigurationInfrastructureDetails(configuration)
       : configuration;
 
-  // Preserve requireinclude for triggers even when maskConfiguration omits it
-  if (
-    kind === 'trigger' &&
-    (component as any).configuration?.requireinclude !== undefined &&
-    sanitizedConfiguration != null &&
-    typeof sanitizedConfiguration === 'object' &&
-    !Array.isArray(sanitizedConfiguration) &&
-    (sanitizedConfiguration as any).requireinclude === undefined
-  ) {
-    (sanitizedConfiguration as any).requireinclude = (component as any).configuration.requireinclude;
-  }
-
   const item: ApiComponent = {
     id: key,
     type: component.type,

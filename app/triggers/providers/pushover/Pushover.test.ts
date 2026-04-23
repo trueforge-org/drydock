@@ -23,7 +23,6 @@ const configurationValid = {
   once: true,
   auto: 'all',
   order: 100,
-  requireinclude: false,
   simpletitle:
     '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
 
@@ -108,7 +107,6 @@ test('maskConfiguration should mask sensitive data', async () => {
     priority: 0,
     auto: 'all',
     order: 100,
-    requireinclude: false,
     simplebody:
       '${isDigestUpdate ? container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running tag " + currentTag + " has a newer image available" : container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 

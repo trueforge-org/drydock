@@ -15,7 +15,6 @@ const configurationValid = {
   once: true,
   auto: 'all',
   order: 100,
-  requireinclude: false,
   simpletitle:
     '${isDigestUpdate ? "New image available for container " + container.name + " (tag " + currentTag + ")" : "New " + container.updateKind.kind + " found for container " + container.name}',
 

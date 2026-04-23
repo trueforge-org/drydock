@@ -9,15 +9,12 @@ import * as backupStore from '../../../store/backup.js';
 import { sleep } from '../../../util/sleep.js';
 import Dockercompose, {
   testable_buildUpdatedComposeImage,
+  testable_hasExplicitRegistryHost,
   testable_normalizeImageWithoutDigest,
   testable_normalizeImplicitLatest,
   testable_normalizePostStartEnvironmentValue,
   testable_normalizePostStartHooks,
   testable_splitDigestReference,
-  testable_hasExplicitRegistryHost,
-  testable_normalizeImplicitLatest,
-  testable_normalizePostStartEnvironmentValue,
-  testable_normalizePostStartHooks,
   testable_updateComposeServiceImageInText,
 } from './Dockercompose.js';
 
@@ -1458,8 +1455,7 @@ describe('Dockercompose Trigger', () => {
       expect(writeComposeFileSpy).not.toHaveBeenCalled();
       expect(dockerTriggerSpy).not.toHaveBeenCalled();
       expect(mockLog.warn).toHaveBeenCalledWith(expect.stringContaining('digest-pinned'));
-    });
-  });
+    });  });
 
   test('processComposeFile should handle mapCurrentVersionToUpdateVersion returning undefined', async () => {
     trigger.configuration.dryrun = false;
@@ -6212,5 +6208,4 @@ describe('Dockercompose Trigger', () => {
       image: 'nginx:2.0.0',
       keptPinned: false,
     });
-  });
-});
+  });});

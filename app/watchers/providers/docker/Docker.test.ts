@@ -4,25 +4,52 @@ import { fullName } from '../../../model/container.js';
 import * as registry from '../../../registry/index.js';
 import * as storeContainer from '../../../store/container.js';
 import { mockConstructor } from '../../../test/mock-constructor.js';
+import { _resetRegistryWebhookFreshStateForTests } from '../../registry-webhook-fresh.js';
+import {
+  filterRecreatedContainerAliases as testable_filterRecreatedContainerAliases,
+  getLabel as testable_getLabel,
+  pruneOldContainers as testable_pruneOldContainers,
+} from './container-init.js';
 import Docker, {
   testable_appendTriggerId,
-  testable_filterBySegmentCount,
-  testable_getContainerDisplayName,
-  testable_getContainerName,
   testable_getComposeFilePathFromLabels,
-  testable_getCurrentPrefix,
-  testable_getFirstDigitIndex,
-  testable_getImageForRegistryLookup,
-  testable_getImageReferenceCandidatesFromPattern,
-  testable_getImgsetSpecificity,
-  testable_getInspectValueByPath,
-  testable_getLabel,
-  testable_getOldContainers,
   testable_normalizeConfigNumberValue,
-  testable_pruneOldContainers,
   testable_removeTriggerId,
-  testable_shouldUpdateDisplayNameFromContainerName,
 } from './Docker.js';
+import {
+  getContainerDisplayName as testable_getContainerDisplayName,
+  getContainerName as testable_getContainerName,
+  getImageForRegistryLookup as testable_getImageForRegistryLookup,
+  getImageReferenceCandidatesFromPattern as testable_getImageReferenceCandidatesFromPattern,
+  getImgsetSpecificity as testable_getImgsetSpecificity,
+  getInspectValueByPath as testable_getInspectValueByPath,
+  getOldContainers as testable_getOldContainers,
+  shouldUpdateDisplayNameFromContainerName as testable_shouldUpdateDisplayNameFromContainerName,
+} from './docker-helpers.js';
+import { normalizeContainer as testable_normalizeContainer } from './image-comparison.js';
+import {
+  filterBySegmentCount as testable_filterBySegmentCount,
+  getCurrentPrefix as testable_getCurrentPrefix,
+  getFirstDigitIndex as testable_getFirstDigitIndex,
+} from './tag-candidates.js';
+
+const mockDdEnvVars = vi.hoisted(() => ({}) as Record<string, string | undefined>);
+const mockDetectSourceRepoFromImageMetadata = vi.hoisted(() => vi.fn());
+const mockResolveSourceRepoForContainer = vi.hoisted(() => vi.fn());
+const mockGetFullReleaseNotesForContainer = vi.hoisted(() => vi.fn());
+const mockToContainerReleaseNotes = vi.hoisted(() => vi.fn((notes) => notes));
+vi.mock('../../../configuration/index.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../configuration/index.js')>()),
+  ddEnvVars: mockDdEnvVars,
+}));
+vi.mock('../../../release-notes/index.js', () => ({
+  detectSourceRepoFromImageMetadata: (...args: unknown[]) =>
+    mockDetectSourceRepoFromImageMetadata(...args),
+  resolveSourceRepoForContainer: (...args: unknown[]) => mockResolveSourceRepoForContainer(...args),
+  getFullReleaseNotesForContainer: (...args: unknown[]) =>
+    mockGetFullReleaseNotesForContainer(...args),
+  toContainerReleaseNotes: (...args: unknown[]) => mockToContainerReleaseNotes(...args),
+}));
 
 // Mock all dependencies
 vi.mock('dockerode');
@@ -724,8 +751,7 @@ describe('Docker Watcher', () => {
           digestpin: 'true',
           threshold: 'minor',
         },
-      );
-    });
+      );    });
 
     test('should keep watchatstart disabled when explicitly set to false', async () => {
       storeContainer.getContainers.mockReturnValue([]);
@@ -3984,7 +4010,6 @@ describe('Docker Watcher', () => {
       );
     });
   });
-
   describe('Additional Coverage - applyRemoteAuthHeaders', () => {
     test('should keep remote watcher registered in blocked mode when credentials are incomplete', async () => {
       // Bypass validation by setting configuration directly after register
@@ -4650,7 +4675,56 @@ describe('Docker Watcher', () => {
 
     test('removeTriggerId should return undefined when last trigger is removed', () => {
       expect(testable_removeTriggerId('dockercompose.test', 'dockercompose.test')).toBeUndefined();
-    });
+    test.each([
+      {
+        aliasKey: 'dd.action.include',
+        legacyKey: 'dd.trigger.include',
+        fallbackKey: 'wud.trigger.include',
+        preferredValue: 'action-include',
+      },
+      {
+        aliasKey: 'dd.notification.exclude',
+        legacyKey: 'dd.trigger.exclude',
+        fallbackKey: 'wud.trigger.exclude',
+        preferredValue: 'notification-exclude',
+      },
+    ])('getLabel should prefer $aliasKey over $legacyKey and warn once for the legacy key', ({
+      aliasKey,
+      legacyKey,
+      fallbackKey,
+      preferredValue,
+    }) => {
+      const warnedLegacyTriggerLabels = new Set<string>();
+      const warn = vi.fn();
+      const labels = {
+        [aliasKey]: preferredValue,
+        [legacyKey]: 'legacy-value',
+        [fallbackKey]: 'legacy-fallback',
+      } as Record<string, string>;
+
+      expect(
+        testable_getLabel(labels, legacyKey, fallbackKey, {
+          warn,
+          warnedLegacyTriggerLabels,
+        }),
+      ).toBe(preferredValue);
+      expect(
+        testable_getLabel(
+          {
+            [legacyKey]: 'legacy-value',
+            [fallbackKey]: 'legacy-fallback',
+          } as Record<string, string>,
+          legacyKey,
+          fallbackKey,
+          {
+            warn,
+            warnedLegacyTriggerLabels,
+          },
+        ),
+      ).toBe('legacy-value');
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain(legacyKey);    });
 
     test('getCurrentPrefix should return the non-numeric prefix before the first digit', () => {
       expect(testable_getCurrentPrefix('v2026.2.1')).toBe('v');
