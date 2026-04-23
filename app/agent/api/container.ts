@@ -1,13 +1,41 @@
 import type { Request, Response } from 'express';
+import { sendErrorResponse } from '../../api/error-response.js';
 import { getServerConfiguration } from '../../configuration/index.js';
+import logger from '../../log/index.js';
+import { sanitizeLogParam } from '../../log/sanitize.js';
 import * as registry from '../../registry/index.js';
 import * as storeContainer from '../../store/container.js';
+import { getErrorMessage } from '../../util/error.js';
+
+const log = logger.child({ component: 'agent-api-container' });
+
+type AgentDockerWatcher = {
+  dockerApi: {
+    getContainer: (name: string) => {
+      logs: (options: {
+        stdout: boolean;
+        stderr: boolean;
+        tail: number;
+        since: number;
+        timestamps: boolean;
+        follow: boolean;
+      }) => Promise<Buffer | string>;
+    };
+  };
+};
+
+function stripLokiMetadata(container: Record<string, unknown>) {
+  const { $loki: _loki, meta: _meta, ...containerWithoutMetadata } = container;
+  return containerWithoutMetadata;
+}
 
 /**
  * Get Containers (Handshake).
  */
 export function getContainers(req: Request, res: Response) {
-  const containers = storeContainer.getContainers();
+  const containers = storeContainer
+    .getContainersRaw()
+    .map((container) => stripLokiMetadata(container as Record<string, unknown>));
   res.json(containers);
 }
 
@@ -19,11 +47,12 @@ function demuxDockerStream(buffer: Buffer | string): string {
   const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
   const lines: string[] = [];
   let offset = 0;
+  // Stryker disable next-line EqualityOperator, BlockStatement: exact-header remainder is equivalent and block removal creates an artificial infinite loop.
   while (offset + 8 <= buf.length) {
     const size = buf.readUInt32BE(offset + 4);
     offset += 8;
     if (offset + size > buf.length) break;
-    lines.push(buf.subarray(offset, offset + size).toString('utf-8'));
+    lines.push(buf.subarray(offset, offset + size).toString());
     offset += size;
   }
   return lines.join('');
@@ -35,10 +64,10 @@ function demuxDockerStream(buffer: Buffer | string): string {
  * @param res
  */
 export async function getContainerLogs(req: Request, res: Response) {
-  const { id } = req.params;
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const container = storeContainer.getContainer(id);
   if (!container) {
-    res.sendStatus(404);
+    sendErrorResponse(res, 404, 'Container not found');
     return;
   }
 
@@ -47,11 +76,9 @@ export async function getContainerLogs(req: Request, res: Response) {
   const timestamps = req.query.timestamps !== 'false';
 
   const watcherId = `docker.${container.watcher}`;
-  const watcher = (registry.getState() as any).watcher[watcherId];
+  const watcher = registry.getState().watcher[watcherId] as AgentDockerWatcher | undefined;
   if (!watcher) {
-    res.status(500).json({
-      error: `No watcher found for container ${id}`,
-    });
+    sendErrorResponse(res, 500, `No watcher found for container ${id}`);
     return;
   }
 
@@ -61,10 +88,12 @@ export async function getContainerLogs(req: Request, res: Response) {
       .logs({ stdout: true, stderr: true, tail, since, timestamps, follow: false });
     const logs = demuxDockerStream(logsBuffer);
     res.status(200).json({ logs });
-  } catch (e: any) {
-    res.status(500).json({
-      error: `Error fetching container logs (${e.message})`,
-    });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    log.error(
+      `Error fetching container logs for ${sanitizeLogParam(id)} (${sanitizeLogParam(message)})`,
+    );
+    sendErrorResponse(res, 500, 'Error fetching container logs');
   }
 }
 
@@ -76,15 +105,15 @@ export async function getContainerLogs(req: Request, res: Response) {
 export function deleteContainer(req: Request, res: Response) {
   const serverConfiguration = getServerConfiguration();
   if (serverConfiguration.feature.delete) {
-    const { id } = req.params;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const container = storeContainer.getContainer(id);
     if (container) {
       storeContainer.deleteContainer(id);
       res.sendStatus(204);
     } else {
-      res.sendStatus(404);
+      sendErrorResponse(res, 404, 'Container not found');
     }
   } else {
-    res.sendStatus(403);
+    sendErrorResponse(res, 403, 'Container deletion is disabled');
   }
 }

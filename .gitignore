@@ -25,6 +25,11 @@ lib-cov
 # Coverage directory used by tools like istanbul
 coverage
 *.lcov
+.coverage-gaps*.json
+.coverage-logs/
+.build-logs/
+CLAUDE.md
+test/qa-compose.demo.yml
 
 # nyc test coverage
 .nyc_output
@@ -114,10 +119,19 @@ dist/
 # Playwright MCP
 .playwright-mcp/
 .playwright-cli/
+
+# Playwright test artifacts
+e2e/playwright/.auth/
+e2e/playwright-report/
+e2e/test-results/
+e2e/blob-report/
 output/
 
-# Generated screenshots
-screenshots/
+# Generated screenshots (root only, not apps/web/public/screenshots)
+/screenshots/
+/qa-*.png
+/qa-*.md
+/*-view.png
 
 # qlty config (track qlty.toml, ignore cache/outputs)
 .qlty/*
@@ -126,5 +140,35 @@ screenshots/
 # SonarCloud scanner working directory
 .scannerwork/
 
-# Docs content (local editing, copied to drydock-website)
-docs/content/
+# Demo prototype (standalone showcase, lives on demo branch)
+/demo/
+
+# Generated lazy-loaded font assets (built by scripts/extract-fonts.mjs)
+ui/public/fonts/
+
+# Website local artifacts
+.vercel/
+.source/
+
+# Changelog docs are generated from CHANGELOG.md by sync-docs.mjs
+# and committed to keep website/docs history in-repo.
+
+# Generated from content/docs/current for Turbopack compatibility
+# Canonical docs are versioned at content/docs/*
+apps/web/content/docs/
+
+# Stryker mutation testing sandboxes
+.stryker-tmp/
+app/reports/
+ui/reports/
+
+# Storybook build output
+storybook-static/
+
+# Claude Code project instructions and local config
+CLAUDE.md
+.claude/
+artifacts/
+
+# Local scratch/output directory used during issue triage
+/tmp/

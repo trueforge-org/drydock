@@ -1,27 +1,21 @@
-// @ts-nocheck
 import Trueforge from './trueforge.js';
 
 vi.mock('axios');
 
 const trueforge = new Trueforge();
 trueforge.configuration = {
-  namespace: 'namespace',
-  account: 'account',
+  username: 'myuser',
   token: 'token',
 };
-
-vi.mock('axios');
 
 test('validatedConfiguration should initialize when auth configuration is valid', async () => {
   expect(
     trueforge.validateConfiguration({
-      namespace: 'namespace',
-      account: 'account',
+      username: 'myuser',
       token: 'token',
     }),
   ).toStrictEqual({
-    namespace: 'namespace',
-    account: 'account',
+    username: 'myuser',
     token: 'token',
   });
 });
@@ -34,6 +28,16 @@ test('validatedConfiguration should initialize when anonymous configuration is v
 test('validatedConfiguration should throw error when configuration is missing', async () => {
   expect(() => {
     trueforge.validateConfiguration({});
+  }).toThrow();
+});
+
+test('validatedConfiguration should reject quay-style namespace/account config', async () => {
+  expect(() => {
+    trueforge.validateConfiguration({
+      namespace: 'namespace',
+      account: 'account',
+      token: 'token',
+    });
   }).toThrow();
 });
 
@@ -65,6 +69,13 @@ test('match should return false when registry url is not from trueforge', async 
       },
     }),
   ).toBeFalsy();
+});
+
+test('match should return false and never throw when registry url is missing', async () => {
+  expect(() => trueforge.match({ registry: { url: undefined } })).not.toThrow();
+  expect(() => trueforge.match({})).not.toThrow();
+  expect(trueforge.match({ registry: { url: undefined } })).toBe(false);
+  expect(trueforge.match({})).toBe(false);
 });
 
 test('match should reject hostnames that bypass unescaped dot in regex', async () => {
@@ -105,9 +116,41 @@ test('normalizeImage should preserve already-https registry urls', async () => {
   });
 });
 
-test('getAuthPull should return quay-compatible pull credentials', async () => {
+test('normalizeImage should not mutate the input image object', async () => {
+  const image = {
+    name: 'test/image',
+    registry: {
+      url: 'oci.trueforge.org/test/image',
+    },
+  };
+
+  const normalized = trueforge.normalizeImage(image);
+
+  expect(normalized).not.toBe(image);
+  expect(normalized.registry).not.toBe(image.registry);
+  expect(image.registry.url).toBe('oci.trueforge.org/test/image');
+  expect(normalized.registry.url).toBe('https://oci.trueforge.org/test/image/v2');
+});
+
+test('getAuthCredentials should return base64 encoded credentials', () => {
+  expect(trueforge.getAuthCredentials()).toEqual('bXl1c2VyOnRva2Vu');
+});
+
+test('getAuthCredentials should return undefined when anonymous', () => {
+  const instance = new Trueforge();
+  instance.configuration = {};
+  expect(instance.getAuthCredentials()).toBeUndefined();
+});
+
+test('getAuthPull should return username/password credentials', async () => {
   await expect(trueforge.getAuthPull()).resolves.toStrictEqual({
-    username: 'namespace+account',
+    username: 'myuser',
     password: 'token',
   });
+});
+
+test('getAuthPull should return undefined when anonymous', async () => {
+  const instance = new Trueforge();
+  instance.configuration = {};
+  await expect(instance.getAuthPull()).resolves.toBeUndefined();
 });

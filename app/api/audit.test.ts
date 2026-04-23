@@ -17,6 +17,7 @@ vi.mock('../store/audit', () => ({
 }));
 
 import * as auditRouter from './audit.js';
+import * as paginationLinks from './pagination-links.js';
 
 describe('Audit Router', () => {
   beforeEach(() => {
@@ -44,16 +45,26 @@ describe('Audit Router', () => {
 
     handler(req, res);
 
+    const query = mockGetAuditEntries.mock.calls[0][0];
+    expect(query).not.toHaveProperty('action');
+    expect(query).not.toHaveProperty('actions');
+    expect(query).not.toHaveProperty('container');
+    expect(query).not.toHaveProperty('from');
+    expect(query).not.toHaveProperty('to');
     expect(mockGetAuditEntries).toHaveBeenCalledWith({
       skip: 0,
       limit: 50,
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
-      entries: mockResult.entries,
+      data: mockResult.entries,
       total: 1,
-      page: 1,
       limit: 50,
+      offset: 0,
+      hasMore: false,
+      _links: {
+        self: '/api/audit?limit=50&offset=0',
+      },
     });
   });
 
@@ -65,7 +76,7 @@ describe('Audit Router', () => {
 
     const req = createMockRequest({
       query: {
-        page: '2',
+        offset: '10',
         limit: '10',
         action: 'update-applied',
         container: 'redis',
@@ -86,20 +97,99 @@ describe('Audit Router', () => {
       to: '2024-12-31',
     });
     expect(res.json).toHaveBeenCalledWith({
-      entries: [],
+      data: [],
       total: 0,
-      page: 2,
       limit: 10,
+      offset: 10,
+      hasMore: false,
+      _links: {
+        self: '/api/audit?action=update-applied&container=redis&from=2024-01-01&to=2024-12-31&limit=10&offset=10',
+      },
     });
   });
 
-  test('should clamp page to minimum of 1', () => {
+  test('should ignore empty action and container filters', () => {
     auditRouter.init();
     const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
 
     mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
 
-    const req = createMockRequest({ query: { page: '-5' } });
+    const req = createMockRequest({
+      query: {
+        action: '',
+        container: '',
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    const query = mockGetAuditEntries.mock.calls[0][0];
+    expect(query).not.toHaveProperty('action');
+    expect(query).not.toHaveProperty('container');
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+  });
+
+  test('should ignore empty from and to date filters', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        from: '',
+        to: '',
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    const query = mockGetAuditEntries.mock.calls[0][0];
+    expect(query).not.toHaveProperty('from');
+    expect(query).not.toHaveProperty('to');
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+  });
+
+  test('should accept first value when offset/limit are provided as query arrays', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        offset: ['40', '99'],
+        limit: ['20', '99'],
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 40,
+      limit: 20,
+    });
+  });
+
+  test('should ignore non-array indexed values for offset and limit', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        offset: { 0: '40' },
+        limit: { 0: '20' },
+      },
+    });
     const res = createMockResponse();
 
     handler(req, res);
@@ -108,7 +198,54 @@ describe('Audit Router', () => {
       skip: 0,
       limit: 50,
     });
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
+  });
+
+  test('should ignore array offset and limit values when the first item is not a string', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        offset: [40, '99'],
+        limit: [20, '99'],
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+  });
+
+  test('should clamp offset to minimum of 0', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({ query: { offset: '-5' } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+    expect(res.json).toHaveBeenCalledWith({
+      data: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+      hasMore: false,
+      _links: {
+        self: '/api/audit?limit=50&offset=0',
+      },
+    });
   });
 
   test('should clamp limit to maximum of 200', () => {
@@ -142,6 +279,192 @@ describe('Audit Router', () => {
     expect(mockGetAuditEntries).toHaveBeenCalledWith({
       skip: 0,
       limit: 1,
+    });
+  });
+
+  test('should set hasMore when more entries remain after current offset window', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({
+      entries: [{ id: 'a-1' }, { id: 'a-2' }],
+      total: 20,
+    });
+
+    const req = createMockRequest({
+      query: {
+        offset: '10',
+        limit: '2',
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      data: [{ id: 'a-1' }, { id: 'a-2' }],
+      total: 20,
+      limit: 2,
+      offset: 10,
+      hasMore: true,
+      _links: {
+        self: '/api/audit?limit=2&offset=10',
+        next: '/api/audit?limit=2&offset=12',
+      },
+    });
+  });
+
+  test('should omit _links when pagination link builder returns undefined', () => {
+    const paginationSpy = vi
+      .spyOn(paginationLinks, 'buildPaginationLinks')
+      .mockReturnValue(undefined);
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({
+      entries: [{ id: 'a-1' }],
+      total: 1,
+    });
+
+    const req = createMockRequest({ query: {} });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      data: [{ id: 'a-1' }],
+      total: 1,
+      limit: 50,
+      offset: 0,
+      hasMore: false,
+    });
+    paginationSpy.mockRestore();
+  });
+
+  test('should return 400 when action query parameter is not a string', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    const req = createMockRequest({ query: { action: ['update-applied'] } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid action query parameter' });
+  });
+
+  test('should return 400 when container query parameter contains unsafe characters', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    const req = createMockRequest({ query: { container: 'redis;drop table' } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid container query parameter' });
+  });
+
+  test('should pass actions filter as array to store', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        actions: 'update-available,security-alert,agent-disconnect',
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+      actions: ['update-available', 'security-alert', 'agent-disconnect'],
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test('should return 400 when actions parameter contains unsafe characters', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    const req = createMockRequest({
+      query: { actions: 'update-available,evil;drop' },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid actions query parameter' });
+  });
+
+  test('should ignore empty actions parameter', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({ query: { actions: '' } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+  });
+
+  test('should ignore actions parameter containing only commas', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({ query: { actions: ',,,' } });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+    });
+  });
+
+  test('should prefer action over actions when both provided', () => {
+    auditRouter.init();
+    const handler = mockRouter.get.mock.calls.find((c) => c[0] === '/')[1];
+
+    mockGetAuditEntries.mockReturnValue({ entries: [], total: 0 });
+
+    const req = createMockRequest({
+      query: {
+        action: 'update-applied',
+        actions: 'update-available,security-alert',
+      },
+    });
+    const res = createMockResponse();
+
+    handler(req, res);
+
+    expect(mockGetAuditEntries).toHaveBeenCalledWith({
+      skip: 0,
+      limit: 50,
+      action: 'update-applied',
+      actions: ['update-available', 'security-alert'],
     });
   });
 });

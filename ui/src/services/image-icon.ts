@@ -18,6 +18,26 @@ function isLegacyOrDefaultIcon(displayIcon: string): boolean {
   return displayIcon.startsWith('mdi:') || displayIcon.startsWith('mdi-');
 }
 
+/** Normalize colon-separated icon prefixes (sh:slug) to dash format (sh-slug). */
+export function normalizeIconPrefix(icon: string): string {
+  const normalized = icon.trim();
+  const match = normalized.match(/^(sh|hl|si)[:-](.+)$/i);
+  if (!match) {
+    return normalized;
+  }
+  const provider = match[1].toLowerCase();
+  let slug = match[2].trim();
+
+  // Handle malformed nested values like "si-si:nextcloud" by unwrapping known prefixes.
+  let nestedMatch = slug.match(/^(sh|hl|si)[:-](.+)$/i);
+  while (nestedMatch) {
+    slug = nestedMatch[2].trim();
+    nestedMatch = slug.match(/^(sh|hl|si)[:-](.+)$/i);
+  }
+
+  return `${provider}-${slug}`;
+}
+
 /**
  * Curated map: Docker image base name -> Dashboard Icons slug.
  * Only needed when the image name differs from the icon slug.
@@ -135,6 +155,7 @@ const IMAGE_TO_ICON: Record<string, string> = {
   gitlab: 'gitlab',
   'gitlab-ce': 'gitlab',
   'gitlab-ee': 'gitlab',
+  'gitlab-runner': 'gitlab',
   jenkins: 'jenkins',
   drone: 'drone',
   woodpecker: 'woodpecker-ci',
@@ -218,16 +239,17 @@ const STRIP_NAMESPACES = [
 function extractBaseName(imageName: string): string {
   let name = imageName.toLowerCase().trim();
 
-  // Remove tag if present
-  const colonIdx = name.indexOf(':');
-  if (colonIdx !== -1) {
-    name = name.substring(0, colonIdx);
-  }
-
   // Remove digest if present
   const atIdx = name.indexOf('@');
   if (atIdx !== -1) {
     name = name.substring(0, atIdx);
+  }
+
+  // Remove tag if present. Keep registry ports (for example, registry:5000/image:tag).
+  const lastSlash = name.lastIndexOf('/');
+  const tagIdx = name.lastIndexOf(':');
+  if (tagIdx > lastSlash) {
+    name = name.substring(0, tagIdx);
   }
 
   // Strip known namespace prefixes
@@ -239,9 +261,9 @@ function extractBaseName(imageName: string): string {
   }
 
   // Take only the last path segment (handles "org/repo" -> "repo")
-  const lastSlash = name.lastIndexOf('/');
-  if (lastSlash !== -1) {
-    name = name.substring(lastSlash + 1);
+  const lastSlashIdx = name.lastIndexOf('/');
+  if (lastSlashIdx !== -1) {
+    name = name.substring(lastSlashIdx + 1);
   }
 
   return name;
@@ -281,7 +303,7 @@ function resolveIconSlug(imageName: string): string | null {
 export function getEffectiveDisplayIcon(displayIcon: string, imageName: string): string {
   // User set a modern icon (hl-, sh-, si-, fa*, or URL) — respect it
   if (!isLegacyOrDefaultIcon(displayIcon)) {
-    return displayIcon;
+    return normalizeIconPrefix(displayIcon);
   }
 
   // Auto-resolve from image name
@@ -291,5 +313,5 @@ export function getEffectiveDisplayIcon(displayIcon: string, imageName: string):
   }
 
   // Final fallback: Docker brand icon
-  return 'fab fa-docker';
+  return 'sh-docker';
 }

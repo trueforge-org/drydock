@@ -1,28 +1,20 @@
-// @ts-nocheck
-import BaseRegistry from '../../BaseRegistry.js';
+import BaseRegistry, { type BaseRegistryConfiguration } from '../../BaseRegistry.js';
+import { getSelfHostedBasicConfigurationSchema } from '../shared/selfHostedBasicConfigurationSchema.js';
+
+export interface CustomRegistryConfiguration extends BaseRegistryConfiguration {
+  url?: string;
+}
 
 /**
  * Docker Custom Registry V2 integration.
  */
-class Custom extends BaseRegistry {
+class Custom<
+  TConfiguration extends CustomRegistryConfiguration = CustomRegistryConfiguration,
+> extends BaseRegistry<TConfiguration> {
   getConfigurationSchema() {
-    const authSchema = this.joi
+    return this.joi
       .alternatives()
-      .try(this.joi.string().base64(), this.joi.string().valid(''));
-
-    const customConfigSchema = this.joi
-      .object()
-      .keys({
-        url: this.joi.string().uri().required(),
-        login: this.joi.string(),
-        password: this.joi.string(),
-        auth: authSchema,
-      })
-      .and('login', 'password')
-      .without('login', 'auth')
-      .without('password', 'auth');
-
-    return this.joi.alternatives([this.joi.string().allow(''), customConfigSchema]);
+      .try(this.joi.string().allow(''), getSelfHostedBasicConfigurationSchema(this.joi));
   }
 
   maskConfiguration() {
@@ -44,7 +36,12 @@ class Custom extends BaseRegistry {
    * @returns {*}
    */
   normalizeImage(image) {
-    const imageNormalized = image;
+    const imageNormalized = {
+      ...image,
+      registry: {
+        ...image.registry,
+      },
+    };
     imageNormalized.registry.url = `${this.configuration.url}/v2`;
     return imageNormalized;
   }

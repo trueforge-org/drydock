@@ -1,9 +1,8 @@
-function getLogIcon() {
-  return 'fas fa-scroll';
-}
-
 async function getLog() {
-  const response = await fetch('/api/log', { credentials: 'include' });
+  const response = await fetch('/api/v1/log', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to get log: ${response.statusText}`);
+  }
   return response.json();
 }
 
@@ -16,8 +15,8 @@ async function getLogEntries(
   if (options.tail) params.set('tail', String(options.tail));
   const query = params.toString() ? `?${params.toString()}` : '';
   const base = options.agent
-    ? `/api/agents/${encodeURIComponent(options.agent)}/log/entries`
-    : '/api/log/entries';
+    ? `/api/v1/agents/${encodeURIComponent(options.agent)}/log/entries`
+    : '/api/v1/log/entries';
   const url = `${base}${query}`;
   const response = await fetch(url, { credentials: 'include' });
   if (!response.ok) {
@@ -26,4 +25,12 @@ async function getLogEntries(
   return response.json();
 }
 
-export { getLogIcon, getLog, getLogEntries };
+async function getLogComponents(): Promise<string[]> {
+  const response = await fetch('/api/v1/log/components', { credentials: 'include' });
+  if (!response.ok) {
+    return [];
+  }
+  return response.json();
+}
+
+export { getLog, getLogComponents, getLogEntries };

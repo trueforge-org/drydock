@@ -1,14 +1,50 @@
+import { snakeCase } from 'change-case';
 import { flatten as flat } from 'flat';
 import joi from 'joi';
-import { snakeCase } from 'snake-case';
 import type {
   ContainerSecuritySbom,
   ContainerSecurityScan,
   ContainerSignatureVerification,
 } from '../security/scan.js';
 import * as tag from '../tag/index.js';
+import { isTagPinned } from '../tag/precision.js';
+import type {
+  ActiveContainerUpdateOperationPhase,
+  ActiveContainerUpdateOperationStatus,
+  ContainerUpdateOperationKind,
+} from './container-update-operation.js';
+import {
+  MATURITY_MIN_AGE_DAYS_MAX,
+  MATURITY_MIN_AGE_DAYS_MIN,
+  maturityMinAgeDaysToMilliseconds,
+  resolveMaturityMinAgeDays,
+} from './maturity-policy.js';
 
 const { parse: parseSemver, diff: diffSemver, transform: transformTag } = tag;
+const DEFAULT_UI_MATURITY_THRESHOLD_DAYS = 7;
+const ESTABLISHED_UPDATE_AGE_DAYS = 30;
+const UI_MATURITY_THRESHOLD_DAYS_ENV = 'DD_UI_MATURITY_THRESHOLD_DAYS';
+const OLD_ROLLBACK_CONTAINER_NAME_PATTERN = /-old-\d{10,}$/;
+const UPDATE_KIND_UNKNOWN_VALUE: string = 'unknown';
+const UPDATE_KIND_TAG_VALUE: string = 'tag';
+const UPDATE_KIND_DIGEST_VALUE: string = 'digest';
+
+function createUnknownUpdateKind(): ContainerUpdateKind {
+  return {
+    kind: UPDATE_KIND_UNKNOWN_VALUE as ContainerUpdateKind['kind'],
+    localValue: undefined,
+    remoteValue: undefined,
+    semverDiff: UPDATE_KIND_UNKNOWN_VALUE as ContainerUpdateKind['semverDiff'],
+  };
+}
+
+function isTagUpdateKind(updateKind: ContainerUpdateKind): boolean {
+  return updateKind.kind === UPDATE_KIND_TAG_VALUE;
+}
+
+function isDigestUpdateKind(updateKind: ContainerUpdateKind): boolean {
+  return updateKind.kind === UPDATE_KIND_DIGEST_VALUE;
+}
 
 export interface ContainerImage {
   id: string;
@@ -22,6 +58,7 @@ export interface ContainerImage {
   tag: {
     value: string;
     semver: boolean;
+    tagPrecision?: 'specific' | 'floating';
   };
   digest: {
     watch: boolean;
@@ -36,9 +73,21 @@ export interface ContainerImage {
 
 export interface ContainerResult {
   tag?: string;
+  suggestedTag?: string;
   digest?: string;
   created?: string;
+  publishedAt?: string;
   link?: string;
+  noUpdateReason?: string;
+  releaseNotes?: ContainerReleaseNotes;
+}
+
+export interface ContainerReleaseNotes {
+  title: string;
+  body: string;
+  url: string;
+  publishedAt: string;
+  provider: 'github' | 'gitlab' | 'gitea';
 }
 
 export interface ContainerUpdateKind {
@@ -52,12 +101,42 @@ export interface ContainerUpdatePolicy {
   skipTags?: string[];
   skipDigests?: string[];
   snoozeUntil?: string;
+  maturityMode?: 'all' | 'mature';
+  maturityMinAgeDays?: number;
 }
 
 export interface ContainerSecurityState {
   scan?: ContainerSecurityScan;
   signature?: ContainerSignatureVerification;
   sbom?: ContainerSecuritySbom;
+  updateScan?: ContainerSecurityScan;
+  updateSignature?: ContainerSignatureVerification;
+  updateSbom?: ContainerSecuritySbom;
+}
+
+export interface ContainerRuntimeEnv {
+  key: string;
+  value: string;
+}
+
+export interface ContainerRuntimeDetails {
+  ports: string[];
+  volumes: string[];
+  env: ContainerRuntimeEnv[];
+}
+
+export interface ContainerUpdateOperationState {
+  id: string;
+  kind?: ContainerUpdateOperationKind;
+  status: ActiveContainerUpdateOperationStatus;
+  phase: ActiveContainerUpdateOperationPhase;
+  updatedAt: string;
+  batchId?: string;
+  queuePosition?: number;
+  queueTotal?: number;
+  fromVersion?: string;
+  toVersion?: string;
+  targetImage?: string;
 }
 
 export interface Container {
@@ -71,10 +150,12 @@ export interface Container {
   includeTags?: string;
   excludeTags?: string;
   transformTags?: string;
+  tagFamily?: string;
   linkTemplate?: string;
   link?: string;
   triggerInclude?: string;
   triggerExclude?: string;
+  tagPinned?: boolean;
   updatePolicy?: ContainerUpdatePolicy;
   security?: ContainerSecurityState;
   image: ContainerImage;
@@ -84,14 +165,77 @@ export interface Container {
   };
   updateAvailable: boolean;
   updateKind: ContainerUpdateKind;
+  updateDetectedAt?: string;
+  firstSeenAt?: string;
+  updateAge?: number;
+  updateMaturityLevel?: 'hot' | 'mature' | 'established';
+  updateOperation?: ContainerUpdateOperationState;
   labels?: Record<string, string>;
+  sourceRepo?: string;
+  details?: ContainerRuntimeDetails;
   resultChanged?: (otherContainer: Container | undefined) => boolean;
 }
+
+export type ContainerIdentity = Partial<Pick<Container, 'agent' | 'watcher' | 'name'>>;
 
 export interface ContainerReport {
   container: Container;
   changed: boolean;
 }
+
+const containerSecurityVulnerabilitySchema = joi.object({
+  id: joi.string().required(),
+  target: joi.string(),
+  packageName: joi.string(),
+  installedVersion: joi.string(),
+  fixedVersion: joi.string(),
+  severity: joi.string().valid('UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'),
+  title: joi.string(),
+  primaryUrl: joi.string(),
+});
+
+const containerSecuritySummarySchema = joi.object({
+  unknown: joi.number().integer().min(0).required(),
+  low: joi.number().integer().min(0).required(),
+  medium: joi.number().integer().min(0).required(),
+  high: joi.number().integer().min(0).required(),
+  critical: joi.number().integer().min(0).required(),
+});
+
+const containerSecurityScanSchema = joi.object({
+  scanner: joi.string().valid('trivy').required(),
+  image: joi.string().required(),
+  scannedAt: joi.string().isoDate().required(),
+  status: joi.string().valid('passed', 'blocked', 'error').required(),
+  blockSeverities: joi
+    .array()
+    .items(joi.string().valid('UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'))
+    .required(),
+  blockingCount: joi.number().integer().min(0).required(),
+  summary: containerSecuritySummarySchema.required(),
+  vulnerabilities: joi.array().items(containerSecurityVulnerabilitySchema).required(),
+  error: joi.string(),
+});
+
+const containerSecuritySignatureSchema = joi.object({
+  verifier: joi.string().valid('cosign').required(),
+  image: joi.string().required(),
+  verifiedAt: joi.string().isoDate().required(),
+  status: joi.string().valid('verified', 'unverified', 'error').required(),
+  keyless: joi.boolean().required(),
+  signatures: joi.number().integer().min(0).required(),
+  error: joi.string(),
+});
+
+const containerSecuritySbomSchema = joi.object({
+  generator: joi.string().valid('trivy').required(),
+  image: joi.string().required(),
+  generatedAt: joi.string().isoDate().required(),
+  status: joi.string().valid('generated', 'error').required(),
+  formats: joi.array().items(joi.string().valid('spdx-json', 'cyclonedx-json')).required(),
+  documents: joi.object().required(),
+  error: joi.string(),
+});
 
 // Container data schema
 const schema = joi.object({
@@ -105,70 +249,30 @@ const schema = joi.object({
   includeTags: joi.string(),
   excludeTags: joi.string(),
   transformTags: joi.string(),
+  tagFamily: joi.string(),
   linkTemplate: joi.string(),
   link: joi.string(),
   triggerInclude: joi.string(),
   triggerExclude: joi.string(),
+  tagPinned: joi.boolean(),
   updatePolicy: joi.object({
     skipTags: joi.array().items(joi.string()),
     skipDigests: joi.array().items(joi.string()),
     snoozeUntil: joi.string().isoDate(),
+    maturityMode: joi.string().valid('all', 'mature'),
+    maturityMinAgeDays: joi
+      .number()
+      .integer()
+      .min(MATURITY_MIN_AGE_DAYS_MIN)
+      .max(MATURITY_MIN_AGE_DAYS_MAX),
   }),
   security: joi.object({
-    scan: joi.object({
-      scanner: joi.string().valid('trivy').required(),
-      image: joi.string().required(),
-      scannedAt: joi.string().isoDate().required(),
-      status: joi.string().valid('passed', 'blocked', 'error').required(),
-      blockSeverities: joi
-        .array()
-        .items(joi.string().valid('UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'))
-        .required(),
-      blockingCount: joi.number().integer().min(0).required(),
-      summary: joi
-        .object({
-          unknown: joi.number().integer().min(0).required(),
-          low: joi.number().integer().min(0).required(),
-          medium: joi.number().integer().min(0).required(),
-          high: joi.number().integer().min(0).required(),
-          critical: joi.number().integer().min(0).required(),
-        })
-        .required(),
-      vulnerabilities: joi
-        .array()
-        .items(
-          joi.object({
-            id: joi.string().required(),
-            target: joi.string(),
-            packageName: joi.string(),
-            installedVersion: joi.string(),
-            fixedVersion: joi.string(),
-            severity: joi.string().valid('UNKNOWN', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'),
-            title: joi.string(),
-            primaryUrl: joi.string(),
-          }),
-        )
-        .required(),
-      error: joi.string(),
-    }),
-    signature: joi.object({
-      verifier: joi.string().valid('cosign').required(),
-      image: joi.string().required(),
-      verifiedAt: joi.string().isoDate().required(),
-      status: joi.string().valid('verified', 'unverified', 'error').required(),
-      keyless: joi.boolean().required(),
-      signatures: joi.number().integer().min(0).required(),
-      error: joi.string(),
-    }),
-    sbom: joi.object({
-      generator: joi.string().valid('trivy').required(),
-      image: joi.string().required(),
-      generatedAt: joi.string().isoDate().required(),
-      status: joi.string().valid('generated', 'error').required(),
-      formats: joi.array().items(joi.string().valid('spdx-json', 'cyclonedx-json')).required(),
-      documents: joi.object().required(),
-      error: joi.string(),
-    }),
+    scan: containerSecurityScanSchema,
+    signature: containerSecuritySignatureSchema,
+    sbom: containerSecuritySbomSchema,
+    updateScan: containerSecurityScanSchema,
+    updateSignature: containerSecuritySignatureSchema,
+    updateSbom: containerSecuritySbomSchema,
   }),
   image: joi
     .object({
@@ -186,6 +290,7 @@ const schema = joi.object({
         .object({
           value: joi.string().min(1).required(),
           semver: joi.boolean().default(false),
+          tagPrecision: joi.string().valid('specific', 'floating'),
         })
         .required(),
       digest: joi
@@ -203,9 +308,19 @@ const schema = joi.object({
     .required(),
   result: joi.object({
     tag: joi.string().min(1),
+    suggestedTag: joi.string().min(1),
     digest: joi.string(),
     created: joi.string().isoDate(),
+    publishedAt: joi.string().isoDate(),
     link: joi.string(),
+    noUpdateReason: joi.string().min(1),
+    releaseNotes: joi.object({
+      title: joi.string().required(),
+      body: joi.string().required(),
+      url: joi.string().required(),
+      publishedAt: joi.string().isoDate().required(),
+      provider: joi.string().valid('github', 'gitlab', 'gitea').required(),
+    }),
   }),
   error: joi.object({
     message: joi.string().min(1).required(),
@@ -213,23 +328,36 @@ const schema = joi.object({
   updateAvailable: joi.boolean().default(false),
   updateKind: joi
     .object({
-      kind: joi.string().allow('tag', 'digest', 'unknown').required(),
+      kind: joi.string().valid('tag', 'digest', 'unknown').required(),
       localValue: joi.string(),
       remoteValue: joi.string(),
-      semverDiff: joi.string().allow('major', 'minor', 'patch', 'prerelease', 'unknown'),
+      semverDiff: joi.string().valid('major', 'minor', 'patch', 'prerelease', 'unknown'),
     })
     .default({ kind: 'unknown' }),
+  updateDetectedAt: joi.string().isoDate(),
+  firstSeenAt: joi.string().isoDate(),
+  updateAge: joi.number().integer().min(0),
+  updateMaturityLevel: joi.string().valid('hot', 'mature', 'established'),
   resultChanged: joi.function(),
   labels: joi.object(),
+  sourceRepo: joi.string(),
+  details: joi.object({
+    ports: joi.array().items(joi.string()).required(),
+    volumes: joi.array().items(joi.string()).required(),
+    env: joi
+      .array()
+      .items(
+        joi.object({
+          key: joi.string().required(),
+          value: joi.string().allow('').required(),
+        }),
+      )
+      .required(),
+  }),
 });
 
 function getRawTagUpdate(container: Container): ContainerUpdateKind {
-  const updateKind: ContainerUpdateKind = {
-    kind: 'unknown',
-    localValue: undefined,
-    remoteValue: undefined,
-    semverDiff: 'unknown',
-  };
+  const updateKind = createUnknownUpdateKind();
   if (!container.image || !container.result) {
     return updateKind;
   }
@@ -289,7 +417,7 @@ function getRawTagUpdate(container: Container): ContainerUpdateKind {
   }
 
   return {
-    kind: 'tag',
+    kind: UPDATE_KIND_TAG_VALUE as ContainerUpdateKind['kind'],
     localValue: container.image.tag.value,
     remoteValue: container.result.tag,
     semverDiff: semverDiffResult,
@@ -297,12 +425,7 @@ function getRawTagUpdate(container: Container): ContainerUpdateKind {
 }
 
 function getRawDigestUpdate(container: Container): ContainerUpdateKind {
-  const updateKind: ContainerUpdateKind = {
-    kind: 'unknown',
-    localValue: undefined,
-    remoteValue: undefined,
-    semverDiff: 'unknown',
-  };
+  const updateKind = createUnknownUpdateKind();
   if (!container.image || !container.result) {
     return updateKind;
   }
@@ -313,29 +436,25 @@ function getRawDigestUpdate(container: Container): ContainerUpdateKind {
     container.image.digest.value !== container.result.digest
   ) {
     return {
-      kind: 'digest',
+      kind: UPDATE_KIND_DIGEST_VALUE as ContainerUpdateKind['kind'],
       localValue: container.image.digest.value,
       remoteValue: container.result.digest,
-      semverDiff: 'unknown',
+      semverDiff: UPDATE_KIND_UNKNOWN_VALUE as ContainerUpdateKind['semverDiff'],
     };
   }
   return updateKind;
 }
 
 function getRawUpdateKind(container: Container): ContainerUpdateKind {
-  const unknownUpdateKind: ContainerUpdateKind = {
-    kind: 'unknown',
-    localValue: undefined,
-    remoteValue: undefined,
-    semverDiff: 'unknown',
-  };
+  const unknownUpdateKind = createUnknownUpdateKind();
   if (!container.image || !container.result) {
     return unknownUpdateKind;
   }
 
-  // Prefer tag updates when both tag and digest updates are present.
+  // Prefer explicit tag updates when both tag and digest changes are present.
+  // Digest updates still apply when there is no tag update.
   const tagUpdate = getRawTagUpdate(container);
-  if (tagUpdate.kind === 'tag') {
+  if (isTagUpdateKind(tagUpdate)) {
     return tagUpdate;
   }
 
@@ -344,7 +463,10 @@ function getRawUpdateKind(container: Container): ContainerUpdateKind {
     container.image.digest.value !== undefined &&
     container.result.digest !== undefined
   ) {
-    return getRawDigestUpdate(container);
+    const digestUpdate = getRawDigestUpdate(container);
+    if (isDigestUpdateKind(digestUpdate)) {
+      return digestUpdate;
+    }
   }
 
   return tagUpdate;
@@ -355,26 +477,26 @@ function hasRawUpdate(container: Container): boolean {
     return false;
   }
 
-  if (
-    container.image.digest?.watch &&
-    container.image.digest.value !== undefined &&
-    container.result.digest !== undefined
-  ) {
-    return container.image.digest.value !== container.result.digest;
-  }
-
   const localTag = transformTag(container.transformTags, container.image.tag.value);
   const remoteTag = transformTag(container.transformTags, container.result.tag);
-  let updateAvailable = localTag !== remoteTag;
+  let tagOrCreatedUpdateAvailable = localTag !== remoteTag;
 
   // Fallback to image created date (especially for legacy v1 manifests)
   if (container.image.created !== undefined && container.result.created !== undefined) {
     const createdDate = new Date(container.image.created).getTime();
     const createdDateResult = new Date(container.result.created).getTime();
 
-    updateAvailable = updateAvailable || createdDate !== createdDateResult;
+    tagOrCreatedUpdateAvailable = tagOrCreatedUpdateAvailable || createdDate !== createdDateResult;
   }
-  return updateAvailable;
+
+  if (
+    container.image.digest?.watch &&
+    container.image.digest.value !== undefined &&
+    container.result.digest !== undefined
+  ) {
+    return container.image.digest.value !== container.result.digest || tagOrCreatedUpdateAvailable;
+  }
+  return tagOrCreatedUpdateAvailable;
 }
 
 function isUpdateSuppressed(container: Container, updateKind: ContainerUpdateKind): boolean {
@@ -390,12 +512,28 @@ function isUpdateSuppressed(container: Container, updateKind: ContainerUpdateKin
     }
   }
 
-  if (updateKind.kind === 'tag' && updateKind.remoteValue && Array.isArray(updatePolicy.skipTags)) {
+  if (updatePolicy.maturityMode === 'mature') {
+    const updateDetectedAtMs = Date.parse(container.updateDetectedAt || '');
+    const maturityMinAgeDays = resolveMaturityMinAgeDays(updatePolicy.maturityMinAgeDays);
+    const maturityMinAgeMs = maturityMinAgeDaysToMilliseconds(maturityMinAgeDays);
+    if (
+      !Number.isFinite(updateDetectedAtMs) ||
+      Date.now() - updateDetectedAtMs < maturityMinAgeMs
+    ) {
+      return true;
+    }
+  }
+
+  if (
+    isTagUpdateKind(updateKind) &&
+    updateKind.remoteValue &&
+    Array.isArray(updatePolicy.skipTags)
+  ) {
     return updatePolicy.skipTags.includes(updateKind.remoteValue);
   }
 
   if (
-    updateKind.kind === 'digest' &&
+    isDigestUpdateKind(updateKind) &&
     updateKind.remoteValue &&
     Array.isArray(updatePolicy.skipDigests)
   ) {
@@ -403,6 +541,58 @@ function isUpdateSuppressed(container: Container, updateKind: ContainerUpdateKin
   }
 
   return false;
+}
+
+function parseDateMs(value: string | undefined): number | undefined {
+  const timestampMs = Date.parse(value || '');
+  return Number.isFinite(timestampMs) ? timestampMs : undefined;
+}
+
+function resolveUiMaturityThresholdDays(): number {
+  return resolveMaturityMinAgeDays(
+    process.env[UI_MATURITY_THRESHOLD_DAYS_ENV],
+    DEFAULT_UI_MATURITY_THRESHOLD_DAYS,
+  );
+}
+
+function getRawUpdateAge(container: Container): number | undefined {
+  if (!container.updateAvailable) {
+    return undefined;
+  }
+
+  const firstSeenAtMs = parseDateMs(container.firstSeenAt);
+  const publishedAtMs = parseDateMs(container.result?.publishedAt);
+  let startedAtMs: number | undefined;
+
+  if (firstSeenAtMs !== undefined && publishedAtMs !== undefined) {
+    startedAtMs = Math.min(firstSeenAtMs, publishedAtMs);
+  } else {
+    startedAtMs = firstSeenAtMs ?? publishedAtMs;
+  }
+
+  if (startedAtMs === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, Date.now() - startedAtMs);
+}
+
+function getRawUpdateMaturityLevel(
+  container: Container,
+): 'hot' | 'mature' | 'established' | undefined {
+  const updateAge = getRawUpdateAge(container);
+  if (updateAge === undefined) {
+    return undefined;
+  }
+
+  const establishedThresholdMs = maturityMinAgeDaysToMilliseconds(ESTABLISHED_UPDATE_AGE_DAYS);
+  if (updateAge >= establishedThresholdMs) {
+    return 'established';
+  }
+
+  const maturityThresholdDays = resolveUiMaturityThresholdDays();
+  const maturityThresholdMs = maturityMinAgeDaysToMilliseconds(maturityThresholdDays);
+  return updateAge >= maturityThresholdMs ? 'mature' : 'hot';
 }
 
 /**
@@ -441,6 +631,15 @@ function getLink(container: Container, originalTagValue: string) {
   return container.linkTemplate.replaceAll(/\$\{(\w+)\}/g, (_, key) =>
     key in vars ? vars[key] : '',
   );
+}
+
+function addTagPinnedProperty(container: Container) {
+  // Materialize to a plain data property instead of a live getter. Store reads clone
+  // containers via spread + structuredClone on every request, and an enumerable getter
+  // would recompile the user's transform-tags regex for every container in every clone.
+  // Tag values don't mutate in production once validate() runs, so the cached value stays
+  // accurate; `validate()` recomputes it on any re-entry into the model.
+  container.tagPinned = isTagPinned(container.image.tag.value, container.transformTags);
 }
 
 /**
@@ -500,18 +699,49 @@ function addUpdateKindProperty(container: Container) {
   });
 }
 
+function addUpdateAgeProperty(container: Container) {
+  if (getRawUpdateAge(container) === undefined) {
+    return;
+  }
+  Object.defineProperty(container, 'updateAge', {
+    enumerable: true,
+    get(this: Container) {
+      return getRawUpdateAge(this);
+    },
+  });
+}
+
+function addUpdateMaturityLevelProperty(container: Container) {
+  if (getRawUpdateMaturityLevel(container) === undefined) {
+    return;
+  }
+  Object.defineProperty(container, 'updateMaturityLevel', {
+    enumerable: true,
+    get(this: Container) {
+      return getRawUpdateMaturityLevel(this);
+    },
+  });
+}
+
 /**
  * Computed function to check whether the result is different.
  * @param otherContainer
  * @returns {boolean}
  */
-function resultChangedFunction(this: Container, otherContainer: Container | undefined) {
+function hasResultChanged(
+  currentResult: Container['result'],
+  otherResult: Container['result'],
+): boolean {
   return (
-    otherContainer === undefined ||
-    this.result?.tag !== otherContainer.result?.tag ||
-    this.result?.digest !== otherContainer.result?.digest ||
-    this.result?.created !== otherContainer.result?.created
+    currentResult?.tag !== otherResult?.tag ||
+    currentResult?.suggestedTag !== otherResult?.suggestedTag ||
+    currentResult?.digest !== otherResult?.digest ||
+    currentResult?.created !== otherResult?.created
   );
+}
+
+function resultChangedFunction(this: Container, otherContainer: Container | undefined) {
+  return otherContainer === undefined || hasResultChanged(this.result, otherContainer.result);
 }
 
 /**
@@ -520,9 +750,16 @@ function resultChangedFunction(this: Container, otherContainer: Container | unde
  * @returns {*}
  */
 function addResultChangedFunction(container: Container) {
-  const containerWithResultChanged = container;
-  containerWithResultChanged.resultChanged = resultChangedFunction;
-  return containerWithResultChanged;
+  // Non-enumerable so structuredClone skips it and the store-clone hotpath can avoid a
+  // preliminary spread to strip the function off. structuredClone throws DataCloneError
+  // on function values, so the store re-attaches resultChanged to the clone directly.
+  Object.defineProperty(container, 'resultChanged', {
+    value: resultChangedFunction,
+    enumerable: false,
+    writable: true,
+    configurable: true,
+  });
+  return container;
 }
 
 /**
@@ -530,7 +767,7 @@ function addResultChangedFunction(container: Container) {
  * @param container
  * @returns {*}
  */
-export function validate(container: any): Container {
+export function validate(container: unknown): Container {
   const validation = schema.validate(container);
   if (validation.error) {
     throw new Error(`Error when validating container properties ${validation.error}`);
@@ -547,8 +784,11 @@ export function validate(container: any): Container {
   delete containerValidated.image?.registry?.lookupUrl;
 
   // Add computed properties
+  addTagPinnedProperty(containerValidated);
   addUpdateAvailableProperty(containerValidated);
   addUpdateKindProperty(containerValidated);
+  addUpdateAgeProperty(containerValidated);
+  addUpdateMaturityLevelProperty(containerValidated);
   addLinkProperty(containerValidated);
 
   // Add computed functions
@@ -557,17 +797,68 @@ export function validate(container: any): Container {
 }
 
 /**
+ * Clear stale raw update detection state after a successful update.
+ * `updateAvailable` is derived from `image` + `result`, so callers must
+ * remove the raw result payload rather than trying to persist `false`.
+ */
+export function clearDetectedUpdateState(container: Container): Container {
+  const {
+    result: _result,
+    error: _error,
+    updateAvailable: _updateAvailable,
+    updateKind: _updateKind,
+    updateDetectedAt: _updateDetectedAt,
+    firstSeenAt: _firstSeenAt,
+    updateAge: _updateAge,
+    updateMaturityLevel: _updateMaturityLevel,
+    resultChanged: _resultChanged,
+    ...containerWithoutUpdateState
+  } = container;
+
+  return {
+    ...containerWithoutUpdateState,
+    result: undefined,
+    error: undefined,
+    updateAvailable: false,
+  } as Container;
+}
+
+/**
  * Flatten the container object (useful for k/v based integrations).
  * @param container
  * @returns {*}
  */
 export function flatten(container: Container) {
-  const containerFlatten: any = flat(container, {
+  const containerFlatten = flat<Container, Record<string, unknown>>(container, {
     delimiter: '_',
     transformKey: (key: string) => snakeCase(key),
   });
   delete containerFlatten.result_changed;
   return containerFlatten;
+}
+
+function hasContainerIdentityValue(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function hasValidContainerIdentity(containerIdentity: ContainerIdentity | undefined): boolean {
+  return (
+    containerIdentity !== undefined &&
+    hasContainerIdentityValue(containerIdentity.watcher) &&
+    hasContainerIdentityValue(containerIdentity.name)
+  );
+}
+
+function getContainerIdentityAgentPrefix(containerIdentity: ContainerIdentity): string {
+  return hasContainerIdentityValue(containerIdentity.agent) ? containerIdentity.agent : '';
+}
+
+export function getContainerIdentityKey(containerIdentity: ContainerIdentity) {
+  if (!hasValidContainerIdentity(containerIdentity)) {
+    return undefined;
+  }
+
+  return `${getContainerIdentityAgentPrefix(containerIdentity)}::${containerIdentity.watcher}::${containerIdentity.name}`;
 }
 
 /**
@@ -579,11 +870,24 @@ export function fullName(container: Container) {
   return `${container.watcher}_${container.name}`;
 }
 
+export function isRollbackContainerName(name: unknown) {
+  return typeof name === 'string' && OLD_ROLLBACK_CONTAINER_NAME_PATTERN.test(name);
+}
+
+export function isRollbackContainer(container: { name?: unknown }) {
+  return isRollbackContainerName(container?.name);
+}
+
 // The following exports are meant for testing only
 export {
-  getLink as testable_getLink,
-  addUpdateKindProperty as testable_addUpdateKindProperty,
   addLinkProperty as testable_addLinkProperty,
-  getRawTagUpdate as testable_getRawTagUpdate,
+  addUpdateKindProperty as testable_addUpdateKindProperty,
+  getLink as testable_getLink,
   getRawDigestUpdate as testable_getRawDigestUpdate,
+  getRawTagUpdate as testable_getRawTagUpdate,
+  getRawUpdateAge as testable_getRawUpdateAge,
+  getRawUpdateKind as testable_getRawUpdateKind,
+  hasRawUpdate as testable_hasRawUpdate,
+  isUpdateSuppressed as testable_isUpdateSuppressed,
+  resultChangedFunction as testable_resultChangedFunction,
 };

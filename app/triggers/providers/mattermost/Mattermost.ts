@@ -1,11 +1,27 @@
-// @ts-nocheck
 import axios from 'axios';
-import Trigger from '../Trigger.js';
+import { getOutboundHttpTimeoutMs } from '../../../configuration/runtime-defaults.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+type MattermostMessageBody = {
+  text: string;
+  channel?: string;
+  username?: string;
+  icon_emoji?: string;
+  icon_url?: string;
+};
+
+interface MattermostConfiguration extends TriggerConfiguration {
+  url: string;
+  channel?: string;
+  username?: string;
+  iconemoji?: string;
+  iconurl?: string;
+}
 
 /**
  * Mattermost Trigger implementation
  */
-class Mattermost extends Trigger {
+class Mattermost extends Trigger<MattermostConfiguration> {
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -52,7 +68,7 @@ class Mattermost extends Trigger {
   }
 
   buildMessageBody(text) {
-    const body: any = { text };
+    const body: MattermostMessageBody = { text };
     if (this.configuration.channel) {
       body.channel = this.configuration.channel;
     }
@@ -73,6 +89,7 @@ class Mattermost extends Trigger {
       headers: {
         'content-type': 'application/json',
       },
+      timeout: getOutboundHttpTimeoutMs(),
     });
   }
 }

@@ -1,16 +1,265 @@
-// @ts-nocheck
-import axios from 'axios';
+import fs from 'node:fs';
+import https from 'node:https';
+import axios, { type AxiosRequestConfig } from 'axios';
+import { sanitizeLogParam } from '../log/sanitize.js';
+import type { ContainerImage } from '../model/container.js';
+import * as registryPrometheus from '../prometheus/registry.js';
+import { resolveConfiguredPath } from '../runtime/paths.js';
+import { failClosedAuth, requireAuthString, withAuthorizationHeader } from '../security/auth.js';
+import { getErrorMessage } from '../util/error.js';
+import { REGISTRY_BEARER_TOKEN_CACHE_TTL_MS } from './configuration.js';
 import Registry from './Registry.js';
+
+export interface BaseRegistryConfiguration {
+  url?: string;
+  insecure?: boolean;
+  cafile?: string;
+  clientcert?: string;
+  clientkey?: string;
+  auth?: string;
+  login?: string;
+  password?: string;
+  token?: string;
+  username?: string;
+}
+
+type RegistryRequestOptions = AxiosRequestConfig;
+type RegistryManifestLookupResult = Awaited<ReturnType<Registry['getImageManifestDigest']>>;
+type DigestCacheEntry = {
+  digest: string;
+  created?: string;
+  version?: number;
+  fetchedAt: number;
+};
 
 /**
  * Base Registry with common patterns
  */
-class BaseRegistry extends Registry {
+class BaseRegistry<
+  TConfiguration extends BaseRegistryConfiguration = BaseRegistryConfiguration,
+> extends Registry<TConfiguration> {
+  private httpsAgent?: https.Agent;
+  private bearerTokenCache = new Map<string, { token: string; expiresAt: number }>();
+  private digestManifestCache = new Map<string, DigestCacheEntry>();
+  private digestManifestCacheInFlight = new Map<string, Promise<RegistryManifestLookupResult>>();
+  private digestCacheHits = 0;
+  private digestCacheMisses = 0;
+
+  private getBearerTokenCacheKey(authUrl: string, credentials?: string) {
+    return `${authUrl}|${credentials || ''}`;
+  }
+
+  private pruneExpiredBearerTokenCache(now: number) {
+    for (const [key, cachedToken] of this.bearerTokenCache.entries()) {
+      if (now >= cachedToken.expiresAt) {
+        this.bearerTokenCache.delete(key);
+      }
+    }
+  }
+
+  private getCanonicalRegistryHost(registryUrl: string | undefined): string {
+    if (!registryUrl || registryUrl.trim().length === 0) {
+      return 'docker.io';
+    }
+
+    const host = this.getRegistryHostname(registryUrl);
+    if (host === 'registry-1.docker.io' || host === 'index.docker.io') {
+      return 'docker.io';
+    }
+    return host;
+  }
+
+  private getDigestCacheImageLabel(image: ContainerImage, digest?: string): string {
+    const registryUrl =
+      typeof image?.registry?.url === 'string' && image.registry.url.length > 0
+        ? image.registry.url
+        : 'unknown-registry';
+    const imageName =
+      typeof image?.name === 'string' && image.name.length > 0 ? image.name : 'unknown-image';
+    const tagOrDigest =
+      typeof digest === 'string' && digest.length > 0
+        ? digest
+        : image?.tag?.value || image?.digest?.value || 'latest';
+
+    return `${registryUrl}/${imageName}:${tagOrDigest}`;
+  }
+
+  private buildDigestCacheKey(image: ContainerImage, digest?: string): string {
+    let normalizedImage: ContainerImage;
+    try {
+      normalizedImage = this.normalizeImage(structuredClone(image));
+    } catch (error) {
+      this.log.warn(
+        `Unable to normalize image metadata for digest cache key generation: ${sanitizeLogParam(this.getDigestCacheImageLabel(image, digest))} (${sanitizeLogParam(getErrorMessage(error))})`,
+      );
+      normalizedImage = image;
+    }
+
+    const registryHost = this.getCanonicalRegistryHost(normalizedImage?.registry?.url);
+    const imageName = normalizedImage?.name || '';
+    const repository =
+      registryHost === 'docker.io' && imageName.length > 0 && !imageName.includes('/')
+        ? `library/${imageName}`
+        : imageName;
+    const tagOrDigest =
+      (typeof digest === 'string' && digest.length > 0 ? digest : normalizedImage?.tag?.value) ||
+      'latest';
+    const architecture = normalizedImage?.architecture || 'unknown';
+    const os = normalizedImage?.os || 'unknown';
+    const variant = normalizedImage?.variant ? `/${normalizedImage.variant}` : '';
+
+    return `${registryHost}/${repository}:${tagOrDigest}|${os}/${architecture}${variant}`;
+  }
+
+  private recordDigestCacheHit() {
+    this.digestCacheHits += 1;
+    const counter = registryPrometheus.getDigestCacheHitsCounter?.();
+    if (counter) {
+      counter.inc();
+    }
+  }
+
+  private recordDigestCacheMiss() {
+    this.digestCacheMisses += 1;
+    const counter = registryPrometheus.getDigestCacheMissesCounter?.();
+    if (counter) {
+      counter.inc();
+    }
+  }
+
+  public startDigestCachePollCycle() {
+    this.digestManifestCache.clear();
+    this.digestManifestCacheInFlight.clear();
+    this.digestCacheHits = 0;
+    this.digestCacheMisses = 0;
+  }
+
+  public endDigestCachePollCycle() {
+    const totalRequests = this.digestCacheHits + this.digestCacheMisses;
+    const hitRate = totalRequests === 0 ? 0 : (this.digestCacheHits / totalRequests) * 100;
+    if (this.log && typeof this.log.debug === 'function') {
+      this.log.debug(
+        `${this.getId()} digest cache hit rate ${hitRate.toFixed(2)}% (${this.digestCacheHits} hits, ${this.digestCacheMisses} misses)`,
+      );
+    }
+    return {
+      hits: this.digestCacheHits,
+      misses: this.digestCacheMisses,
+      hitRate,
+    };
+  }
+
+  /**
+   * Additional hosts the provider considers legitimate auth endpoints.
+   * Override in subclasses that delegate auth to a different host
+   * (e.g. lscr.io authenticates against ghcr.io).
+   */
+  protected getTrustedAuthHosts(): string[] {
+    return [];
+  }
+
+  private getTrustedRegistryHosts(requestOptions: RegistryRequestOptions): string[] {
+    const hosts = new Set<string>();
+    const requestHostSource = requestOptions?.url;
+    if (typeof requestHostSource === 'string' && requestHostSource.trim().length > 0) {
+      hosts.add(this.getRegistryHostname(requestHostSource));
+    }
+
+    const configuredHostSource = this.configuration?.url;
+    if (typeof configuredHostSource === 'string' && configuredHostSource.trim().length > 0) {
+      hosts.add(this.getRegistryHostname(configuredHostSource));
+    }
+
+    for (const host of this.getTrustedAuthHosts()) {
+      if (typeof host === 'string' && host.trim().length > 0) {
+        hosts.add(this.getRegistryHostname(host));
+      }
+    }
+
+    return Array.from(hosts);
+  }
+
+  private validateAuthUrlHost(authUrl: string, requestOptions: RegistryRequestOptions): void {
+    const authHost = this.getRegistryHostname(authUrl);
+    const trustedHosts = this.getTrustedRegistryHosts(requestOptions);
+
+    if (trustedHosts.length === 0) {
+      failClosedAuth(
+        `Unable to authenticate registry ${this.getId()}: token endpoint host ${authHost} cannot be validated because registry host is unavailable`,
+      );
+      return;
+    }
+
+    if (!trustedHosts.includes(authHost)) {
+      failClosedAuth(
+        `Unable to authenticate registry ${this.getId()}: token endpoint host ${authHost} is not trusted`,
+      );
+    }
+  }
+
+  private getHttpsAgent() {
+    const shouldDisableTlsVerification = this.configuration?.insecure === true;
+    const hasCaFile = Boolean(this.configuration?.cafile);
+    const hasMutualTls = Boolean(this.configuration?.clientcert);
+    if (!shouldDisableTlsVerification && !hasCaFile && !hasMutualTls) {
+      return undefined;
+    }
+
+    if (this.httpsAgent) {
+      return this.httpsAgent;
+    }
+
+    let ca;
+    if (hasCaFile) {
+      const caPath = resolveConfiguredPath(this.configuration.cafile, {
+        label: `registry ${this.getId()} CA file path`,
+      });
+      ca = fs.readFileSync(caPath);
+    }
+
+    let cert;
+    let key;
+    if (hasMutualTls) {
+      const certPath = resolveConfiguredPath(this.configuration.clientcert, {
+        label: `registry ${this.getId()} client certificate file path`,
+      });
+      cert = fs.readFileSync(certPath);
+      const keyPath = resolveConfiguredPath(this.configuration.clientkey, {
+        label: `registry ${this.getId()} client key file path`,
+      });
+      key = fs.readFileSync(keyPath);
+    }
+
+    // Intentional opt-in for self-hosted registries with private/self-signed cert chains.
+    // lgtm[js/disabling-certificate-validation]
+    this.httpsAgent = new https.Agent({
+      ca,
+      cert,
+      key,
+      rejectUnauthorized: !shouldDisableTlsVerification,
+    });
+    return this.httpsAgent;
+  }
+
+  private withTlsRequestOptions(requestOptions: RegistryRequestOptions): RegistryRequestOptions {
+    const httpsAgent = requestOptions.httpsAgent || this.getHttpsAgent();
+    if (!httpsAgent) {
+      return requestOptions;
+    }
+    return {
+      ...requestOptions,
+      httpsAgent,
+    };
+  }
+
   /**
    * Common URL normalization for registries that need https:// prefix and /v2 suffix
    */
   normalizeImageUrl(image, registryUrl = null) {
-    const imageNormalized = { ...image };
+    const imageNormalized = {
+      ...image,
+      registry: { ...image.registry },
+    };
     const url = registryUrl || image.registry.url;
 
     if (!url.startsWith('https://')) {
@@ -22,10 +271,15 @@ class BaseRegistry extends Registry {
   /**
    * Common Basic Auth implementation
    */
-  async authenticateBasic(requestOptions, credentials) {
-    const requestOptionsWithAuth = { ...requestOptions };
+  async authenticateBasic(
+    requestOptions: RegistryRequestOptions,
+    credentials?: string,
+  ): Promise<RegistryRequestOptions> {
+    const requestOptionsWithAuth = this.withTlsRequestOptions({ ...requestOptions });
     if (credentials) {
-      requestOptionsWithAuth.headers.Authorization = `Basic ${credentials}`;
+      const headers = (requestOptionsWithAuth.headers || {}) as Record<string, unknown>;
+      headers.Authorization = `Basic ${credentials}`;
+      requestOptionsWithAuth.headers = headers as AxiosRequestConfig['headers'];
     }
     return requestOptionsWithAuth;
   }
@@ -33,12 +287,60 @@ class BaseRegistry extends Registry {
   /**
    * Common Bearer token authentication
    */
-  async authenticateBearer(requestOptions, token) {
-    const requestOptionsWithAuth = { ...requestOptions };
+  async authenticateBearer(
+    requestOptions: RegistryRequestOptions,
+    token?: string,
+  ): Promise<RegistryRequestOptions> {
+    const requestOptionsWithAuth = this.withTlsRequestOptions({ ...requestOptions });
     if (token) {
-      requestOptionsWithAuth.headers.Authorization = `Bearer ${token}`;
+      const headers = (requestOptionsWithAuth.headers || {}) as Record<string, unknown>;
+      headers.Authorization = `Bearer ${token}`;
+      requestOptionsWithAuth.headers = headers as AxiosRequestConfig['headers'];
     }
     return requestOptionsWithAuth;
+  }
+
+  async getImageManifestDigest(
+    image: ContainerImage,
+    digest?: string,
+  ): Promise<RegistryManifestLookupResult> {
+    const cacheKey = this.buildDigestCacheKey(image, digest);
+    const cachedEntry = this.digestManifestCache.get(cacheKey);
+    if (cachedEntry) {
+      this.recordDigestCacheHit();
+      return {
+        digest: cachedEntry.digest,
+        created: cachedEntry.created,
+        version: cachedEntry.version,
+      };
+    }
+
+    const inFlightLookup = this.digestManifestCacheInFlight.get(cacheKey);
+    if (inFlightLookup) {
+      this.recordDigestCacheHit();
+      return inFlightLookup;
+    }
+
+    this.recordDigestCacheMiss();
+    const manifestLookup = (async () => {
+      const manifest = await super.getImageManifestDigest(image, digest);
+      if (typeof manifest?.digest === 'string' && manifest.digest.length > 0) {
+        this.digestManifestCache.set(cacheKey, {
+          digest: manifest.digest,
+          created: manifest.created,
+          version: manifest.version,
+          fetchedAt: Date.now(),
+        });
+      }
+      return manifest;
+    })();
+
+    this.digestManifestCacheInFlight.set(cacheKey, manifestLookup);
+    try {
+      return await manifestLookup;
+    } finally {
+      this.digestManifestCacheInFlight.delete(cacheKey);
+    }
   }
 
   /**
@@ -52,37 +354,120 @@ class BaseRegistry extends Registry {
    * @returns the request options with Authorization header set
    */
   async authenticateBearerFromAuthUrl(
-    requestOptions,
-    authUrl,
-    credentials,
-    tokenExtractor = (response) => response.data.token,
+    requestOptions: RegistryRequestOptions,
+    authUrl: string,
+    credentials?: string,
+    tokenExtractor: (response: { data?: Record<string, unknown> }) => unknown = (response) =>
+      response.data?.token,
+    tokenFailureMessage = `Unable to authenticate registry ${this.getId()}: token endpoint response does not contain token`,
   ) {
-    const requestOptionsWithAuth = requestOptions;
-    let token;
+    this.validateAuthUrlHost(authUrl, requestOptions);
 
-    const request = {
+    const requestOptionsWithAuth = this.withTlsRequestOptions({
+      ...requestOptions,
+    });
+    const cacheKey = this.getBearerTokenCacheKey(authUrl, credentials);
+    const now = Date.now();
+    this.pruneExpiredBearerTokenCache(now);
+    const cachedToken = this.bearerTokenCache.get(cacheKey);
+    if (cachedToken && now < cachedToken.expiresAt) {
+      return withAuthorizationHeader(
+        requestOptionsWithAuth,
+        'Bearer',
+        cachedToken.token,
+        tokenFailureMessage,
+      );
+    }
+    this.bearerTokenCache.delete(cacheKey);
+
+    const request = this.withTlsRequestOptions({
       method: 'GET',
       url: authUrl,
       headers: {
         Accept: 'application/json',
       },
-    };
+    });
 
     if (credentials) {
-      request.headers.Authorization = `Basic ${credentials}`;
+      const headers = (request.headers || {}) as Record<string, unknown>;
+      headers.Authorization = `Basic ${credentials}`;
+      request.headers = headers as AxiosRequestConfig['headers'];
     }
 
+    let response: { data?: Record<string, unknown> } | undefined;
     try {
-      const response = await axios(request);
-      token = tokenExtractor(response);
+      response = await axios(request);
     } catch (e) {
-      this.log.warn(`Error when trying to get an access token (${e.message})`);
+      failClosedAuth(
+        `Unable to authenticate registry ${this.getId()}: token request failed (${e.message})`,
+      );
     }
 
-    if (token) {
-      requestOptionsWithAuth.headers.Authorization = `Bearer ${token}`;
+    const token = requireAuthString(tokenExtractor(response), tokenFailureMessage);
+    this.bearerTokenCache.set(cacheKey, {
+      token,
+      expiresAt: Date.now() + REGISTRY_BEARER_TOKEN_CACHE_TTL_MS,
+    });
+
+    return withAuthorizationHeader(requestOptionsWithAuth, 'Bearer', token, tokenFailureMessage);
+  }
+
+  private getRejectedCredentialStatus(
+    error: unknown,
+    rejectedCredentialStatuses: readonly number[] = [401, 403],
+  ): string | undefined {
+    if (!(error instanceof Error) || rejectedCredentialStatuses.length === 0) {
+      return undefined;
     }
-    return requestOptionsWithAuth;
+
+    const allowedStatuses = rejectedCredentialStatuses.join('|');
+    const rejectedStatusPattern = new RegExp(
+      `token request failed \\(Request failed with status code (${allowedStatuses})\\)`,
+    );
+    const match = error.message.match(rejectedStatusPattern);
+    return match ? match[1] : undefined;
+  }
+
+  protected async authenticateBearerFromAuthUrlWithPublicFallback(
+    requestOptions: RegistryRequestOptions,
+    authUrl: string,
+    credentials?: string,
+    options: {
+      tokenExtractor?: (response: { data?: Record<string, unknown> }) => unknown;
+      tokenFailureMessage?: string;
+      providerLabel?: string;
+      rejectedCredentialStatuses?: readonly number[];
+    } = {},
+  ) {
+    try {
+      return await this.authenticateBearerFromAuthUrl(
+        requestOptions,
+        authUrl,
+        credentials,
+        options.tokenExtractor,
+        options.tokenFailureMessage,
+      );
+    } catch (error) {
+      const rejectedStatus = credentials
+        ? this.getRejectedCredentialStatus(error, options.rejectedCredentialStatuses)
+        : undefined;
+      if (!credentials || !rejectedStatus) {
+        throw error;
+      }
+
+      const providerLabel = options.providerLabel || this.getId();
+      this.log.warn(
+        `${providerLabel} credentials were rejected for registry ${this.getId()} (status ${rejectedStatus}); retrying token request without credentials for public image checks`,
+      );
+
+      return this.authenticateBearerFromAuthUrl(
+        requestOptions,
+        authUrl,
+        undefined,
+        options.tokenExtractor,
+        options.tokenFailureMessage,
+      );
+    }
   }
 
   /**
@@ -122,6 +507,43 @@ class BaseRegistry extends Registry {
    */
   matchUrlPattern(image, pattern) {
     return pattern.test(image.registry.url);
+  }
+
+  /**
+   * Resolve the remote image publish date from manifest metadata.
+   * Provider-specific implementations can override this when richer APIs exist.
+   */
+  async getImagePublishedAt(image, tag?: string): Promise<string | undefined> {
+    const imageToInspect = structuredClone(image);
+    const tagToLookup = typeof tag === 'string' && tag.length > 0 ? tag : imageToInspect.tag?.value;
+    if (typeof tagToLookup === 'string' && tagToLookup.length > 0) {
+      imageToInspect.tag = {
+        ...(imageToInspect.tag || {}),
+        value: tagToLookup,
+      };
+    }
+
+    const manifest = await this.getImageManifestDigest(imageToInspect);
+    if (typeof manifest?.created !== 'string') {
+      return undefined;
+    }
+
+    return Number.isNaN(Date.parse(manifest.created)) ? undefined : manifest.created;
+  }
+
+  /**
+   * Normalize a registry URL-like value into a lowercase hostname.
+   */
+  getRegistryHostname(value: string): string {
+    const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    try {
+      return new URL(withProtocol).hostname.toLowerCase();
+    } catch {
+      return value
+        .replace(/^https?:\/\//i, '')
+        .split('/')[0]
+        .toLowerCase();
+    }
   }
 
   /**

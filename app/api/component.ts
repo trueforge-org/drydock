@@ -1,16 +1,56 @@
-// @ts-nocheck
-
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import nocache from 'nocache';
 import { byString, byValues } from 'sort-es';
+import type { RegistryState } from '../registry/index.js';
 import * as registry from '../registry/index.js';
+import { redactTriggerConfigurationInfrastructureDetails } from '../registry/trigger-config-redaction.js';
+import { normalizeLimitOffsetPagination } from './container/request-helpers.js';
+import { sendErrorResponse } from './error-response.js';
 
 export interface ApiComponent {
   id: string;
   type: string;
   name: string;
-  configuration: any;
+  configuration: unknown;
   agent?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface ComponentLike {
+  type: string;
+  name: string;
+  agent?: string;
+  configuration?: unknown;
+  maskConfiguration?: () => unknown;
+  getMetadata?: () => Record<string, unknown>;
+}
+
+interface ComponentRouteParams {
+  agent?: string;
+  type: string;
+  name: string;
+}
+
+type ComponentKind = keyof RegistryState;
+type ComponentMap = Record<string, ComponentLike>;
+type ComponentListPagination = {
+  limit: number;
+  offset: number;
+};
+
+const COMPONENT_LIST_MAX_LIMIT = 200;
+
+function paginateComponentList(
+  components: ApiComponent[],
+  pagination: ComponentListPagination,
+): ApiComponent[] {
+  if (pagination.offset >= components.length) {
+    return [];
+  }
+  if (pagination.limit === 0) {
+    return components.slice(pagination.offset);
+  }
+  return components.slice(pagination.offset, pagination.offset + pagination.limit);
 }
 
 /**
@@ -19,26 +59,45 @@ export interface ApiComponent {
  * @param component
  * @returns {{id: *}}
  */
-export function mapComponentToItem(key, component): ApiComponent {
-  const configurationMasked = component.maskConfiguration();
-  const isTrigger = component.kind === 'trigger';
-  const requireIncludeConfigured = component.configuration?.requireinclude;
+export function mapComponentToItem(
+  key: string,
+  component: ComponentLike,
+  kind?: ComponentKind,
+): ApiComponent {
+  const configuration =
+    typeof component.maskConfiguration === 'function'
+      ? component.maskConfiguration()
+      : component.configuration;
+  const sanitizedConfiguration =
+    kind === 'trigger'
+      ? redactTriggerConfigurationInfrastructureDetails(configuration)
+      : configuration;
 
+  // Preserve requireinclude for triggers even when maskConfiguration omits it
   if (
-    isTrigger &&
-    requireIncludeConfigured !== undefined &&
-    configurationMasked?.requireinclude === undefined
+    kind === 'trigger' &&
+    (component as any).configuration?.requireinclude !== undefined &&
+    sanitizedConfiguration != null &&
+    typeof sanitizedConfiguration === 'object' &&
+    !Array.isArray(sanitizedConfiguration) &&
+    (sanitizedConfiguration as any).requireinclude === undefined
   ) {
-    configurationMasked.requireinclude = requireIncludeConfigured;
+    (sanitizedConfiguration as any).requireinclude = (component as any).configuration.requireinclude;
   }
 
-  return {
+  const item: ApiComponent = {
     id: key,
     type: component.type,
     name: component.name,
-    configuration: configurationMasked,
+    configuration: sanitizedConfiguration,
     agent: component.agent,
   };
+
+  if (typeof component.getMetadata === 'function') {
+    item.metadata = component.getMetadata();
+  }
+
+  return item;
 }
 
 /**
@@ -46,9 +105,12 @@ export function mapComponentToItem(key, component): ApiComponent {
  * @param listFunction
  * @returns {{id: string}[]}
  */
-export function mapComponentsToList(components) {
+export function mapComponentsToList(
+  components: ComponentMap,
+  kind?: ComponentKind,
+): ApiComponent[] {
   return Object.keys(components)
-    .map((key) => mapComponentToItem(key, components[key]))
+    .map((key) => mapComponentToItem(key, components[key], kind))
     .sort(
       byValues([
         [(x) => x.type, byString()],
@@ -62,8 +124,20 @@ export function mapComponentsToList(components) {
  * @param req
  * @param res
  */
-function getAll(req, res, kind) {
-  res.status(200).json(mapComponentsToList(registry.getState()[kind]));
+function getAll(req: Request, res: Response, kind: ComponentKind): void {
+  const components = registry.getState()[kind] as unknown as ComponentMap;
+  const allItems = mapComponentsToList(components, kind);
+  const pagination = normalizeLimitOffsetPagination(req.query, {
+    maxLimit: COMPONENT_LIST_MAX_LIMIT,
+  });
+  const data = paginateComponentList(allItems, pagination);
+  res.status(200).json({
+    data,
+    total: allItems.length,
+    limit: pagination.limit,
+    offset: pagination.offset,
+    hasMore: pagination.limit > 0 && pagination.offset + data.length < allItems.length,
+  });
 }
 
 /**
@@ -72,14 +146,15 @@ function getAll(req, res, kind) {
  * @param res
  * @param listFunction
  */
-export function getById(req, res, kind) {
+export function getById(req: Request<ComponentRouteParams>, res: Response, kind: ComponentKind) {
   const { agent, type, name } = req.params;
   const id = agent ? `${agent}.${type}.${name}` : `${type}.${name}`;
-  const component = registry.getState()[kind][id];
+  const components = registry.getState()[kind] as unknown as ComponentMap;
+  const component = components[id];
   if (component) {
-    res.status(200).json(mapComponentToItem(id, component));
+    res.status(200).json(mapComponentToItem(id, component, kind));
   } else {
-    res.sendStatus(404);
+    sendErrorResponse(res, 404, 'Component not found');
   }
 }
 
@@ -88,11 +163,15 @@ export function getById(req, res, kind) {
  * @param kind
  * @returns {*|Router}
  */
-export function init(kind) {
+export function init(kind: ComponentKind) {
   const router = express.Router();
   router.use(nocache());
-  router.get('/', (req, res) => getAll(req, res, kind));
-  router.get('/:type/:name', (req, res) => getById(req, res, kind));
-  router.get('/:agent/:type/:name', (req, res) => getById(req, res, kind));
+  router.get('/', (req: Request, res: Response) => getAll(req, res, kind));
+  router.get('/:type/:name', (req: Request<ComponentRouteParams>, res: Response) =>
+    getById(req, res, kind),
+  );
+  router.get('/:type/:name/:agent', (req: Request<ComponentRouteParams>, res: Response) =>
+    getById(req, res, kind),
+  );
   return router;
 }

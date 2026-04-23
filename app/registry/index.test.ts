@@ -1,17 +1,43 @@
-// @ts-nocheck
+const mockIsUpgrade = vi.hoisted(() => vi.fn(() => true));
+
+vi.mock('../store/app.js', () => ({
+  isUpgrade: mockIsUpgrade,
+}));
+
 import fs from 'node:fs';
 import path from 'node:path';
 import * as configuration from '../configuration/index.js';
 import * as prometheusWatcher from '../prometheus/watcher.js';
+import * as store from '../store/index.js';
 import Component from './Component.js';
 
-vi.mock('../configuration', () => ({
+vi.mock('../configuration/index.js', () => ({
   getLogLevel: vi.fn(() => 'info'),
+  getLogFormat: vi.fn(() => 'json'),
+  getLogBufferEnabled: vi.fn(() => true),
+  getLocalWatcherEnabled: vi.fn(() => true),
   getRegistryConfigurations: vi.fn(),
   getTriggerConfigurations: vi.fn(),
   getWatcherConfigurations: vi.fn(),
   getAuthenticationConfigurations: vi.fn(),
   getAgentConfigurations: vi.fn(),
+  ddEnvVars: {},
+}));
+
+vi.mock('../store/index.js', () => ({
+  save: vi.fn(),
+}));
+
+const mockGetContainersRaw = vi.hoisted(() => vi.fn(() => []));
+const mockDeleteContainer = vi.hoisted(() => vi.fn());
+
+vi.mock('../store/container.js', () => ({
+  getContainersRaw: mockGetContainersRaw,
+  deleteContainer: mockDeleteContainer,
+}));
+
+vi.mock('../security/scheduler.js', () => ({
+  shutdown: vi.fn(),
 }));
 
 let registries = {};
@@ -19,6 +45,8 @@ let triggers = {};
 let watchers = {};
 let authentications = {};
 let agents = {};
+const TEST_BASIC_HASH =
+  'argon2id$65536$3$4$ZHJ5ZG9jay1yZWdpc3RyeS10ZXN0LXNhbHQ=$YlkF5heeP1TK+kWW7LNnQbI3ws4zeQpVQc3fcw592ObbdIz+n02qdNC5Z1YhzTXJ8FbgaWo61lPGqB8Za5OYwg==';
 
 // Override the mocked functions
 // We need to cast to jest.Mock or assume they are mocks because of the factory above
@@ -27,6 +55,7 @@ const mockGetTriggerConfigurations = configuration.getTriggerConfigurations;
 const mockGetWatcherConfigurations = configuration.getWatcherConfigurations;
 const mockGetAuthenticationConfigurations = configuration.getAuthenticationConfigurations;
 const mockGetAgentConfigurations = configuration.getAgentConfigurations;
+const mockGetLocalWatcherEnabled = configuration.getLocalWatcherEnabled;
 
 mockGetRegistryConfigurations.mockImplementation(() => registries);
 mockGetTriggerConfigurations.mockImplementation(() => triggers);
@@ -44,6 +73,10 @@ beforeEach(async () => {
   watchers = {};
   authentications = {};
   agents = {};
+  mockIsUpgrade.mockReturnValue(true);
+  Object.keys(configuration.ddEnvVars).forEach((envKey) => {
+    delete configuration.ddEnvVars[envKey];
+  });
 
   // Ensure default implementations return the variables
   mockGetRegistryConfigurations.mockImplementation(() => registries);
@@ -51,6 +84,8 @@ beforeEach(async () => {
   mockGetWatcherConfigurations.mockImplementation(() => watchers);
   mockGetAuthenticationConfigurations.mockImplementation(() => authentications);
   mockGetAgentConfigurations.mockImplementation(() => agents);
+  registry.testable_registrationWarnings.length = 0;
+  mockGetContainersRaw.mockReturnValue([]);
 });
 
 afterEach(async () => {
@@ -129,6 +164,10 @@ test('registerComponent should execute module fallback branch when module has no
   }
 });
 
+test('applySharedTriggerConfigurationByName should return undefined when configurations are missing', () => {
+  expect(registry.testable_applySharedTriggerConfigurationByName(undefined as any)).toBeUndefined();
+});
+
 test('registerRegistries should register all registries', async () => {
   registries = {
     hub: {
@@ -152,10 +191,12 @@ test('registerRegistries should register all registries', async () => {
     'dhi.public',
     'docr.public',
     'ecr.private',
+    'ecr.public',
     'gar.public',
     'gcr.public',
     'ghcr.public',
     'hub.private',
+    'hub.public',
     'ibmcr.public',
     'lscr.public',
     'mau.public',
@@ -186,6 +227,12 @@ test('registerRegistries should register all anonymous registries by default', a
   ]);
 });
 
+test('registerRegistries should tolerate non-object configuration payloads', async () => {
+  registries = [] as unknown as Record<string, unknown>;
+  await expect(registry.testable_registerRegistries()).resolves.toBeUndefined();
+  expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+});
+
 test('registerRegistries should warn when registration errors occur', async () => {
   const spyLog = vi.spyOn(registry.testable_log, 'warn');
   registries = {
@@ -197,8 +244,276 @@ test('registerRegistries should warn when registration errors occur', async () =
   };
   await registry.testable_registerRegistries();
   expect(spyLog).toHaveBeenCalledWith(
-    'Some registries failed to register (Error when registering component hub ("login" must be a string))',
+    'Some registries failed to register (Error when registering component hub ("value" does not match any of the allowed types))',
   );
+  expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+  expect(Object.keys(registry.getState().registry)).not.toContain('hub.private');
+});
+
+test.each([
+  {
+    provider: 'hub',
+    publicConfiguration: { login: 'onlyuser' },
+    configuredKeys: 'login',
+  },
+  {
+    provider: 'hub',
+    publicConfiguration: { token: 'onlytoken' },
+    configuredKeys: 'token',
+  },
+  {
+    provider: 'hub',
+    publicConfiguration: { password: 'onlypassword' },
+    configuredKeys: 'password',
+  },
+  {
+    provider: 'hub',
+    publicConfiguration: { login: 'user', password: 'pass', token: 'token' },
+    configuredKeys: 'login, password, token',
+  },
+  {
+    provider: 'dhi',
+    publicConfiguration: { login: 'onlyuser' },
+    configuredKeys: 'login',
+  },
+  {
+    provider: 'dhi',
+    publicConfiguration: { token: 'onlytoken' },
+    configuredKeys: 'token',
+  },
+  {
+    provider: 'dhi',
+    publicConfiguration: { password: 'onlypassword' },
+    configuredKeys: 'password',
+  },
+  {
+    provider: 'dhi',
+    publicConfiguration: { login: 'user', password: 'pass', token: 'token' },
+    configuredKeys: 'login, password, token',
+  },
+])('registerRegistries should fallback $provider.public legacy token-auth config to anonymous', async ({
+  provider,
+  publicConfiguration,
+  configuredKeys,
+}) => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    [provider]: {
+      public: publicConfiguration,
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).toContain(`${provider}.public`);
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      `Detected incompatible DD_REGISTRY_${provider.toUpperCase()}_PUBLIC_* token-auth credentials for ${provider}.public.`,
+    ),
+  );
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(`Configured keys: ${configuredKeys}.`),
+  );
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      `Falling back to anonymous ${provider}.public registry for backward compatibility.`,
+    ),
+  );
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes('Some registries failed to register'),
+    ),
+  ).toBe(false);
+});
+
+test('registerRegistries should not apply legacy fallback when public config has no credential keys', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    hub: {
+      public: {
+        username: 'legacy-user',
+      } as unknown as Record<string, unknown>,
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        'Detected incompatible DD_REGISTRY_HUB_PUBLIC_* token-auth credentials',
+      ),
+    ),
+  ).toBe(false);
+});
+
+test('registerRegistries should fallback when login/password credentials are present but blank', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    hub: {
+      public: {
+        login: '',
+        password: 'present',
+      },
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        'Detected incompatible DD_REGISTRY_HUB_PUBLIC_* token-auth credentials',
+      ),
+    ),
+  ).toBe(true);
+});
+
+test('registerRegistries should fallback when auth is combined with other credential keys', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    hub: {
+      public: {
+        auth: 'token-value',
+        login: 'extra',
+      },
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        'Detected incompatible DD_REGISTRY_HUB_PUBLIC_* token-auth credentials',
+      ),
+    ),
+  ).toBe(true);
+});
+
+test.each([
+  'hub',
+  'dhi',
+])('registerRegistries should not fallback %s.public when auth-only credentials are valid', async (provider) => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    [provider]: {
+      public: {
+        auth: 'valid-auth-token',
+      },
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).not.toContain(`${provider}.public`);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        `Detected incompatible DD_REGISTRY_${provider.toUpperCase()}_PUBLIC_* token-auth credentials`,
+      ),
+    ),
+  ).toBe(false);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes('Some registries failed to register'),
+    ),
+  ).toBe(true);
+});
+
+test('registerRegistries should register defaults when registry configuration is undefined', async () => {
+  const originalGetRegistryConfigurations = mockGetRegistryConfigurations.getMockImplementation();
+  mockGetRegistryConfigurations.mockImplementation(() => undefined as any);
+  try {
+    await registry.testable_registerRegistries();
+    expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+    expect(Object.keys(registry.getState().registry)).toContain('ghcr.public');
+  } finally {
+    mockGetRegistryConfigurations.mockImplementation(
+      originalGetRegistryConfigurations || (() => registries),
+    );
+  }
+});
+
+test('registerRegistries should keep fail-closed behavior for incomplete hub.private auth', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    hub: {
+      private: {
+        login: 'onlyuser',
+      },
+    },
+  };
+  await registry.testable_registerRegistries();
+  expect(Object.keys(registry.getState().registry)).toContain('hub.public');
+  expect(Object.keys(registry.getState().registry)).not.toContain('hub.private');
+  expect(spyLog).toHaveBeenCalledWith(
+    'Some registries failed to register (Error when registering component hub ("value" does not match any of the allowed types))',
+  );
+});
+
+test.each([
+  'hub',
+  'dhi',
+])('registerRegistries should not fallback %s.public when login/token auth is valid', async (provider) => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    [provider]: {
+      public: {
+        login: 'valid-user',
+        token: 'valid-token',
+      },
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).toContain(`${provider}.public`);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        `Detected incompatible DD_REGISTRY_${provider.toUpperCase()}_PUBLIC_* token-auth credentials`,
+      ),
+    ),
+  ).toBe(false);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes('Some registries failed to register'),
+    ),
+  ).toBe(false);
+});
+
+test.each([
+  'hub',
+  'dhi',
+])('registerRegistries should not fallback %s.public when login/password auth is valid', async (provider) => {
+  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+  registries = {
+    [provider]: {
+      public: {
+        login: 'valid-user',
+        password: 'valid-password',
+      },
+    },
+  };
+
+  await registry.testable_registerRegistries();
+
+  expect(Object.keys(registry.getState().registry)).toContain(`${provider}.public`);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes(
+        `Detected incompatible DD_REGISTRY_${provider.toUpperCase()}_PUBLIC_* token-auth credentials`,
+      ),
+    ),
+  ).toBe(false);
+  expect(
+    spyLog.mock.calls.some(([message]) =>
+      `${message}`.includes('Some registries failed to register'),
+    ),
+  ).toBe(false);
 });
 
 test('registerTriggers should register all triggers', async () => {
@@ -452,12 +767,54 @@ test('registerWatchers should register all watchers', async () => {
     },
   };
   await registry.testable_registerWatchers();
-  expect(Object.keys(registry.getState().watcher)).toEqual(['docker.watcher1', 'docker.watcher2']);
+  // Registration is parallel (Promise.all), so the state key order is not
+  // guaranteed — just assert that both names are registered.
+  expect(Object.keys(registry.getState().watcher).sort()).toEqual([
+    'docker.watcher1',
+    'docker.watcher2',
+  ]);
+});
+
+test('registerWatchers should keep remote watcher registered when auth configuration is incomplete', async () => {
+  watchers = {
+    local: {
+      watchbydefault: false,
+    },
+    remote: {
+      host: 'example.invalid',
+      port: 2375,
+      protocol: 'http',
+      auth: {
+        type: 'bearer',
+      },
+    },
+  };
+  await registry.testable_registerWatchers();
+  expect(Object.keys(registry.getState().watcher).sort()).toEqual([
+    'docker.local',
+    'docker.remote',
+  ]);
+  const remoteWatcherMaskedConfiguration = registry
+    .getState()
+    .watcher['docker.remote'].maskConfiguration();
+  expect(remoteWatcherMaskedConfiguration.authblocked).toBe(true);
+  expect(remoteWatcherMaskedConfiguration.authblockedreason).toContain(
+    'credentials are incomplete',
+  );
 });
 
 test('registerWatchers should register local docker watcher by default', async () => {
   await registry.testable_registerWatchers();
   expect(Object.keys(registry.getState().watcher)).toEqual(['docker.local']);
+});
+
+test('registerWatchers should skip default local watcher when DD_LOCAL_WATCHER=false', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'info');
+  mockGetLocalWatcherEnabled.mockReturnValue(false);
+  await registry.testable_registerWatchers();
+  expect(Object.keys(registry.getState().watcher)).toEqual([]);
+  expect(spyLog).toHaveBeenCalledWith('Default local watcher disabled (DD_LOCAL_WATCHER=false)');
+  mockGetLocalWatcherEnabled.mockReturnValue(true);
 });
 
 test('registerWatchers should warn when registration errors occur', async () => {
@@ -478,36 +835,221 @@ test('registerAuthentications should register all auth strategies', async () => 
     basic: {
       john: {
         user: 'john',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
       jane: {
         user: 'jane',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
     },
   };
   await registry.testable_registerAuthentications();
   expect(Object.keys(registry.getState().authentication)).toEqual(['basic.john', 'basic.jane']);
+  expect(registry.getAuthenticationRegistrationErrors()).toEqual([]);
 });
 
-test('registerAuthentications should warn when registration errors occur', async () => {
-  const spyLog = vi.spyOn(registry.testable_log, 'warn');
+test('registerAuthentications should surface provider registration errors and log at error level', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
   authentications = {
     basic: {
-      john: {
-        fail: true,
+      andi: {
+        user: 'ANDI',
       },
     },
   };
   await registry.testable_registerAuthentications();
   expect(spyLog).toHaveBeenCalledWith(
-    'Some authentications failed to register (Error when registering component basic ("user" is required))',
+    'Some authentications failed to register (Error when registering component basic ("hash" is required))',
+  );
+  expect(registry.getAuthenticationRegistrationErrors()).toEqual([
+    { provider: 'basic:andi', error: 'hash is required' },
+  ]);
+});
+
+test('registerAuthentications should preserve unknown-provider error messages', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+  authentications = {
+    definitely_missing_provider: {
+      fallback: {},
+    },
+  };
+
+  await registry.testable_registerAuthentications();
+
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining('Some authentications failed to register'),
+  );
+  expect(registry.getAuthenticationRegistrationErrors()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        provider: 'definitely_missing_provider:fallback',
+        error: expect.stringContaining(
+          "Unknown authentication provider: 'definitely_missing_provider'.",
+        ),
+      }),
+    ]),
   );
 });
 
-test('registerAuthentications should register anonymous auth by default', async () => {
+test('registerAuthentications should register anonymous auth on upgrade without confirmation', async () => {
+  mockIsUpgrade.mockReturnValue(true);
   await registry.testable_registerAuthentications();
+
   expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+});
+
+test('registerAuthentications should log an error when DD_AUTH env vars exist without provider config', async () => {
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+  configuration.ddEnvVars.DD_AUTH_BASIC_PRIMARY_USER = 'alice';
+  mockIsUpgrade.mockReturnValue(true);
+
+  await registry.testable_registerAuthentications();
+
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      'Detected DD_AUTH_* environment variables, but no configured authentication providers were registered successfully.',
+    ),
+  );
+});
+
+test('registerAuthentications should fail-closed on fresh install without confirmation', async () => {
+  mockIsUpgrade.mockReturnValue(false);
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+  await registry.testable_registerAuthentications();
+
+  expect(Object.keys(registry.getState().authentication)).toEqual([]);
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining('Some authentications failed to register'),
+  );
+});
+
+test('registerAuthentications should register anonymous auth when confirmation is enabled', async () => {
+  const previousAnonymousConfirmation = process.env.DD_ANONYMOUS_AUTH_CONFIRM;
+  process.env.DD_ANONYMOUS_AUTH_CONFIRM = 'true';
+
+  try {
+    mockIsUpgrade.mockReturnValue(false);
+    await registry.testable_registerAuthentications();
+    expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+  } finally {
+    if (previousAnonymousConfirmation === undefined) {
+      delete process.env.DD_ANONYMOUS_AUTH_CONFIRM;
+    } else {
+      process.env.DD_ANONYMOUS_AUTH_CONFIRM = previousAnonymousConfirmation;
+    }
+  }
+});
+
+test('registerAuthentications should fallback to anonymous when all configured providers fail and confirmation is enabled', async () => {
+  const previousAnonymousConfirmation = process.env.DD_ANONYMOUS_AUTH_CONFIRM;
+  process.env.DD_ANONYMOUS_AUTH_CONFIRM = 'true';
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+
+  try {
+    mockIsUpgrade.mockReturnValue(false);
+    authentications = {
+      basic: {
+        broken: {
+          fail: true,
+        },
+      },
+    };
+    await registry.testable_registerAuthentications();
+
+    expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+    expect(spyLog).toHaveBeenCalledWith(
+      expect.stringContaining('All configured authentication providers failed to register'),
+    );
+    expect(registry.getRegistrationWarnings()).toEqual([
+      expect.stringContaining('Some authentications failed to register'),
+    ]);
+  } finally {
+    if (previousAnonymousConfirmation === undefined) {
+      delete process.env.DD_ANONYMOUS_AUTH_CONFIRM;
+    } else {
+      process.env.DD_ANONYMOUS_AUTH_CONFIRM = previousAnonymousConfirmation;
+    }
+  }
+});
+
+test('registerAuthentications should log error when all configured providers fail and no anonymous confirmation on fresh install', async () => {
+  mockIsUpgrade.mockReturnValue(false);
+  const spyError = vi.spyOn(registry.testable_log, 'error');
+
+  authentications = {
+    basic: {
+      broken: {
+        fail: true,
+      },
+    },
+  };
+  await registry.testable_registerAuthentications();
+
+  expect(Object.keys(registry.getState().authentication)).toEqual([]);
+  expect(spyError).toHaveBeenCalledWith(
+    expect.stringContaining('Anonymous authentication fallback also failed'),
+  );
+});
+
+test('registerAuthentications should fallback to anonymous when all configured providers fail on upgrade', async () => {
+  mockIsUpgrade.mockReturnValue(true);
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+
+  authentications = {
+    basic: {
+      broken: {
+        fail: true,
+      },
+    },
+  };
+  await registry.testable_registerAuthentications();
+
+  expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining('All configured authentication providers failed to register'),
+  );
+});
+
+test('registerAuthentications should log startup health guidance when DD_AUTH vars exist and auth config is empty', async () => {
+  configuration.ddEnvVars.DD_AUTH_BASIC_ANDI_USER = 'ANDI';
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+
+  authentications = {};
+  await registry.testable_registerAuthentications();
+
+  expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      'Detected DD_AUTH_* environment variables, but no configured authentication providers were registered successfully.',
+    ),
+  );
+});
+
+test('registerAuthentications should log startup health guidance when DD_AUTH vars exist but no provider registers', async () => {
+  configuration.ddEnvVars.DD_AUTH_BASIC_ANDI_USER = 'ANDI';
+  mockIsUpgrade.mockReturnValue(true);
+  const spyLog = vi.spyOn(registry.testable_log, 'error');
+
+  authentications = {
+    basic: {
+      andi: {
+        user: 'ANDI',
+      },
+    },
+  };
+  await registry.testable_registerAuthentications();
+
+  expect(Object.keys(registry.getState().authentication)).toEqual(['anonymous.anonymous']);
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      'Detected DD_AUTH_* environment variables, but no configured authentication providers were registered successfully.',
+    ),
+  );
+  expect(spyLog).toHaveBeenCalledWith(
+    expect.stringContaining(
+      'Validate DD_AUTH_* values (for basic auth: DD_AUTH_BASIC_<NAME>_USER and DD_AUTH_BASIC_<NAME>_HASH).',
+    ),
+  );
 });
 
 test('init should register all components', async () => {
@@ -544,11 +1086,11 @@ test('init should register all components', async () => {
     basic: {
       john: {
         user: 'john',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
       jane: {
         user: 'jane',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
     },
   };
@@ -559,10 +1101,12 @@ test('init should register all components', async () => {
     'dhi.public',
     'docr.public',
     'ecr.private',
+    'ecr.public',
     'gar.public',
     'gcr.public',
     'ghcr.public',
     'hub.private',
+    'hub.public',
     'ibmcr.public',
     'lscr.public',
     'mau.public',
@@ -573,6 +1117,73 @@ test('init should register all components', async () => {
   expect(Object.keys(registry.getState().trigger)).toEqual(['mock.mock1', 'mock.mock2']);
   expect(Object.keys(registry.getState().watcher)).toEqual(['docker.watcher1', 'docker.watcher2']);
   expect(Object.keys(registry.getState().authentication)).toEqual(['basic.john', 'basic.jane']);
+});
+
+test('init should prune local containers whose watcher no longer exists', async () => {
+  watchers = {
+    local: {},
+  };
+  mockGetContainersRaw.mockReturnValue([
+    {
+      id: 'keep-local',
+      watcher: 'local',
+    },
+    {
+      id: 'stale-local',
+      watcher: 'legacy',
+    },
+    {
+      id: 'stale-missing-watcher',
+    },
+    {
+      id: 'keep-agent',
+      watcher: 'legacy',
+      agent: 'edge-agent',
+    },
+  ]);
+
+  await registry.init();
+
+  expect(mockDeleteContainer).toHaveBeenCalledTimes(2);
+  expect(mockDeleteContainer).toHaveBeenCalledWith('stale-local');
+  expect(mockDeleteContainer).toHaveBeenCalledWith('stale-missing-watcher');
+});
+
+test('init should skip orphan pruning when no local watchers are registered', async () => {
+  watchers = {
+    invalid: {
+      fail: true,
+    },
+  };
+  mockGetContainersRaw.mockReturnValue([
+    {
+      id: 'stale-local',
+      watcher: 'legacy',
+    },
+  ]);
+
+  await registry.init();
+
+  expect(mockGetContainersRaw).not.toHaveBeenCalled();
+});
+
+test('init should log and continue when orphan pruning fails', async () => {
+  watchers = {
+    local: {},
+  };
+  mockGetContainersRaw.mockImplementation(() => {
+    throw new Error('container store unavailable');
+  });
+
+  const warnSpy = vi.spyOn(registry.testable_log, 'warn');
+  const debugSpy = vi.spyOn(registry.testable_log, 'debug');
+
+  await registry.init();
+
+  expect(warnSpy).toHaveBeenCalledWith(
+    'Unable to prune orphaned local containers (container store unavailable)',
+  );
+  expect(debugSpy).toHaveBeenCalled();
 });
 
 test('deregisterAll should deregister all components', async () => {
@@ -605,11 +1216,11 @@ test('deregisterAll should deregister all components', async () => {
     basic: {
       john: {
         user: 'john',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
       jane: {
         user: 'jane',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
     },
   };
@@ -623,12 +1234,40 @@ test('deregisterAll should deregister all components', async () => {
 
 test('shutdown should deregister all and exit 0', async () => {
   const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+  const securityScheduler = await import('../security/scheduler.js');
   registry.getState().trigger = {};
   registry.getState().registry = {};
   registry.getState().watcher = {};
   registry.getState().authentication = {};
   await registry.testable_shutdown();
+  expect(store.save).toHaveBeenCalledTimes(1);
+  expect(securityScheduler.shutdown).toHaveBeenCalledTimes(1);
   expect(exitSpy).toHaveBeenCalledWith(0);
+  exitSpy.mockRestore();
+});
+
+test('init should invoke scheduler shutdown from SIGTERM handler', async () => {
+  const signalHandlers = new Map<string, (...args: any[]) => any>();
+  const onSpy = vi.spyOn(process, 'on').mockImplementation(((event: string, listener: any) => {
+    signalHandlers.set(event, listener);
+    return process;
+  }) as any);
+  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+  const securityScheduler = await import('../security/scheduler.js');
+
+  await registry.init();
+
+  expect(signalHandlers.has('SIGINT')).toBe(true);
+  expect(signalHandlers.has('SIGTERM')).toBe(true);
+
+  const sigtermHandler = signalHandlers.get('SIGTERM');
+  await sigtermHandler?.();
+
+  expect(securityScheduler.shutdown).toHaveBeenCalledTimes(1);
+  expect(store.save).toHaveBeenCalledTimes(1);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+
+  onSpy.mockRestore();
   exitSpy.mockRestore();
 });
 
@@ -640,6 +1279,20 @@ test('shutdown should exit 1 when deregisterAll throws', async () => {
   };
   registry.getState().trigger = { trigger1: component };
   await registry.testable_shutdown();
+  expect(store.save).not.toHaveBeenCalled();
+  expect(exitSpy).toHaveBeenCalledWith(1);
+  exitSpy.mockRestore();
+});
+
+test('shutdown should exit 1 when store save throws', async () => {
+  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+  store.save.mockRejectedValueOnce(new Error('Save failed'));
+  registry.getState().trigger = {};
+  registry.getState().registry = {};
+  registry.getState().watcher = {};
+  registry.getState().authentication = {};
+  await registry.testable_shutdown();
+  expect(store.save).toHaveBeenCalledTimes(1);
   expect(exitSpy).toHaveBeenCalledWith(1);
   exitSpy.mockRestore();
 });
@@ -726,6 +1379,26 @@ test('applyTriggerGroupDefaults should extract trigger group and apply to matchi
   });
   // The "update" group entry should NOT be in the result as a provider
   expect(result.update).toBeUndefined();
+});
+
+test('applyTriggerGroupDefaults should not log raw trigger group values', () => {
+  const infoSpy = vi.spyOn(registry.testable_log, 'info');
+  const secretValue = 'super-secret-webhook-token';
+  const configurations = {
+    mock: {
+      update: { mock: 'custom' },
+    },
+    update: { threshold: secretValue },
+  };
+
+  registry.testable_applyTriggerGroupDefaults(configurations, 'triggers/providers');
+
+  const triggerGroupLog = infoSpy.mock.calls
+    .map((call) => call[0])
+    .find((message) => String(message).includes("Detected trigger group 'update'"));
+
+  expect(triggerGroupLog).toBeDefined();
+  expect(String(triggerGroupLog)).not.toContain(secretValue);
 });
 
 test('applyTriggerGroupDefaults should not override explicit trigger-level config', () => {
@@ -928,7 +1601,7 @@ test('init in agent mode should skip authentications and agents registration', a
     basic: {
       john: {
         user: 'john',
-        hash: 'hash',
+        hash: TEST_BASIC_HASH,
       },
     },
   };

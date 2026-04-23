@@ -1,23 +1,31 @@
 import joi from 'joi';
 import log from '../log/index.js';
+import { redactTriggerConfigurationInfrastructureDetails } from './trigger-config-redaction.js';
 
-export type AppLogger = typeof log;
+type AppLogger = typeof log;
 
-export interface ComponentConfiguration {
-  [key: string]: any;
-}
+export type ComponentConfiguration = object;
+
+type ConfigurationSchemaValidationResult = {
+  error?: unknown;
+  value?: unknown;
+};
+
+type ComponentConfigurationSchema<TConfiguration extends ComponentConfiguration> = {
+  validate?: (configuration: TConfiguration) => ConfigurationSchemaValidationResult;
+};
 
 /**
  * Base Component Class.
  */
-class Component {
+class Component<TConfiguration extends ComponentConfiguration = ComponentConfiguration> {
   public joi: typeof joi;
   public log: AppLogger;
   public kind: string = '';
   public type: string = '';
   public name: string = '';
   public agent?: string;
-  public configuration: ComponentConfiguration = {};
+  public configuration = {} as TConfiguration;
 
   /**
    * Constructor.
@@ -39,7 +47,7 @@ class Component {
     kind: string,
     type: string,
     name: string,
-    configuration: ComponentConfiguration,
+    configuration: TConfiguration,
     agent?: string,
   ): Promise<this> {
     // Child log for the component
@@ -50,9 +58,12 @@ class Component {
     this.agent = agent;
 
     this.configuration = this.validateConfiguration(configuration);
-    this.log.info(
-      `Register with configuration ${JSON.stringify(this.maskConfiguration(configuration))}`,
-    );
+    const maskedConfiguration = this.maskConfiguration(configuration);
+    const sanitizedConfiguration =
+      kind.toLowerCase() === 'trigger'
+        ? redactTriggerConfigurationInfrastructureDetails(maskedConfiguration)
+        : maskedConfiguration;
+    this.log.info(`Register with configuration ${JSON.stringify(sanitizedConfiguration)}`);
     await this.init();
     return this;
   }
@@ -68,7 +79,7 @@ class Component {
   }
 
   /**
-   * Deregistger the component (do nothing by default).
+   * Deregister the component (do nothing by default).
    * @returns {Promise<void>}
    */
 
@@ -82,13 +93,18 @@ class Component {
    * @param configuration the configuration
    * @returns {*} or throw a validation error
    */
-  validateConfiguration(configuration: ComponentConfiguration): ComponentConfiguration {
+  validateConfiguration(configuration: TConfiguration): TConfiguration {
     const schema = this.getConfigurationSchema();
-    const schemaValidated = schema.validate(configuration);
+    const schemaValidated =
+      typeof schema?.validate === 'function'
+        ? schema.validate(configuration)
+        : { value: configuration };
     if (schemaValidated.error) {
       throw schemaValidated.error;
     }
-    return schemaValidated.value ? schemaValidated.value : {};
+    return schemaValidated.value
+      ? (schemaValidated.value as TConfiguration)
+      : ({} as TConfiguration);
   }
 
   /**
@@ -96,8 +112,8 @@ class Component {
    * Can be overridden by the component implementation class
    * @returns {*}
    */
-  getConfigurationSchema(): joi.ObjectSchema {
-    return this.joi.object();
+  getConfigurationSchema(): ComponentConfigurationSchema<TConfiguration> {
+    return this.joi.object() as ComponentConfigurationSchema<TConfiguration>;
   }
 
   /**
@@ -105,7 +121,7 @@ class Component {
    * Can be overridden by the component implementation class
    */
 
-  init(): Promise<void> {
+  init(): void | Promise<void> {
     return Promise.resolve();
   }
 
@@ -113,7 +129,7 @@ class Component {
    * Sanitize sensitive data
    * @returns {*}
    */
-  maskConfiguration(configuration?: ComponentConfiguration): ComponentConfiguration {
+  maskConfiguration(configuration?: TConfiguration): TConfiguration {
     return configuration || this.configuration;
   }
 
@@ -129,20 +145,15 @@ class Component {
   /**
    * Mask a String
    * @param value the value to mask
-   * @param nb the number of chars to keep start/end
-   * @param char the replacement char
+   * @param _nb unused legacy parameter
+   * @param _char unused legacy parameter
    * @returns {string|undefined} the masked string
    */
-  static mask(value: string | undefined, nb = 1, char = '*'): string | undefined {
+  static mask(value: string | undefined, _nb = 1, _char = '*'): string | undefined {
     if (!value) {
       return undefined;
     }
-    if (value.length < 2 * nb) {
-      return char.repeat(value.length);
-    }
-    return `${value.substring(0, nb)}${char.repeat(
-      Math.max(0, value.length - nb * 2),
-    )}${value.substring(value.length - nb, value.length)}`;
+    return '[REDACTED]';
   }
 }
 

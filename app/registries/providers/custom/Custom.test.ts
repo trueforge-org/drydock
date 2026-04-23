@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Custom from './Custom.js';
 
 // Test fixture credentials - not real secrets
@@ -24,6 +23,56 @@ test('validatedConfiguration should initialize when configuration is valid', asy
     login: TEST_LOGIN,
     password: TEST_PASSWORD,
   });
+});
+
+test('validatedConfiguration should accept cafile and insecure tls options', async () => {
+  expect(
+    custom.validateConfiguration({
+      url: 'http://localhost:5000',
+      login: TEST_LOGIN,
+      password: TEST_PASSWORD,
+      cafile: '/certs/internal-ca.pem',
+      insecure: true,
+    }),
+  ).toStrictEqual({
+    url: 'http://localhost:5000',
+    login: TEST_LOGIN,
+    password: TEST_PASSWORD,
+    cafile: '/certs/internal-ca.pem',
+    insecure: true,
+  });
+});
+
+test('validatedConfiguration should accept mTLS client certificate options', async () => {
+  expect(
+    custom.validateConfiguration({
+      url: 'http://localhost:5000',
+      clientcert: '/certs/client.pem',
+      clientkey: '/certs/client-key.pem',
+    }),
+  ).toStrictEqual({
+    url: 'http://localhost:5000',
+    clientcert: '/certs/client.pem',
+    clientkey: '/certs/client-key.pem',
+  });
+});
+
+test('validatedConfiguration should reject clientcert without clientkey', async () => {
+  expect(() =>
+    custom.validateConfiguration({
+      url: 'http://localhost:5000',
+      clientcert: '/certs/client.pem',
+    }),
+  ).toThrow();
+});
+
+test('validatedConfiguration should reject clientkey without clientcert', async () => {
+  expect(() =>
+    custom.validateConfiguration({
+      url: 'http://localhost:5000',
+      clientkey: '/certs/client-key.pem',
+    }),
+  ).toThrow();
 });
 
 test('validatedConfiguration should throw error when auth is not base64', async () => {
@@ -68,7 +117,7 @@ test('maskConfiguration should mask configuration secrets', async () => {
   expect(custom.maskConfiguration()).toEqual({
     auth: undefined,
     login: TEST_LOGIN,
-    password: 'p******d',
+    password: '[REDACTED]',
     url: 'http://localhost:5000',
   });
 });
@@ -109,12 +158,40 @@ test('normalizeImage should return the proper registry v2 endpoint', async () =>
   });
 });
 
+test('normalizeImage should not mutate the input image object', async () => {
+  const image = {
+    name: 'test/image',
+    registry: {
+      url: 'localhost:5000/test/image',
+    },
+  };
+
+  const normalized = custom.normalizeImage(image);
+
+  expect(normalized).not.toBe(image);
+  expect(normalized.registry).not.toBe(image.registry);
+  expect(image.registry.url).toBe('localhost:5000/test/image');
+  expect(normalized.registry.url).toBe('http://localhost:5000/v2');
+});
+
 test('authenticate should add basic auth', async () => {
   await expect(custom.authenticate(undefined, { headers: {} })).resolves.toEqual({
     headers: {
       Authorization: 'Basic bG9naW46cGFzc3dvcmQ=',
     },
   });
+});
+
+test('authenticate should set httpsAgent when insecure=true', async () => {
+  const customRegistry = new Custom();
+  customRegistry.configuration = {
+    url: 'https://registry.internal',
+    insecure: true,
+  };
+
+  const result = await customRegistry.authenticate(undefined, { headers: {} });
+  expect(result.httpsAgent).toBeDefined();
+  expect(result.httpsAgent.options.rejectUnauthorized).toBe(false);
 });
 
 test('getAuthCredentials should return base64 creds when set in configuration', async () => {

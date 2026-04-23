@@ -1,14 +1,17 @@
+import http from 'node:http';
+import https from 'node:https';
 import axios, { type AxiosRequestConfig, type AxiosResponse, type Method } from 'axios';
-import log from '../log/index.js';
 import type { ContainerImage } from '../model/container.js';
 import { getSummaryTags } from '../prometheus/registry.js';
-import Component from '../registry/Component.js';
+import Component, { type ComponentConfiguration } from '../registry/Component.js';
+import { getErrorMessage } from '../util/error.js';
+import { getRegistryRequestTimeoutMs } from './configuration.js';
 
-export interface RegistryImage extends ContainerImage {
-  // Add any registry specific properties if needed
+interface RegistryImage extends ContainerImage {
+  // Add registry-specific properties if needed
 }
 
-export interface RegistryManifest {
+interface RegistryManifest {
   digest?: string;
   version?: number;
   created?: string;
@@ -19,7 +22,7 @@ export interface RegistryTagsList {
   tags: string[];
 }
 
-export interface ManifestEntry {
+interface ManifestEntry {
   digest: string;
   mediaType: string;
   platform: {
@@ -29,7 +32,7 @@ export interface ManifestEntry {
   };
 }
 
-export interface RegistryManifestResponse {
+interface RegistryManifestResponse {
   schemaVersion: number;
   mediaType?: string;
   manifests?: ManifestEntry[];
@@ -40,6 +43,10 @@ export interface RegistryManifestResponse {
   history?: {
     v1Compatibility: string;
   }[];
+}
+
+interface RegistryManifestConfigResponse {
+  created?: string;
 }
 
 /** Media types representing a manifest list / OCI index (multi-platform). */
@@ -108,10 +115,16 @@ function handleSchemaV1(response: RegistryManifestResponse): RegistryManifest {
   };
 }
 
+// Shared keep-alive agents for default registry traffic.
+const DEFAULT_HTTP_KEEP_ALIVE_AGENT = new http.Agent({ keepAlive: true });
+const DEFAULT_HTTPS_KEEP_ALIVE_AGENT = new https.Agent({ keepAlive: true });
+
 /**
  * Docker Registry Abstract class.
  */
-class Registry extends Component {
+class Registry<
+  TConfiguration extends ComponentConfiguration = ComponentConfiguration,
+> extends Component<TConfiguration> {
   /**
    * Encode Bse64(login:password)
    * @param login
@@ -218,12 +231,12 @@ class Registry extends Component {
       },
     });
     if (responseManifests) {
-      log.debug(`Found manifests [${JSON.stringify(responseManifests)}]`);
+      this.log.debug(`${image.name} - Found manifests [${JSON.stringify(responseManifests)}]`);
       if (responseManifests.schemaVersion === 1) {
-        log.debug('Manifests found with schemaVersion = 1');
+        this.log.debug(`${image.name} - Manifests found with schemaVersion = 1`);
         const result = handleSchemaV1(responseManifests);
-        log.debug(
-          `Manifest found with [digest=${result.digest}, created=${result.created}, version=${result.version}]`,
+        this.log.debug(
+          `${image.name} - Manifest found with [digest=${result.digest}, created=${result.created}, version=${result.version}]`,
         );
         return result;
       }
@@ -236,6 +249,23 @@ class Registry extends Component {
   }
 
   /**
+   * Resolve published date for an image tag.
+   * Registries with richer metadata endpoints can override this.
+   */
+  async getImagePublishedAt(image: ContainerImage, tag?: string): Promise<string | undefined> {
+    const imageToInspect = structuredClone(image);
+    const tagToLookup = typeof tag === 'string' && tag.length > 0 ? tag : imageToInspect.tag?.value;
+    if (tagToLookup && imageToInspect.tag) {
+      imageToInspect.tag.value = tagToLookup;
+    }
+    const manifest = await this.getImageManifestDigest(imageToInspect);
+    if (typeof manifest?.created !== 'string') {
+      return undefined;
+    }
+    return Number.isNaN(Date.parse(manifest.created)) ? undefined : manifest.created;
+  }
+
+  /**
    * Handle schemaVersion 2 manifests (multi-platform list or single manifest).
    */
   private async handleSchemaV2(
@@ -243,15 +273,15 @@ class Registry extends Component {
     response: RegistryManifestResponse,
     tagOrDigest: string,
   ): Promise<RegistryManifest> {
-    log.debug('Manifests found with schemaVersion = 2');
-    log.debug(`Manifests media type detected [${response.mediaType}]`);
+    this.log.debug(`${image.name} - Manifests found with schemaVersion = 2`);
+    this.log.debug(`${image.name} - Manifests media type detected [${response.mediaType}]`);
 
     let manifestDigest: string | undefined;
     let manifestMediaType: string | undefined;
 
     if (isManifestList(response.mediaType)) {
-      log.debug(
-        `Filter manifest for [arch=${image.architecture}, os=${image.os}, variant=${image.variant}]`,
+      this.log.debug(
+        `${image.name} - Filter manifest for [arch=${image.architecture}, os=${image.os}, variant=${image.variant}]`,
       );
       const manifests = response.manifests ?? [];
       const matched = filterManifestByPlatform(
@@ -261,14 +291,16 @@ class Registry extends Component {
         image.variant,
       );
       if (matched) {
-        log.debug(`Manifest found with [digest=${matched.digest}, mediaType=${matched.mediaType}]`);
+        this.log.debug(
+          `${image.name} - Manifest found with [digest=${matched.digest}, mediaType=${matched.mediaType}]`,
+        );
         manifestDigest = matched.digest;
         manifestMediaType = matched.mediaType;
       }
     } else if (isSingleManifest(response.mediaType)) {
       const manifestReference = tagOrDigest;
-      log.debug(
-        `Manifest found with [reference=${manifestReference}, mediaType=${response.mediaType}]`,
+      this.log.debug(
+        `${image.name} - Manifest found with [reference=${manifestReference}, mediaType=${response.mediaType}]`,
       );
       manifestDigest = manifestReference;
       manifestMediaType = response.mediaType;
@@ -278,8 +310,15 @@ class Registry extends Component {
       return this.fetchManifestDigestFromHead(image, manifestDigest, manifestMediaType);
     }
     if (manifestDigest && isLegacyImageConfig(manifestMediaType)) {
-      const result = { digest: manifestDigest, version: 1 };
-      log.debug(`Manifest found with [digest=${result.digest}, version=${result.version}]`);
+      const created = await this.fetchImageCreatedFromBlob(image, manifestDigest);
+      const result = {
+        digest: manifestDigest,
+        version: 1,
+        ...(created ? { created } : {}),
+      };
+      this.log.debug(
+        `${image.name} - Manifest found with [digest=${result.digest}, version=${result.version}]`,
+      );
       return result;
     }
     throw new Error('Unexpected error; no manifest found');
@@ -293,7 +332,7 @@ class Registry extends Component {
     manifestDigest: string,
     mediaType: string,
   ): Promise<RegistryManifest> {
-    log.debug('Calling registry to get docker-content-digest header');
+    this.log.debug(`${image.name} - Calling registry to get docker-content-digest header`);
     const responseManifest = await this.callRegistry<RegistryManifestResponse>({
       image,
       method: 'head',
@@ -303,31 +342,100 @@ class Registry extends Component {
       },
       resolveWithFullResponse: true,
     });
+    const resolvedManifestDigest =
+      responseManifest.headers['docker-content-digest'] || manifestDigest;
+    const created = await this.fetchImageCreatedFromManifestConfig(
+      image,
+      resolvedManifestDigest,
+      mediaType,
+    );
     const result = {
-      digest: responseManifest.headers['docker-content-digest'],
+      digest: resolvedManifestDigest,
       version: 2,
+      ...(created ? { created } : {}),
     };
-    log.debug(`Manifest found with [digest=${result.digest}, version=${result.version}]`);
+    this.log.debug(
+      `${image.name} - Manifest found with [digest=${result.digest}, version=${result.version}]`,
+    );
     return result;
   }
 
-  async callRegistry<T = any>(options: {
+  private async fetchImageCreatedFromManifestConfig(
+    image: ContainerImage,
+    manifestDigest: string,
+    mediaType: string,
+  ): Promise<string | undefined> {
+    try {
+      const manifestResponse = await this.callRegistry<RegistryManifestResponse>({
+        image,
+        method: 'get',
+        url: `${image.registry.url}/${image.name}/manifests/${manifestDigest}`,
+        headers: {
+          Accept: mediaType,
+        },
+      });
+      const configDigest = manifestResponse?.config?.digest;
+      if (!configDigest) {
+        return undefined;
+      }
+      return this.fetchImageCreatedFromBlob(image, configDigest);
+    } catch (error: unknown) {
+      this.log.debug(
+        `Unable to fetch manifest config created date for ${this.getImageFullName(
+          image,
+          manifestDigest,
+        )} (${getErrorMessage(error)})`,
+      );
+      return undefined;
+    }
+  }
+
+  private async fetchImageCreatedFromBlob(
+    image: ContainerImage,
+    digest: string,
+  ): Promise<string | undefined> {
+    try {
+      const configResponse = await this.callRegistry<RegistryManifestConfigResponse>({
+        image,
+        method: 'get',
+        url: `${image.registry.url}/${image.name}/blobs/${digest}`,
+        headers: {
+          Accept:
+            'application/vnd.oci.image.config.v1+json, application/vnd.docker.container.image.v1+json, application/json',
+        },
+      });
+      if (typeof configResponse?.created !== 'string') {
+        return undefined;
+      }
+      return Number.isNaN(Date.parse(configResponse.created)) ? undefined : configResponse.created;
+    } catch (error: unknown) {
+      this.log.debug(
+        `Unable to fetch image config blob created date for ${this.getImageFullName(
+          image,
+          digest,
+        )} (${getErrorMessage(error)})`,
+      );
+      return undefined;
+    }
+  }
+
+  async callRegistry<T = unknown>(options: {
     image: ContainerImage;
     url: string;
     method?: Method;
-    headers?: any;
+    headers?: AxiosRequestConfig['headers'];
     resolveWithFullResponse: true;
   }): Promise<AxiosResponse<T>>;
 
-  async callRegistry<T = any>(options: {
+  async callRegistry<T = unknown>(options: {
     image: ContainerImage;
     url: string;
     method?: Method;
-    headers?: any;
+    headers?: AxiosRequestConfig['headers'];
     resolveWithFullResponse?: false;
   }): Promise<T>;
 
-  async callRegistry<T = any>({
+  async callRegistry<T = unknown>({
     image,
     url,
     method = 'get',
@@ -339,7 +447,7 @@ class Registry extends Component {
     image: ContainerImage;
     url: string;
     method?: Method;
-    headers?: any;
+    headers?: AxiosRequestConfig['headers'];
     resolveWithFullResponse?: boolean;
   }): Promise<T | AxiosResponse<T>> {
     const start = Date.now();
@@ -350,12 +458,18 @@ class Registry extends Component {
       method,
       headers,
       responseType: 'json',
+      timeout: getRegistryRequestTimeoutMs(),
     };
 
     const axiosOptionsWithAuth = await this.authenticate(image, axiosOptions);
+    const axiosOptionsWithConnectionReuse: AxiosRequestConfig = {
+      ...axiosOptionsWithAuth,
+      httpAgent: axiosOptionsWithAuth.httpAgent ?? DEFAULT_HTTP_KEEP_ALIVE_AGENT,
+      httpsAgent: axiosOptionsWithAuth.httpsAgent ?? DEFAULT_HTTPS_KEEP_ALIVE_AGENT,
+    };
 
     try {
-      const response = await axios<T>(axiosOptionsWithAuth);
+      const response = await axios<T>(axiosOptionsWithConnectionReuse);
       const end = Date.now();
       getSummaryTags()?.observe({ type: this.type, name: this.name }, (end - start) / 1000);
       return resolveWithFullResponse ? response : response.data;

@@ -1,11 +1,18 @@
-// @ts-nocheck
 import axios from 'axios';
-import Trigger from '../Trigger.js';
+import { getOutboundHttpTimeoutMs } from '../../../configuration/runtime-defaults.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+interface MatrixConfiguration extends TriggerConfiguration {
+  url: string;
+  roomid: string;
+  accesstoken: string;
+  msgtype: 'm.notice' | 'm.text';
+}
 
 /**
  * Matrix Trigger implementation
  */
-class Matrix extends Trigger {
+class Matrix extends Trigger<MatrixConfiguration> {
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -66,6 +73,7 @@ class Matrix extends Trigger {
           Authorization: `Bearer ${this.configuration.accesstoken}`,
           'content-type': 'application/json',
         },
+        timeout: getOutboundHttpTimeoutMs(),
       },
     );
   }

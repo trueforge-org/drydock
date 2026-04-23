@@ -1,21 +1,25 @@
-function getAuthenticationIcon() {
-  return 'fas fa-lock';
+import { extractCollectionData } from '../utils/api';
+
+interface AuthenticationDetailPathOptions {
+  type: string;
+  name: string;
+  agent?: string;
 }
 
-function getAuthProviderIcon(type) {
+function getAuthProviderIcon(type: string) {
   switch (type) {
     case 'basic':
-      return 'fas fa-key';
+      return 'sh-key';
     case 'oidc':
-      return 'fas fa-openid';
+      return 'sh-openid';
     case 'anonymous':
-      return 'fas fa-user-secret';
+      return 'sh-user-secret';
     default:
-      return 'fas fa-lock';
+      return 'sh-lock';
   }
 }
 
-function getAuthProviderColor(type) {
+function getAuthProviderColor(type: string) {
   switch (type) {
     case 'basic':
       return '#F59E0B';
@@ -29,8 +33,31 @@ function getAuthProviderColor(type) {
 }
 
 async function getAllAuthentications() {
-  const response = await fetch('/api/authentications', { credentials: 'include' });
+  const response = await fetch('/api/v1/authentications', { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Failed to get authentications: ${response.statusText}`);
+  }
+  const payload = await response.json();
+  return extractCollectionData(payload);
+}
+
+function buildAuthenticationDetailPath({ type, name, agent }: AuthenticationDetailPathOptions) {
+  const segments = ['/api/v1/authentications'];
+  segments.push(encodeURIComponent(type), encodeURIComponent(name));
+  if (agent) {
+    segments.push(encodeURIComponent(agent));
+  }
+  return segments.join('/');
+}
+
+async function getAuthentication({ type, name, agent }: AuthenticationDetailPathOptions) {
+  const response = await fetch(buildAuthenticationDetailPath({ type, name, agent }), {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to get authentication: ${response.statusText}`);
+  }
   return response.json();
 }
 
-export { getAuthenticationIcon, getAuthProviderIcon, getAuthProviderColor, getAllAuthentications };
+export { getAllAuthentications, getAuthentication, getAuthProviderColor, getAuthProviderIcon };

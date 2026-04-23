@@ -1,42 +1,66 @@
-import { nextTick } from 'vue';
-import { createRouter, createWebHistory } from 'vue-router';
+import {
+  createRouter,
+  createWebHistory,
+  type RouteLocationNormalized,
+  type RouteRecordRaw,
+} from 'vue-router';
+import AppLayout from '@/layouts/AppLayout.vue';
 import { getUser } from '@/services/auth';
+import { ROUTES } from './routes';
 
-export const viewLoaders = {
-  home: () => import('../views/HomeView.vue'),
+const viewLoaders = {
+  dashboard: () => import('../views/DashboardView.vue'),
   login: () => import('../views/LoginView.vue'),
   containers: () => import('../views/ContainersView.vue'),
-  authentications: () => import('../views/ConfigurationAuthenticationsView.vue'),
-  registries: () => import('../views/ConfigurationRegistriesView.vue'),
-  server: () => import('../views/ConfigurationServerView.vue'),
-  triggers: () => import('../views/ConfigurationTriggersView.vue'),
-  watchers: () => import('../views/ConfigurationWatchersView.vue'),
-  agents: () => import('../views/ConfigurationAgentsView.vue'),
-  logs: () => import('../views/ConfigurationLogsView.vue'),
-  history: () => import('../views/MonitoringHistoryView.vue'),
+  security: () => import('../views/SecurityView.vue'),
+  servers: () => import('../views/ServersView.vue'),
+  config: () => import('../views/ConfigView.vue'),
+  registries: () => import('../views/RegistriesView.vue'),
+  agents: () => import('../views/AgentsView.vue'),
+  triggers: () => import('../views/TriggersView.vue'),
+  watchers: () => import('../views/WatchersView.vue'),
+  auth: () => import('../views/AuthView.vue'),
+  notifications: () => import('../views/NotificationsView.vue'),
+  audit: () => import('../views/AuditView.vue'),
+  logs: () => import('../views/LogsView.vue'),
+  containerLogs: () => import('../views/ContainerLogsView.vue'),
 };
 
-export function createLazyRoute(path, name: keyof typeof viewLoaders) {
-  return { path, name, component: viewLoaders[name] };
+function createLazyRoute(
+  path: string,
+  viewName: keyof typeof viewLoaders,
+  routeName: string = viewName,
+): RouteRecordRaw {
+  return { path, name: routeName, component: viewLoaders[viewName] };
 }
 
-const routes = [
-  createLazyRoute('/', 'home'),
-  createLazyRoute('/login', 'login'),
-  createLazyRoute('/containers', 'containers'),
-  createLazyRoute('/configuration/authentications', 'authentications'),
-  createLazyRoute('/configuration/registries', 'registries'),
-  createLazyRoute('/configuration/server', 'server'),
-  createLazyRoute('/configuration/triggers', 'triggers'),
-  createLazyRoute('/configuration/watchers', 'watchers'),
-  createLazyRoute('/configuration/agents', 'agents'),
-  createLazyRoute('/configuration/logs', 'logs'),
-  createLazyRoute('/monitoring/history', 'history'),
-  { path: '/:pathMatch(.*)*', redirect: '/' },
+const routes: RouteRecordRaw[] = [
+  createLazyRoute(ROUTES.LOGIN, 'login'),
+  {
+    path: ROUTES.DASHBOARD,
+    component: AppLayout,
+    children: [
+      createLazyRoute('', 'dashboard'),
+      createLazyRoute(ROUTES.CONTAINERS, 'containers'),
+      createLazyRoute(ROUTES.CONTAINER_LOGS, 'containerLogs', 'container-logs'),
+      createLazyRoute(ROUTES.SECURITY, 'security'),
+      createLazyRoute(ROUTES.SERVERS, 'servers'),
+      createLazyRoute(ROUTES.CONFIG, 'config'),
+      createLazyRoute(ROUTES.REGISTRIES, 'registries'),
+      createLazyRoute(ROUTES.AGENTS, 'agents'),
+      createLazyRoute(ROUTES.TRIGGERS, 'triggers'),
+      createLazyRoute(ROUTES.WATCHERS, 'watchers'),
+      createLazyRoute(ROUTES.AUTH, 'auth'),
+      createLazyRoute(ROUTES.NOTIFICATIONS, 'notifications'),
+      createLazyRoute(ROUTES.AUDIT, 'audit'),
+      createLazyRoute(ROUTES.LOGS, 'logs'),
+    ],
+  },
+  { path: '/:pathMatch(.*)*', redirect: ROUTES.DASHBOARD },
 ];
 
 const router = createRouter({
-  history: createWebHistory(process.env.BASE_URL),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 });
 
@@ -44,7 +68,7 @@ const router = createRouter({
  * Validate and return the `next` query parameter as a safe redirect path.
  * Returns the path string if valid, or `true` to proceed to the current route.
  */
-export function validateAndGetNextRoute(to): string | boolean {
+function validateAndGetNextRoute(to: RouteLocationNormalized): string | boolean {
   if (to.query.next) {
     const next = String(to.query.next);
     if (next.startsWith('/') && !next.startsWith('//')) {
@@ -58,7 +82,7 @@ export function validateAndGetNextRoute(to): string | boolean {
  * Create a redirect object that sends the user to the login page,
  * preserving the original destination as the `next` query parameter.
  */
-export function createLoginRedirect(to) {
+function createLoginRedirect(to: RouteLocationNormalized) {
   return {
     name: 'login',
     query: {
@@ -69,31 +93,18 @@ export function createLoginRedirect(to) {
 
 /**
  * Apply authentication navigation guard.
- * @param to
- * @param from
- * @returns {Promise<void>}
  */
-export async function applyAuthNavigationGuard(to) {
+async function applyAuthNavigationGuard(to: RouteLocationNormalized) {
   if (to.name === 'login') {
     return true;
   }
 
-  // Get current user
   const user = await getUser();
 
-  // User is authenticated => go to route
   if (user !== undefined) {
-    // Emit authenticated event after navigation
-    nextTick(() => {
-      if ((router as any).app?.config?.globalProperties?.$eventBus) {
-        (router as any).app.config.globalProperties.$eventBus.emit('authenticated', user);
-      }
-    });
-
     return validateAndGetNextRoute(to);
   }
 
-  // User is not authenticated => save destination as next & go to login
   return createLoginRedirect(to);
 }
 

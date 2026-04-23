@@ -1,4 +1,5 @@
-// @ts-nocheck
+import { RE2JS } from 're2js';
+import log from '../log/index.js';
 import * as semver from './index.js';
 
 describe('parse', () => {
@@ -302,13 +303,47 @@ describe('transform', () => {
       expect(semver.transform('^(\\d+)$ => $2', '123')).toBe('');
     });
 
-    test('should handle malformed regex', async () => {
-      expect(semver.transform('[invalid-regex => $1', '1.2.3')).toBe('1.2.3');
+    test('should throw on malformed regex', async () => {
+      expect(() => semver.transform('[invalid-regex => $1', '1.2.3')).toThrow(
+        /Invalid regex pattern/,
+      );
     });
 
-    test('should return original tag when regex pattern exceeds max length', async () => {
+    test('should throw with message from non-Error values during regex compilation', () => {
+      const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
+      const compileSpy = vi.spyOn(RE2JS, 'compile').mockImplementation(() => {
+        throw { message: 'regex compile failed' };
+      });
+
+      try {
+        expect(() => semver.transform('^v(.+)$ => $1', 'v1.2.3')).toThrow(/regex compile failed/);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('regex compile failed'));
+      } finally {
+        compileSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    });
+
+    test('should stringify unknown throw values during regex compilation', () => {
+      const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => {});
+      const compileSpy = vi.spyOn(RE2JS, 'compile').mockImplementation(() => {
+        throw 42;
+      });
+
+      try {
+        expect(() => semver.transform('^v(.+)$ => $1', 'v1.2.3')).toThrow(/42/);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('42'));
+      } finally {
+        compileSpy.mockRestore();
+        warnSpy.mockRestore();
+      }
+    });
+
+    test('should throw when regex pattern exceeds max length', async () => {
       const longPattern = `${'a'.repeat(1025)} => $1`;
-      expect(semver.transform(longPattern, '1.2.3')).toBe('1.2.3');
+      expect(() => semver.transform(longPattern, '1.2.3')).toThrow(
+        /Regex pattern exceeds maximum length/,
+      );
     });
 
     test('should return original tag when transform throws unexpectedly', async () => {
@@ -320,6 +355,16 @@ describe('transform', () => {
         expect(semver.transform('^v(.+)$ => $1', 'v1.2.3')).toBe('v1.2.3');
       } finally {
         replaceAllSpy.mockRestore();
+      }
+    });
+
+    test('should remain stable under repeated regex transform compilation (issue #89 regression)', () => {
+      const formula = '^v(\\d+\\.\\d+\\.\\d+)-ls\\d+$ => $1';
+      const input = 'v1.2.3-ls45';
+
+      // Repeated calls emulate watch cycles and catch regex-engine regressions.
+      for (let i = 0; i < 5000; i += 1) {
+        expect(semver.transform(formula, input)).toBe('1.2.3');
       }
     });
   });

@@ -1,10 +1,13 @@
-// @ts-nocheck
-import Custom from '../custom/Custom.js';
+import Custom, { type CustomRegistryConfiguration } from '../custom/Custom.js';
+
+interface DocrRegistryConfiguration extends CustomRegistryConfiguration {
+  token?: string;
+}
 
 /**
  * DigitalOcean Container Registry integration.
  */
-class Docr extends Custom {
+class Docr extends Custom<DocrRegistryConfiguration> {
   init() {
     this.configuration.url = 'https://registry.digitalocean.com';
 
@@ -43,7 +46,10 @@ class Docr extends Custom {
   }
 
   match(image) {
-    const url = image.registry.url;
+    const url = image?.registry?.url;
+    if (typeof url !== 'string') {
+      return false;
+    }
     return (
       url === 'registry.digitalocean.com' ||
       (url.endsWith('.registry.digitalocean.com') && /^[a-zA-Z0-9.-]+$/.test(url))

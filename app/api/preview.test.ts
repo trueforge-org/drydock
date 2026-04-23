@@ -29,10 +29,6 @@ import * as registry from '../registry/index.js';
 import * as storeContainer from '../store/container.js';
 import * as previewRouter from './preview.js';
 
-function createResponse() {
-  return createMockResponse();
-}
-
 function getHandler(method, path) {
   previewRouter.init();
   const call = mockRouter[method].mock.calls.find((c) => c[0] === path);
@@ -41,7 +37,7 @@ function getHandler(method, path) {
 
 async function callPreview(id = 'c1') {
   const handler = getHandler('post', '/:id/preview');
-  const res = createResponse();
+  const res = createMockResponse();
   await handler({ params: { id } }, res);
   return res;
 }
@@ -63,7 +59,8 @@ describe('Preview Router', () => {
     test('should return 404 when container not found', async () => {
       storeContainer.getContainer.mockReturnValue(undefined);
       const res = await callPreview('missing');
-      expect(res.sendStatus).toHaveBeenCalledWith(404);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Container not found' });
     });
 
     test('should return 404 when no docker trigger found', async () => {
@@ -71,9 +68,9 @@ describe('Preview Router', () => {
       registry.getState.mockReturnValue({ trigger: {} });
       const res = await callPreview();
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('No docker trigger found') }),
-      );
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('No docker trigger found'),
+      });
     });
 
     test('should return 404 when triggers exist but none are docker type', async () => {
@@ -121,9 +118,7 @@ describe('Preview Router', () => {
 
       const res = await callPreview();
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('Docker API error') }),
-      );
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }));
     });
 
     test('should stringify non-Error preview failures', async () => {
@@ -138,9 +133,7 @@ describe('Preview Router', () => {
 
       const res = await callPreview();
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('preview failed as string') }),
-      );
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: expect.any(String) }));
     });
 
     test('should skip docker triggers with mismatched agent', async () => {
@@ -187,6 +180,37 @@ describe('Preview Router', () => {
       });
 
       const res = await callPreview();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith(previewResult);
+    });
+
+    test('should use compose trigger when no docker trigger exists', async () => {
+      const previewResult = {
+        containerName: 'my-app',
+        currentImage: 'hub/library/nginx:1.24',
+        newImage: 'hub/library/nginx:1.25',
+        compose: {
+          files: ['/stack/docker-compose.yml'],
+          paths: ['/stack/docker-compose.yml'],
+          service: 'web',
+          mutation: {
+            intent: 'update-compose-service-image',
+            dryRun: true,
+            willWrite: false,
+          },
+        },
+      };
+      const composeTrigger = {
+        type: 'dockercompose',
+        preview: vi.fn().mockResolvedValue(previewResult),
+      };
+      storeContainer.getContainer.mockReturnValue({ id: 'c1', watcher: 'local' });
+      registry.getState.mockReturnValue({
+        trigger: { 'dockercompose.default': composeTrigger },
+      });
+
+      const res = await callPreview();
+      expect(composeTrigger.preview).toHaveBeenCalledWith({ id: 'c1', watcher: 'local' });
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(previewResult);
     });

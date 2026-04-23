@@ -1,10 +1,14 @@
-// @ts-nocheck
-import BaseRegistry from '../../BaseRegistry.js';
+import BaseRegistry, { type BaseRegistryConfiguration } from '../../BaseRegistry.js';
+
+interface AcrRegistryConfiguration extends BaseRegistryConfiguration {
+  clientid: string;
+  clientsecret: string;
+}
 
 /**
  * Azure Container Registry integration.
  */
-class Acr extends BaseRegistry {
+class Acr extends BaseRegistry<AcrRegistryConfiguration> {
   getConfigurationSchema() {
     return this.joi.object().keys({
       clientid: this.joi.string().required(),
@@ -41,7 +45,12 @@ class Acr extends BaseRegistry {
   }
 
   async authenticate(image, requestOptions) {
-    const requestOptionsWithAuth = requestOptions;
+    const requestOptionsWithAuth = {
+      ...requestOptions,
+      headers: {
+        ...(requestOptions?.headers || {}),
+      },
+    };
     requestOptionsWithAuth.headers.Authorization = `Basic ${Acr.base64Encode(this.configuration.clientid, this.configuration.clientsecret)}`;
     return requestOptionsWithAuth;
   }

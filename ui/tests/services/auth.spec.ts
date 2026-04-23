@@ -1,24 +1,33 @@
-import { getOidcRedirection, getStrategies, getUser, loginBasic, logout } from '@/services/auth';
+const fetchMock = vi.fn();
+global.fetch = fetchMock as unknown as typeof fetch;
 
-// Mock fetch globally
-global.fetch = vi.fn();
+async function loadAuthService() {
+  vi.resetModules();
+  return import('@/services/auth');
+}
 
 describe('Auth Service', () => {
   beforeEach(() => {
-    fetch.mockClear();
+    fetchMock.mockReset();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   describe('getUser', () => {
     it('returns user data when authenticated', async () => {
+      const { getUser } = await loadAuthService();
       const mockUser = { username: 'testuser', roles: ['admin'] };
-      fetch.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockUser,
       });
 
       const user = await getUser();
 
-      expect(fetch).toHaveBeenCalledWith('/auth/user', {
+      expect(fetchMock).toHaveBeenCalledWith('/auth/user', {
         redirect: 'manual',
         credentials: 'include',
       });
@@ -26,7 +35,8 @@ describe('Auth Service', () => {
     });
 
     it('returns undefined when not authenticated', async () => {
-      fetch.mockResolvedValueOnce({
+      const { getUser } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
         ok: false,
         status: 401,
       });
@@ -37,7 +47,8 @@ describe('Auth Service', () => {
     });
 
     it('handles network errors gracefully', async () => {
-      fetch.mockRejectedValueOnce(new Error('Network error'));
+      const { getUser } = await loadAuthService();
+      fetchMock.mockRejectedValueOnce(new Error('Network error'));
 
       const user = await getUser();
 
@@ -45,8 +56,9 @@ describe('Auth Service', () => {
     });
 
     it('logs fallback error detail when thrown value is not an Error object', async () => {
+      const { getUser } = await loadAuthService();
       const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
-      fetch.mockRejectedValueOnce('raw-network-error');
+      fetchMock.mockRejectedValueOnce('raw-network-error');
 
       try {
         const user = await getUser();
@@ -56,35 +68,91 @@ describe('Auth Service', () => {
         debugSpy.mockRestore();
       }
     });
+
+    it('revalidates a settled authenticated user on the next call', async () => {
+      const { getUser } = await loadAuthService();
+      const mockUser = { username: 'cached-user', roles: ['admin'] };
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUser,
+      });
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+
+      expect(await getUser()).toEqual(mockUser);
+      expect(await getUser()).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('reuses the in-flight request for concurrent callers', async () => {
+      const { getUser } = await loadAuthService();
+      const mockUser = { username: 'shared-user', roles: ['admin'] };
+      let resolveResponse: ((value: unknown) => void) | undefined;
+      fetchMock.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveResponse = resolve;
+        }),
+      );
+
+      const first = getUser();
+      const second = getUser();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      resolveResponse?.({
+        ok: true,
+        json: async () => mockUser,
+      });
+
+      await expect(first).resolves.toEqual(mockUser);
+      await expect(second).resolves.toEqual(mockUser);
+    });
+
+    it('does not keep an unauthenticated result cached after the request settles', async () => {
+      const { getUser } = await loadAuthService();
+      const mockUser = { username: 'fresh-user', roles: ['admin'] };
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUser,
+      });
+
+      expect(await getUser()).toBeUndefined();
+      expect(await getUser()).toEqual(mockUser);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('loginBasic', () => {
     it('performs basic authentication successfully', async () => {
+      const { loginBasic } = await loadAuthService();
       const mockUser = { username: 'testuser' };
-      fetch.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockUser,
       });
 
       const user = await loginBasic('testuser', 'testpass');
 
-      expect(fetch).toHaveBeenCalledWith('/auth/login', {
+      expect(fetchMock).toHaveBeenCalledWith('/auth/login', {
         method: 'POST',
         credentials: 'include',
         headers: {
           Authorization: 'Basic dGVzdHVzZXI6dGVzdHBhc3M=', // base64 of testuser:testpass
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          username: 'testuser',
-          password: 'testpass',
-        }),
+        body: JSON.stringify({ remember: false }),
       });
       expect(user).toEqual(mockUser);
     });
 
     it('throws on login failure', async () => {
-      fetch.mockResolvedValueOnce({
+      const { loginBasic } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
         ok: false,
         status: 401,
       });
@@ -93,61 +161,180 @@ describe('Auth Service', () => {
         'Username or password error',
       );
     });
+
+    it('surfaces API error details for non-credential failures', async () => {
+      const { loginBasic } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "Basic auth 'ANDI': hash is required" }),
+      });
+
+      await expect(loginBasic('testuser', 'testpass')).rejects.toThrow(
+        "Basic auth 'ANDI': hash is required",
+      );
+    });
+
+    it('falls back to generic credential error when payload is not an object', async () => {
+      const { loginBasic } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => 'not-an-object',
+      });
+
+      await expect(loginBasic('testuser', 'testpass')).rejects.toThrow(
+        'Username or password error',
+      );
+    });
+
+    it('falls back to generic credential error when payload has no error field', async () => {
+      const { loginBasic } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ detail: 'missing field' }),
+      });
+
+      await expect(loginBasic('testuser', 'testpass')).rejects.toThrow(
+        'Username or password error',
+      );
+    });
+
+    it('falls back to generic credential error when payload error is non-string', async () => {
+      const { loginBasic } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: { message: 'not-a-string' } }),
+      });
+
+      await expect(loginBasic('testuser', 'testpass')).rejects.toThrow(
+        'Username or password error',
+      );
+    });
   });
 
   describe('logout', () => {
     it('logs out user successfully', async () => {
+      const { logout } = await loadAuthService();
       const mockResponse = { success: true };
-      fetch.mockResolvedValueOnce({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockResponse,
       });
 
       const result = await logout();
 
-      expect(fetch).toHaveBeenCalledWith('/auth/logout', {
+      expect(fetchMock).toHaveBeenCalledWith('/auth/logout', {
         method: 'POST',
         credentials: 'include',
         redirect: 'manual',
       });
       expect(result).toEqual(mockResponse);
     });
+
+    it('clears the cached user after logout', async () => {
+      vi.useFakeTimers();
+      const { getUser, logout } = await loadAuthService();
+      const mockUser = { username: 'testuser', roles: ['admin'] };
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockUser,
+      });
+
+      expect(await getUser()).toEqual(mockUser);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+      await logout();
+
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+      });
+      expect(await getUser()).toBeUndefined();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
   });
 
   describe('getStrategies', () => {
-    it('returns available authentication strategies', async () => {
-      const mockStrategies = [
-        { name: 'basic', type: 'basic' },
-        { name: 'oidc', type: 'oidc' },
-      ];
-      fetch.mockResolvedValueOnce({
+    it('returns auth status payload with providers and errors', async () => {
+      const { getStrategies } = await loadAuthService();
+      const mockStrategies = {
+        providers: [
+          { name: 'basic', type: 'basic' },
+          { name: 'oidc', type: 'oidc' },
+        ],
+        errors: [{ provider: 'basic:ANDI', error: 'hash is required' }],
+      };
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockStrategies,
       });
 
       const strategies = await getStrategies();
 
-      expect(fetch).toHaveBeenCalledWith('/auth/strategies', {
+      expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/status', {
         credentials: 'include',
       });
       expect(strategies).toEqual(mockStrategies);
+    });
+
+    it('throws when fetching authentication strategies fails', async () => {
+      const { getStrategies } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Internal Server Error',
+        json: async () => ({}),
+      });
+
+      await expect(getStrategies()).rejects.toThrow(
+        'Failed to get auth strategies: Internal Server Error',
+      );
     });
   });
 
   describe('getOidcRedirection', () => {
     it('returns oidc redirection payload', async () => {
-      const mockRedirection = { url: 'https://idp.example.com/authorize?code=abc' };
-      fetch.mockResolvedValueOnce({
+      const { getOidcRedirection } = await loadAuthService();
+      const mockRedirection = {
+        redirect: 'https://idp.example.com/authorize?code=abc',
+        strictEndpoints: ['https://idp.example.com/authorize'],
+        allowedOrigins: ['https://idp.example.com'],
+      };
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: async () => mockRedirection,
       });
 
       const result = await getOidcRedirection('main');
 
-      expect(fetch).toHaveBeenCalledWith('/auth/oidc/main/redirect', {
+      expect(fetchMock).toHaveBeenCalledWith('/auth/oidc/main/redirect', {
         credentials: 'include',
       });
       expect(result).toEqual(mockRedirection);
+    });
+  });
+
+  describe('setRememberMe', () => {
+    it('stores remember-me preference for auth redirects', async () => {
+      const { setRememberMe } = await loadAuthService();
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+      });
+
+      await setRememberMe(true);
+
+      expect(fetchMock).toHaveBeenCalledWith('/auth/remember', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remember: true }),
+      });
     });
   });
 });

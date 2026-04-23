@@ -1,17 +1,35 @@
-// @ts-nocheck
-
-import child_process from 'node:child_process';
-import util from 'node:util';
-
-const exec = util.promisify(child_process.exec);
+import { execFile } from 'node:child_process';
 
 import { flatten } from '../../../model/container.js';
-import Trigger from '../Trigger.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+let hasLoggedShellExecutionWarning = false;
+
+interface CommandConfiguration extends TriggerConfiguration {
+  cmd: string;
+  shell: string;
+  timeout: number;
+}
+
+export function resetShellExecutionWarningStateForTests() {
+  hasLoggedShellExecutionWarning = false;
+}
 
 /**
  * Command Trigger implementation
  */
-class Command extends Trigger {
+class Command extends Trigger<CommandConfiguration> {
+  private logShellExecutionWarningOnce() {
+    if (hasLoggedShellExecutionWarning) {
+      return;
+    }
+
+    hasLoggedShellExecutionWarning = true;
+    this.log.warn(
+      `Security: Command trigger executes DD_TRIGGER_COMMAND_* cmd using ${this.configuration.shell} -c with drydock process privileges. Use only trusted command strings and interpolated values.`,
+    );
+  }
+
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -53,16 +71,36 @@ class Command extends Trigger {
    * @param {*} extraEnvVars
    */
   async runCommand(extraEnvVars) {
+    this.logShellExecutionWarningOnce();
+
     const commandOptions = {
       env: {
         ...process.env,
         ...extraEnvVars,
       },
-      shell: this.configuration.shell,
       timeout: this.configuration.timeout,
     };
     try {
-      const { stdout, stderr } = await exec(this.configuration.cmd, commandOptions);
+      const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          // Intentional admin-controlled shell execution from DD_TRIGGER_COMMAND_* env configuration.
+          execFile(
+            this.configuration.shell,
+            ['-c', this.configuration.cmd],
+            commandOptions,
+            (error, stdoutOutput, stderrOutput) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+              resolve({
+                stdout: typeof stdoutOutput === 'string' ? stdoutOutput : '',
+                stderr: typeof stderrOutput === 'string' ? stderrOutput : '',
+              });
+            },
+          );
+        },
+      );
       if (stdout) {
         this.log.info(`Command ${this.configuration.cmd} \nstdout ${stdout}`);
       }

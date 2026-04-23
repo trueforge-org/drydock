@@ -1,13 +1,13 @@
-// @ts-nocheck
 /**
  * Semver utils.
  */
 
-import RE2 from 're2';
+import { RE2JS } from 're2js';
 import semver from 'semver';
 import log from '../log/index.js';
+import { getErrorMessage } from '../util/error.js';
 
-function normalizeNumericMultiSegmentTag(rawVersion) {
+function normalizeNumericMultiSegmentTag(rawVersion: string) {
   if (!/^v?\d+(?:\.\d+){3,}$/.test(rawVersion)) {
     return null;
   }
@@ -26,7 +26,7 @@ function normalizeNumericMultiSegmentTag(rawVersion) {
  * @param rawVersion
  * @returns {*|SemVer}
  */
-export function parse(rawVersion) {
+export function parse(rawVersion: string) {
   const normalizedMultiSegment = normalizeNumericMultiSegmentTag(rawVersion);
   if (normalizedMultiSegment) {
     return semver.parse(normalizedMultiSegment);
@@ -48,7 +48,7 @@ export function parse(rawVersion) {
  * @param version1
  * @param version2
  */
-export function isGreater(version1, version2) {
+export function isGreater(version1: string, version2: string) {
   const version1Semver = parse(version1);
   const version2Semver = parse(version2);
 
@@ -65,7 +65,7 @@ export function isGreater(version1, version2) {
  * @param version2
  * @returns {*|string|null}
  */
-export function diff(version1, version2) {
+export function diff(version1: string, version2: string) {
   const version1Semver = parse(version1);
   const version2Semver = parse(version2);
 
@@ -76,22 +76,41 @@ export function diff(version1, version2) {
   return semver.diff(version1Semver, version2Semver);
 }
 
+interface SafeRegex {
+  exec(s: string): RegExpMatchArray | null;
+}
+
+class TagTransformConfigurationError extends Error {}
+
 /**
  * Safely compile a user-supplied regex pattern.
- * Returns null (and logs a warning) when the pattern is invalid.
- * Uses RE2, which is inherently immune to ReDoS backtracking attacks.
+ * Throws when the pattern is invalid so configuration errors fail loudly.
+ * Uses RE2 (via re2js), which is inherently immune to ReDoS backtracking attacks.
  */
-function safeRegExp(pattern: string): RE2 | null {
+function safeRegExp(pattern: string): SafeRegex {
   const MAX_PATTERN_LENGTH = 1024;
   if (pattern.length > MAX_PATTERN_LENGTH) {
-    log.warn(`Regex pattern exceeds maximum length of ${MAX_PATTERN_LENGTH} characters`);
-    return null;
+    const message = `Regex pattern exceeds maximum length of ${MAX_PATTERN_LENGTH} characters`;
+    log.warn(message);
+    throw new TagTransformConfigurationError(message);
   }
   try {
-    return new RE2(pattern);
-  } catch (e: any) {
-    log.warn(`Invalid regex pattern "${pattern}": ${e.message}`);
-    return null;
+    const compiled = RE2JS.compile(pattern);
+    return {
+      exec(s: string): RegExpMatchArray | null {
+        const m = compiled.matcher(s);
+        if (!m.find()) return null;
+        const result = [m.group(0)] as RegExpMatchArray;
+        for (let i = 1; i <= m.groupCount(); i++) result.push(m.group(i));
+        result.index = m.start();
+        result.input = s;
+        return result;
+      },
+    };
+  } catch (e: unknown) {
+    const message = `Invalid regex pattern "${pattern}": ${getErrorMessage(e, String(e))}`;
+    log.warn(message);
+    throw new TagTransformConfigurationError(message);
   }
 }
 
@@ -101,7 +120,7 @@ function safeRegExp(pattern: string): RE2 | null {
  * @param originalTag
  * @return {*}
  */
-export function transform(transformFormula, originalTag) {
+export function transform(transformFormula: string, originalTag: string) {
   // No formula ? return original tag value
   if (!transformFormula || transformFormula === '') {
     return originalTag;
@@ -114,11 +133,8 @@ export function transform(transformFormula, originalTag) {
     const pattern = transformFormula.slice(0, separatorIndex).trim();
     const replacement = transformFormula.slice(separatorIndex + 2).trim();
     const compiledPattern = safeRegExp(pattern);
-    if (!compiledPattern) {
-      return originalTag;
-    }
     const placeholders = replacement.match(/\$\d+/g) || [];
-    const originalTagMatches = originalTag.match(compiledPattern);
+    const originalTagMatches = compiledPattern.exec(originalTag);
     if (!originalTagMatches) {
       return originalTag;
     }
@@ -131,6 +147,9 @@ export function transform(transformFormula, originalTag) {
     });
     return transformedTag;
   } catch (e) {
+    if (e instanceof TagTransformConfigurationError) {
+      throw e;
+    }
     // Upon error; log & fallback to original tag value
     log.warn(`Error when applying transform function [${transformFormula}]to tag [${originalTag}]`);
     log.debug(e);

@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import axios from 'axios';
 import joi from 'joi';
 import Ntfy from './Ntfy.js';
@@ -15,16 +13,19 @@ const configurationValid = {
   mode: 'simple',
   threshold: 'all',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
-  simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+  simpletitle:
+    '${isDigestUpdate ? "New image available for container " + container.name + " (tag " + currentTag + ")" : "New " + container.updateKind.kind + " found for container " + container.name}',
 
   simplebody:
-    'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+    '${isDigestUpdate ? "Container " + container.name + " running tag " + currentTag + " has a newer image available" : "Container " + container.name + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
   batchtitle: '${containers.length} updates available',
   resolvenotifications: false,
+  securitymode: 'simple',
+  digestcron: '0 8 * * *',
 };
 
 beforeEach(async () => {
@@ -55,9 +56,9 @@ test('maskConfiguration should mask sensitive data', async () => {
   };
   expect(ntfy.maskConfiguration()).toEqual({
     auth: {
-      user: 'u**r',
-      password: 'p******d',
-      token: 't***n',
+      user: '[REDACTED]',
+      password: '[REDACTED]',
+      token: '[REDACTED]',
     },
   });
 });
@@ -86,6 +87,7 @@ test('trigger should call http client', async () => {
     },
     method: 'POST',
 
+    timeout: 30000,
     url: 'http://xxx.com',
   });
 });
@@ -117,6 +119,7 @@ test('trigger should use basic auth when configured like that', async () => {
     },
     method: 'POST',
 
+    timeout: 30000,
     url: 'http://xxx.com',
     auth: { username: 'user', password: 'pass' },
   });
@@ -150,6 +153,7 @@ test('trigger should use bearer auth when configured like that', async () => {
     },
     method: 'POST',
 
+    timeout: 30000,
     url: 'http://xxx.com',
   });
 });
@@ -174,6 +178,7 @@ test('triggerBatch should call http client with batch body', async () => {
         topic: 'xxx',
         priority: 2,
       }),
+      timeout: 30000,
     }),
   );
 });

@@ -4,14 +4,14 @@ import { createMockRequest, createMockResponse } from '../test/helpers.js';
 const {
   mockRouter,
   mockGetContainer,
-  mockGetBackups,
+  mockGetBackupsByName,
   mockGetAllBackups,
   mockGetBackup,
   mockGetState,
 } = vi.hoisted(() => ({
   mockRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
   mockGetContainer: vi.fn(),
-  mockGetBackups: vi.fn(),
+  mockGetBackupsByName: vi.fn(),
   mockGetAllBackups: vi.fn(),
   mockGetBackup: vi.fn(),
   mockGetState: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('../store/container', () => ({
 }));
 
 vi.mock('../store/backup', () => ({
-  getBackups: mockGetBackups,
+  getBackupsByName: mockGetBackupsByName,
   getAllBackups: mockGetAllBackups,
   getBackup: mockGetBackup,
 }));
@@ -46,7 +46,7 @@ import * as backupRouter from './backup.js';
 function getHandler(method, path) {
   backupRouter.init();
   const call = mockRouter[method].mock.calls.find((c) => c[0] === path);
-  return call[1];
+  return call[call.length - 1];
 }
 
 describe('Backup Router', () => {
@@ -60,7 +60,11 @@ describe('Backup Router', () => {
       expect(mockRouter.use).toHaveBeenCalledWith('nocache-middleware');
       expect(mockRouter.get).toHaveBeenCalledWith('/', expect.any(Function));
       expect(mockRouter.get).toHaveBeenCalledWith('/:id/backups', expect.any(Function));
-      expect(mockRouter.post).toHaveBeenCalledWith('/:id/rollback', expect.any(Function));
+      expect(mockRouter.post).toHaveBeenCalledWith(
+        '/:id/rollback',
+        expect.any(Function),
+        expect.any(Function),
+      );
     });
   });
 
@@ -79,21 +83,21 @@ describe('Backup Router', () => {
 
       expect(mockGetAllBackups).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(allBackups);
+      expect(res.json).toHaveBeenCalledWith({ data: allBackups, total: allBackups.length });
     });
 
-    test('should return filtered backups when containerId provided', () => {
+    test('should return filtered backups when containerName provided', () => {
       const handler = getHandler('get', '/');
-      const filtered = [{ id: 'b1', containerId: 'c1' }];
-      mockGetBackups.mockReturnValue(filtered);
+      const filtered = [{ id: 'b1', containerName: 'nginx' }];
+      mockGetBackupsByName.mockReturnValue(filtered);
 
-      const req = createMockRequest({ query: { containerId: 'c1' } });
+      const req = createMockRequest({ query: { containerName: 'nginx' } });
       const res = createMockResponse();
       handler(req, res);
 
-      expect(mockGetBackups).toHaveBeenCalledWith('c1');
+      expect(mockGetBackupsByName).toHaveBeenCalledWith('nginx');
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(filtered);
+      expect(res.json).toHaveBeenCalledWith({ data: filtered, total: filtered.length });
     });
   });
 
@@ -106,39 +110,75 @@ describe('Backup Router', () => {
       const res = createMockResponse();
       handler(req, res);
 
-      expect(res.sendStatus).toHaveBeenCalledWith(404);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Container not found' });
     });
 
     test('should return backups for existing container', () => {
       const handler = getHandler('get', '/:id/backups');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
-      const backups = [{ id: 'b1', containerId: 'c1', imageTag: '1.24' }];
-      mockGetBackups.mockReturnValue(backups);
+      const backups = [{ id: 'b1', containerName: 'nginx', imageTag: '1.24' }];
+      mockGetBackupsByName.mockReturnValue(backups);
 
       const req = createMockRequest({ params: { id: 'c1' } });
       const res = createMockResponse();
       handler(req, res);
 
-      expect(mockGetBackups).toHaveBeenCalledWith('c1');
+      expect(mockGetBackupsByName).toHaveBeenCalledWith('nginx');
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(backups);
+      expect(res.json).toHaveBeenCalledWith({ data: backups, total: backups.length });
+    });
+
+    test('should use first id when route param id is an array', () => {
+      const handler = getHandler('get', '/:id/backups');
+      mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
+      mockGetBackupsByName.mockReturnValue([]);
+
+      const req = createMockRequest({ params: { id: ['c1', 'ignored'] } });
+      const res = createMockResponse();
+      handler(req, res);
+
+      expect(mockGetContainer).toHaveBeenCalledWith('c1');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ data: [], total: 0 });
     });
 
     test('should return empty array when container has no backups', () => {
       const handler = getHandler('get', '/:id/backups');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
-      mockGetBackups.mockReturnValue([]);
+      mockGetBackupsByName.mockReturnValue([]);
 
       const req = createMockRequest({ params: { id: 'c1' } });
       const res = createMockResponse();
       handler(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith([]);
+      expect(res.json).toHaveBeenCalledWith({ data: [], total: 0 });
     });
   });
 
   describe('rollbackContainer', () => {
+    test('should require destructive confirmation header', async () => {
+      backupRouter.init();
+      const call = mockRouter.post.mock.calls.find((c) => c[0] === '/:id/rollback');
+      const confirmationMiddleware = call?.[1];
+
+      const req = createMockRequest({
+        params: { id: 'c1' },
+        headers: {},
+      });
+      const res = createMockResponse();
+      const next = vi.fn();
+
+      confirmationMiddleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(428);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Confirmation required: X-DD-Confirm-Action=container-rollback',
+      });
+    });
+
     test('should return 404 when container not found', async () => {
       const handler = getHandler('post', '/:id/rollback');
       mockGetContainer.mockReturnValue(undefined);
@@ -147,22 +187,23 @@ describe('Backup Router', () => {
       const res = createMockResponse();
       await handler(req, res);
 
-      expect(res.sendStatus).toHaveBeenCalledWith(404);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Container not found' });
     });
 
     test('should return 404 when no backups found', async () => {
       const handler = getHandler('post', '/:id/rollback');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
-      mockGetBackups.mockReturnValue([]);
+      mockGetBackupsByName.mockReturnValue([]);
 
       const req = createMockRequest({ params: { id: 'c1' } });
       const res = createMockResponse();
       await handler(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('No backups found') }),
-      );
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('No backups found'),
+      });
     });
 
     test('should return 404 when backupId does not exist', async () => {
@@ -182,7 +223,7 @@ describe('Backup Router', () => {
     test('should return 404 when backupId belongs to another container', async () => {
       const handler = getHandler('post', '/:id/rollback');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
-      mockGetBackup.mockReturnValue({ id: 'b2', containerId: 'c2' });
+      mockGetBackup.mockReturnValue({ id: 'b2', containerName: 'redis' });
 
       const req = createMockRequest({ params: { id: 'c1' }, body: { backupId: 'b2' } });
       const res = createMockResponse();
@@ -196,7 +237,7 @@ describe('Backup Router', () => {
     test('should return 404 when no docker trigger found', async () => {
       const handler = getHandler('post', '/:id/rollback');
       mockGetContainer.mockReturnValue({ id: 'c1', name: 'nginx' });
-      mockGetBackups.mockReturnValue([
+      mockGetBackupsByName.mockReturnValue([
         {
           id: 'b1',
           containerId: 'c1',
@@ -211,9 +252,9 @@ describe('Backup Router', () => {
       await handler(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('No docker trigger found') }),
-      );
+      expect(res.json).toHaveBeenCalledWith({
+        error: expect.stringContaining('No docker trigger found'),
+      });
     });
 
     test('should rollback successfully', async () => {
@@ -231,7 +272,7 @@ describe('Backup Router', () => {
       };
 
       mockGetContainer.mockReturnValue(container);
-      mockGetBackups.mockReturnValue([latestBackup]);
+      mockGetBackupsByName.mockReturnValue([latestBackup]);
 
       const mockCurrentContainer = {};
       const mockContainerSpec = { State: { Running: true } };
@@ -257,12 +298,57 @@ describe('Backup Router', () => {
       expect(mockTrigger.stopAndRemoveContainer).toHaveBeenCalled();
       expect(mockTrigger.recreateContainer).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'Container rolled back successfully',
-          backup: latestBackup,
-        }),
-      );
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Container rolled back successfully',
+        backup: latestBackup,
+      });
+    });
+
+    test('should rollback successfully with a dockercompose trigger', async () => {
+      const handler = getHandler('post', '/:id/rollback');
+      const container = {
+        id: 'c1',
+        name: 'nginx',
+        image: { registry: { name: 'hub' } },
+      };
+      const latestBackup = {
+        id: 'b1',
+        containerId: 'c1',
+        imageName: 'library/nginx',
+        imageTag: '1.24',
+      };
+
+      mockGetContainer.mockReturnValue(container);
+      mockGetBackupsByName.mockReturnValue([latestBackup]);
+
+      const mockCurrentContainer = {};
+      const mockContainerSpec = { State: { Running: true } };
+      const composeTrigger = {
+        type: 'dockercompose',
+        getWatcher: vi.fn(() => ({ dockerApi: {} })),
+        pullImage: vi.fn().mockResolvedValue(undefined),
+        getCurrentContainer: vi.fn().mockResolvedValue(mockCurrentContainer),
+        inspectContainer: vi.fn().mockResolvedValue(mockContainerSpec),
+        stopAndRemoveContainer: vi.fn().mockResolvedValue(undefined),
+        recreateContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      mockGetState.mockReturnValue({
+        trigger: { 'dockercompose.default': composeTrigger },
+        registry: { hub: { getAuthPull: vi.fn().mockResolvedValue({}) } },
+      });
+
+      const req = createMockRequest({ params: { id: 'c1' } });
+      const res = createMockResponse();
+      await handler(req, res);
+
+      expect(composeTrigger.pullImage).toHaveBeenCalled();
+      expect(composeTrigger.stopAndRemoveContainer).toHaveBeenCalled();
+      expect(composeTrigger.recreateContainer).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Container rolled back successfully',
+        backup: latestBackup,
+      });
     });
 
     test('should rollback successfully when a valid backupId is provided', async () => {
@@ -274,7 +360,7 @@ describe('Backup Router', () => {
       };
       const selectedBackup = {
         id: 'b2',
-        containerId: 'c1',
+        containerName: 'nginx',
         imageName: 'library/nginx',
         imageTag: '1.25',
       };
@@ -303,17 +389,15 @@ describe('Backup Router', () => {
       await handler(req, res);
 
       expect(mockGetBackup).toHaveBeenCalledWith('b2');
-      expect(mockGetBackups).not.toHaveBeenCalled();
+      expect(mockGetBackupsByName).not.toHaveBeenCalled();
       expect(mockTrigger.pullImage).toHaveBeenCalled();
       expect(mockTrigger.stopAndRemoveContainer).toHaveBeenCalled();
       expect(mockTrigger.recreateContainer).toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          message: 'Container rolled back successfully',
-          backup: selectedBackup,
-        }),
-      );
+      expect(res.json).toHaveBeenCalledWith({
+        message: 'Container rolled back successfully',
+        backup: selectedBackup,
+      });
     });
 
     test('should return 500 when current container cannot be found in Docker', async () => {
@@ -331,7 +415,7 @@ describe('Backup Router', () => {
       };
 
       mockGetContainer.mockReturnValue(container);
-      mockGetBackups.mockReturnValue([latestBackup]);
+      mockGetBackupsByName.mockReturnValue([latestBackup]);
 
       const mockTrigger = {
         type: 'docker',
@@ -360,7 +444,7 @@ describe('Backup Router', () => {
         image: { registry: { name: 'hub' } },
       };
       mockGetContainer.mockReturnValue(container);
-      mockGetBackups.mockReturnValue([
+      mockGetBackupsByName.mockReturnValue([
         {
           id: 'b1',
           containerId: 'c1',
@@ -384,9 +468,7 @@ describe('Backup Router', () => {
       await handler(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('Pull failed') }),
-      );
+      expect(res.json).toHaveBeenCalledWith({ error: 'Pull failed' });
     });
 
     test('should stringify non-Error rollback failures', async () => {
@@ -397,7 +479,7 @@ describe('Backup Router', () => {
         image: { registry: { name: 'hub' } },
       };
       mockGetContainer.mockReturnValue(container);
-      mockGetBackups.mockReturnValue([
+      mockGetBackupsByName.mockReturnValue([
         {
           id: 'b1',
           containerId: 'c1',
@@ -421,9 +503,7 @@ describe('Backup Router', () => {
       await handler(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ error: expect.stringContaining('pull failed as string') }),
-      );
+      expect(res.json).toHaveBeenCalledWith({ error: 'pull failed as string' });
     });
   });
 });

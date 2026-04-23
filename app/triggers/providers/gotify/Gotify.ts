@@ -1,21 +1,31 @@
-// @ts-nocheck
 import { GotifyClient } from 'gotify-client';
-import Trigger from '../Trigger.js';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+interface GotifyConfiguration extends TriggerConfiguration {
+  url: string;
+  token: string;
+  priority?: number;
+}
 
 /**
  * Gotify Trigger implementation
  */
-class Gotify extends Trigger {
+class Gotify extends Trigger<GotifyConfiguration> {
+  private client!: GotifyClient;
+
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
    */
   getConfigurationSchema() {
     return this.joi.object().keys({
-      url: this.joi.string().uri({
-        scheme: ['http', 'https'],
-      }),
-      token: this.joi.string(),
+      url: this.joi
+        .string()
+        .uri({
+          scheme: ['http', 'https'],
+        })
+        .required(),
+      token: this.joi.string().required(),
       priority: this.joi.number().integer().min(0),
     });
   }

@@ -1,4 +1,5 @@
-// @ts-nocheck
+import fs from 'node:fs';
+import path from 'node:path';
 import * as app from './app.js';
 import * as migrate from './migrate.js';
 
@@ -52,7 +53,25 @@ test('createCollections should call migrate when versions are different', async 
     addCollection: () => null,
   };
   app.createCollections(db);
+  app.completeStartupInitialization();
   expect(migrate.migrate).toHaveBeenCalledWith('1.0.0', '2.0.0');
+});
+
+test('completeStartupInitialization should run startup repair even when versions are different', async () => {
+  const db = {
+    getCollection: () => ({
+      findOne: () => ({
+        name: 'drydock',
+        version: '1.0.0',
+      }),
+      insert: () => {},
+      remove: () => {},
+    }),
+    addCollection: () => null,
+  };
+  app.createCollections(db);
+  app.completeStartupInitialization();
+  expect(migrate.repairDataOnStartup).toHaveBeenCalledTimes(1);
 });
 
 test('createCollections should not call migrate when versions are identical', async () => {
@@ -68,7 +87,26 @@ test('createCollections should not call migrate when versions are identical', as
     addCollection: () => null,
   };
   app.createCollections(db);
+  app.completeStartupInitialization();
   expect(migrate.migrate).not.toHaveBeenCalled();
+});
+
+test('completeStartupInitialization should run startup repair when versions are identical', async () => {
+  const db = {
+    getCollection: () => ({
+      findOne: () => ({
+        name: 'drydock',
+        version: '2.0.0',
+      }),
+      insert: () => {},
+      remove: () => {},
+    }),
+    addCollection: () => null,
+  };
+  app.createCollections(db);
+  app.completeStartupInitialization();
+  expect(migrate.migrate).not.toHaveBeenCalled();
+  expect(migrate.repairDataOnStartup).toHaveBeenCalledTimes(1);
 });
 
 test('getAppInfos should return collection content', async () => {
@@ -88,4 +126,74 @@ test('getAppInfos should return collection content', async () => {
     name: 'drydock',
     version: '1.0.0',
   });
+});
+
+test('getAppInfos should strip $loki and meta from collection document', async () => {
+  const db = {
+    getCollection: () => ({
+      findOne: () => ({
+        name: 'drydock',
+        version: '1.0.0',
+        $loki: 1,
+        meta: { revision: 0, created: 1234567890, version: 0 },
+      }),
+      insert: () => {},
+      remove: () => {},
+    }),
+    addCollection: () => null,
+  };
+  app.createCollections(db);
+  const result = app.getAppInfos();
+  expect(result).toStrictEqual({ name: 'drydock', version: '1.0.0' });
+  expect(result).not.toHaveProperty('$loki');
+  expect(result).not.toHaveProperty('meta');
+});
+
+test('getAppInfos should return null when collection is empty', async () => {
+  const db = {
+    getCollection: () => ({
+      findOne: () => null,
+      insert: () => {},
+      remove: () => {},
+    }),
+    addCollection: () => null,
+  };
+  app.createCollections(db);
+  expect(app.getAppInfos()).toBeNull();
+});
+
+test('isUpgrade should return false when app collection is empty (fresh install)', () => {
+  const db = {
+    getCollection: () => null,
+    addCollection: () => ({
+      findOne: () => null,
+      insert: () => {},
+    }),
+  };
+  app.createCollections(db);
+  app.completeStartupInitialization();
+  expect(app.isUpgrade()).toBe(false);
+});
+
+test('isUpgrade should return true when app collection has a previous version (upgrade)', () => {
+  const db = {
+    getCollection: () => ({
+      findOne: () => ({
+        name: 'drydock',
+        version: '1.3.9',
+      }),
+      insert: () => {},
+      remove: () => {},
+    }),
+    addCollection: () => null,
+  };
+  app.createCollections(db);
+  app.completeStartupInitialization();
+  expect(app.isUpgrade()).toBe(true);
+});
+
+test('store/app should type the app collection variable', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, './app.ts'), 'utf8');
+
+  expect(source).not.toContain('let app;');
 });

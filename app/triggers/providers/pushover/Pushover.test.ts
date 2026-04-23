@@ -1,4 +1,3 @@
-// @ts-nocheck
 import joi from 'joi';
 
 vi.mock('pushover-notifications', () => ({
@@ -22,16 +21,19 @@ const configurationValid = {
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
-  simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+  simpletitle:
+    '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
 
   simplebody:
-    'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+    '${isDigestUpdate ? container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running tag " + currentTag + " has a newer image available" : container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
   batchtitle: '${containers.length} updates available',
   resolvenotifications: false,
+  securitymode: 'simple',
+  digestcron: '0 8 * * *',
 };
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -104,22 +106,25 @@ test('maskConfiguration should mask sensitive data', async () => {
   expect(pushover.maskConfiguration()).toEqual({
     mode: 'simple',
     priority: 0,
-    auto: true,
+    auto: 'all',
     order: 100,
     requireinclude: false,
     simplebody:
-      'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+      '${isDigestUpdate ? container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running tag " + currentTag + " has a newer image available" : container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
-    simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+    simpletitle:
+      '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
 
     batchtitle: '${containers.length} updates available',
     resolvenotifications: false,
+    securitymode: 'simple',
     sound: 'pushover',
     html: 0,
     threshold: 'all',
     once: true,
-    token: 't***n',
-    user: 'u**r',
+    token: '[REDACTED]',
+    user: '[REDACTED]',
+    digestcron: '0 8 * * *',
   });
 });
 
@@ -270,4 +275,65 @@ test('sendMessage should reject when send callback has error', async () => {
   const po = new PushoverFresh();
   po.configuration = { ...configurationValid };
   await expect(po.sendMessage({ title: 'Test', message: 'test' })).rejects.toThrow('send error');
+});
+
+test('sendMessage should preserve Error.toString output for callback errors', async () => {
+  vi.resetModules();
+  vi.doMock('pushover-notifications', () => ({
+    default: class Push {
+      set onerror(_fn) {}
+      send(_message, cb) {
+        cb(new Error('send failed'), null);
+      }
+    },
+  }));
+  const { default: PushoverFresh } = await import('./Pushover.js');
+  const po = new PushoverFresh();
+  po.configuration = { ...configurationValid };
+  await expect(po.sendMessage({ title: 'Test', message: 'test' })).rejects.toThrow(
+    'Error: send failed',
+  );
+});
+
+test('sendMessage should allow undefined onerror payloads', async () => {
+  vi.resetModules();
+  vi.doMock('pushover-notifications', () => ({
+    default: class Push {
+      set onerror(fn) {
+        this._onerror = fn;
+      }
+      send(_message, _cb) {
+        this._onerror(undefined);
+      }
+    },
+  }));
+  const { default: PushoverFresh } = await import('./Pushover.js');
+  const po = new PushoverFresh();
+  po.configuration = { ...configurationValid };
+  await expect(po.sendMessage({ title: 'Test', message: 'test' })).rejects.toMatchObject({
+    message: '',
+  });
+});
+
+test('sendMessage should fallback to unknown error when callback error cannot be stringified', async () => {
+  vi.resetModules();
+  vi.doMock('pushover-notifications', () => ({
+    default: class Push {
+      set onerror(_fn) {}
+      send(_message, cb) {
+        cb(
+          {
+            toString() {
+              throw new Error('stringify failed');
+            },
+          },
+          null,
+        );
+      }
+    },
+  }));
+  const { default: PushoverFresh } = await import('./Pushover.js');
+  const po = new PushoverFresh();
+  po.configuration = { ...configurationValid };
+  await expect(po.sendMessage({ title: 'Test', message: 'test' })).rejects.toThrow('Unknown error');
 });

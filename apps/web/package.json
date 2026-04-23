@@ -1,0 +1,51 @@
+{
+  "name": "drydock-website",
+  "version": "0.1.0",
+  "engines": {
+    "node": "24.x"
+  },
+  "description": "Drydock - Open source container update monitoring",
+  "private": true,
+  "scripts": {
+    "dev": "npm run sync:docs && next dev",
+    "build": "npm run sync:docs && next build",
+    "start": "next start",
+    "sync:docs": "node scripts/sync-docs.mjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --fix .",
+    "format": "biome format --write .",
+    "format:check": "biome check .",
+    "check": "biome check .",
+    "check:fix": "biome check --fix .",
+    "type-check": "tsc --noEmit",
+    "vercel-build": "npm run build",
+    "postinstall": "npm run sync:docs && fumadocs-mdx"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@types/mdx": "^2.0.13",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "fumadocs-core": "^16.6.17",
+    "fumadocs-mdx": "^14.2.10",
+    "fumadocs-ui": "^16.6.17",
+    "lucide-react": "^0.577.0",
+    "next": "16.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "remark-custom-heading-id": "^2.0.0",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.7",
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "lefthook": "^2.1.4",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.9.3"
+  }
+}

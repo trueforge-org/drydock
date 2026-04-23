@@ -1,6 +1,6 @@
 import {
   getAllTriggers,
-  getTriggerIcon,
+  getTrigger,
   getTriggerProviderColor,
   getTriggerProviderIcon,
   runTrigger,
@@ -13,35 +13,29 @@ describe('Trigger Service', () => {
     vi.mocked(fetch).mockClear();
   });
 
-  describe('getTriggerIcon', () => {
-    it('returns the trigger icon', () => {
-      expect(getTriggerIcon()).toBe('fas fa-bolt');
-    });
-  });
-
   describe('getTriggerProviderIcon', () => {
     it.each([
-      ['http', 'fas fa-globe'],
-      ['smtp', 'fas fa-envelope'],
-      ['slack', 'fab fa-slack'],
-      ['discord', 'fab fa-discord'],
-      ['telegram', 'fab fa-telegram'],
-      ['mqtt', 'fas fa-tower-broadcast'],
-      ['kafka', 'fas fa-bars-staggered'],
-      ['pushover', 'fas fa-bell'],
-      ['gotify', 'fas fa-bell'],
-      ['ntfy', 'fas fa-bell'],
-      ['ifttt', 'fas fa-wand-magic-sparkles'],
-      ['apprise', 'fas fa-paper-plane'],
-      ['command', 'fas fa-terminal'],
-      ['dockercompose', 'fab fa-docker'],
-      ['rocketchat', 'fas fa-comment'],
-      ['mattermost', 'fab fa-mattermost'],
-      ['teams', 'fab fa-microsoft'],
-      ['matrix', 'fas fa-hashtag'],
-      ['googlechat', 'fab fa-google'],
-      ['docker', 'fab fa-docker'],
-      ['unknown', 'fas fa-bolt'],
+      ['http', 'sh-globe'],
+      ['smtp', 'sh-envelope'],
+      ['slack', 'sh-slack'],
+      ['discord', 'sh-discord'],
+      ['telegram', 'sh-telegram'],
+      ['mqtt', 'sh-mqtt'],
+      ['kafka', 'sh-apache-kafka'],
+      ['pushover', 'sh-pushover'],
+      ['gotify', 'sh-gotify'],
+      ['ntfy', 'sh-ntfy'],
+      ['ifttt', 'sh-ifttt'],
+      ['apprise', 'sh-apprise'],
+      ['command', 'sh-terminal'],
+      ['dockercompose', 'sh-docker'],
+      ['rocketchat', 'sh-rocket-chat'],
+      ['mattermost', 'sh-mattermost'],
+      ['teams', 'sh-microsoft-teams'],
+      ['matrix', 'sh-matrix'],
+      ['googlechat', 'sh-google-chat'],
+      ['docker', 'sh-docker'],
+      ['unknown', 'sh-bolt'],
     ])('returns %s icon', (type, icon) => {
       expect(getTriggerProviderIcon(type)).toBe(icon);
     });
@@ -57,8 +51,62 @@ describe('Trigger Service', () => {
 
       const result = await getAllTriggers();
 
-      expect(fetch).toHaveBeenCalledWith('/api/triggers', { credentials: 'include' });
+      expect(fetch).toHaveBeenCalledWith('/api/v1/triggers', { credentials: 'include' });
       expect(result).toEqual(mockTriggers);
+    });
+
+    it('unwraps collection envelope with data array', async () => {
+      const mockTriggers = [{ type: 'slack', name: 'alerts' }];
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: mockTriggers, total: 1 }),
+      } as any);
+
+      const result = await getAllTriggers();
+      expect(result).toEqual(mockTriggers);
+    });
+
+    it('unwraps collection envelope with items array', async () => {
+      const mockTriggers = [{ type: 'webhook', name: 'item-shape' }];
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ items: mockTriggers, total: 1 }),
+      } as any);
+
+      const result = await getAllTriggers();
+      expect(result).toEqual(mockTriggers);
+    });
+
+    it('returns empty array for non-array non-object payload', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => null,
+      } as any);
+
+      const result = await getAllTriggers();
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array for object without data array', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ total: 0 }),
+      } as any);
+
+      const result = await getAllTriggers();
+      expect(result).toEqual([]);
+    });
+
+    it('throws when fetching triggers fails', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Internal Server Error',
+        json: async () => ({}),
+      } as any);
+
+      await expect(getAllTriggers()).rejects.toThrow(
+        'Failed to get triggers: Internal Server Error',
+      );
     });
   });
 
@@ -107,7 +155,7 @@ describe('Trigger Service', () => {
         container,
       });
 
-      expect(fetch).toHaveBeenCalledWith('/api/triggers/webhook/hook1', {
+      expect(fetch).toHaveBeenCalledWith('/api/v1/triggers/webhook/hook1', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -146,6 +194,75 @@ describe('Trigger Service', () => {
           container: { id: 'c1' },
         }),
       ).rejects.toThrow('Unknown error');
+    });
+
+    it('runs agent-scoped trigger when agent is provided', async () => {
+      const mockResult = { success: true };
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => mockResult,
+      } as any);
+
+      const container = { id: 'c1', name: 'test' };
+      const result = await runTrigger({
+        triggerType: 'webhook',
+        triggerName: 'hook1',
+        triggerAgent: 'edge',
+        container,
+      });
+
+      expect(fetch).toHaveBeenCalledWith('/api/v1/triggers/webhook/hook1/edge', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(container),
+      });
+      expect(result).toEqual(mockResult);
+    });
+  });
+
+  describe('getTrigger', () => {
+    it('fetches a specific trigger by type and name', async () => {
+      const mockTrigger = { id: 'slack.alerts', type: 'slack', name: 'alerts' };
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTrigger,
+      } as any);
+
+      const result = await getTrigger({ type: 'slack', name: 'alerts' });
+
+      expect(fetch).toHaveBeenCalledWith('/api/v1/triggers/slack/alerts', {
+        credentials: 'include',
+      });
+      expect(result).toEqual(mockTrigger);
+    });
+
+    it('throws when fetching a specific trigger fails', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: false,
+        statusText: 'Not Found',
+        json: async () => ({}),
+      } as any);
+
+      await expect(getTrigger({ type: 'slack', name: 'alerts' })).rejects.toThrow(
+        'Failed to get trigger: Not Found',
+      );
+    });
+
+    it('fetches an agent-scoped trigger when agent is provided', async () => {
+      const mockTrigger = { id: 'edge.slack.alerts', type: 'slack', name: 'alerts', agent: 'edge' };
+      vi.mocked(fetch).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockTrigger,
+      } as any);
+
+      const result = await getTrigger({ agent: 'edge', type: 'slack', name: 'alerts' });
+
+      expect(fetch).toHaveBeenCalledWith('/api/v1/triggers/slack/alerts/edge', {
+        credentials: 'include',
+      });
+      expect(result).toEqual(mockTrigger);
     });
   });
 });

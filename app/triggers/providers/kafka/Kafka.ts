@@ -1,11 +1,82 @@
-// @ts-nocheck
-import { Kafka as KafkaClient } from 'kafkajs';
-import Trigger from '../Trigger.js';
+import { Kafka as KafkaClient, type KafkaConfig, type Producer, type SASLOptions } from 'kafkajs';
+import Trigger, { type TriggerConfiguration } from '../Trigger.js';
+
+type UserPasswordSaslMechanism = 'plain' | 'scram-sha-256' | 'scram-sha-512';
+type UserPasswordSaslOptions = Extract<SASLOptions, { username: string; password: string }>;
+interface KafkaConfiguration extends TriggerConfiguration {
+  brokers: string;
+  topic: string;
+  clientid: string;
+  ssl: boolean;
+  authentication?: {
+    type: string;
+    user: string;
+    password: string;
+  };
+}
+
+type KafkaConfigurationWithLegacyAlias = KafkaConfiguration & {
+  clientid?: string;
+  clientId?: string;
+};
+
+const AUTH_TYPE_TO_SASL_MECHANISM = {
+  PLAIN: 'plain',
+  'SCRAM-SHA-256': 'scram-sha-256',
+  'SCRAM-SHA-512': 'scram-sha-512',
+} as const;
+const SUPPORTED_AUTH_TYPES = Object.keys(
+  AUTH_TYPE_TO_SASL_MECHANISM,
+) as (keyof typeof AUTH_TYPE_TO_SASL_MECHANISM)[];
+const DEPRECATED_CLIENT_ID_KEY = 'clientId';
+const warnedLegacyConfigurationKeys = new Set<string>();
+
+function toSaslMechanism(authType: string): UserPasswordSaslMechanism {
+  return (
+    AUTH_TYPE_TO_SASL_MECHANISM[authType as keyof typeof AUTH_TYPE_TO_SASL_MECHANISM] ?? 'plain'
+  );
+}
+
+function normalizeLegacyConfiguration(
+  configuration: KafkaConfiguration,
+  warn: (message: string) => void,
+): KafkaConfiguration {
+  const configurationWithLegacyAlias = configuration as KafkaConfigurationWithLegacyAlias;
+  if (configurationWithLegacyAlias.clientId === undefined) {
+    return configuration;
+  }
+
+  const normalizedConfiguration: KafkaConfigurationWithLegacyAlias = {
+    ...configurationWithLegacyAlias,
+  };
+  if (normalizedConfiguration.clientid === undefined) {
+    normalizedConfiguration.clientid = configurationWithLegacyAlias.clientId;
+  }
+  delete normalizedConfiguration.clientId;
+
+  if (!warnedLegacyConfigurationKeys.has(DEPRECATED_CLIENT_ID_KEY)) {
+    warnedLegacyConfigurationKeys.add(DEPRECATED_CLIENT_ID_KEY);
+    warn(
+      `Kafka trigger configuration key "${DEPRECATED_CLIENT_ID_KEY}" is deprecated and will be removed in v1.6.0. Use "clientid" instead.`,
+    );
+  }
+
+  return normalizedConfiguration;
+}
 
 /**
  * Kafka Trigger implementation
  */
-class Kafka extends Trigger {
+class Kafka extends Trigger<KafkaConfiguration> {
+  private kafka!: KafkaClient;
+  private producer?: Producer;
+
+  validateConfiguration(configuration: KafkaConfiguration): KafkaConfiguration {
+    return super.validateConfiguration(
+      normalizeLegacyConfiguration(configuration, (message) => this.log.warn(message)),
+    );
+  }
+
   /**
    * Get the Trigger configuration schema.
    * @returns {*}
@@ -14,14 +85,12 @@ class Kafka extends Trigger {
     return this.joi.object().keys({
       brokers: this.joi.string().required(),
       topic: this.joi.string().default('drydock-container'),
-      clientId: this.joi.string().default('drydock'),
+      clientid: this.joi.string().default('drydock'),
       ssl: this.joi.boolean().default(false),
       authentication: this.joi.object({
         type: this.joi
           .string()
-          .allow('PLAIN')
-          .allow('SCRAM-SHA-256')
-          .allow('SCRAM-SHA-512')
+          .valid(...SUPPORTED_AUTH_TYPES)
           .default('PLAIN'),
         user: this.joi.string().required(),
         password: this.joi.string().required(),
@@ -38,7 +107,7 @@ class Kafka extends Trigger {
       ...this.configuration,
       brokers: this.configuration.brokers,
       topic: this.configuration.topic,
-      clientId: this.configuration.clientId,
+      clientid: this.configuration.clientid,
       ssl: this.configuration.ssl,
       authentication: this.configuration.authentication
         ? {
@@ -53,21 +122,40 @@ class Kafka extends Trigger {
   /**
    * Init trigger.
    */
-  initTrigger() {
+  async initTrigger() {
     const brokers = this.configuration.brokers.split(',').map((broker) => broker.trim());
-    const clientConfiguration = {
-      clientId: this.configuration.clientId,
+    const clientConfiguration: KafkaConfig = {
+      clientId: this.configuration.clientid,
       brokers,
       ssl: this.configuration.ssl,
     };
     if (this.configuration.authentication) {
-      clientConfiguration.sasl = {
-        mechanism: this.configuration.authentication.type,
+      const sasl: UserPasswordSaslOptions = {
+        mechanism: toSaslMechanism(this.configuration.authentication.type),
         username: this.configuration.authentication.user,
         password: this.configuration.authentication.password,
       };
+      clientConfiguration.sasl = sasl;
     }
     this.kafka = new KafkaClient(clientConfiguration);
+    this.producer = this.kafka.producer();
+    await this.producer.connect();
+  }
+
+  async deregisterComponent(): Promise<void> {
+    await super.deregisterComponent();
+    if (!this.producer) {
+      return;
+    }
+    await this.producer.disconnect();
+    this.producer = undefined;
+  }
+
+  private getProducer(): Producer {
+    if (!this.producer) {
+      throw new Error('Kafka producer is not initialized');
+    }
+    return this.producer;
   }
 
   /**
@@ -77,9 +165,7 @@ class Kafka extends Trigger {
    * @returns {Promise<void>}
    */
   async trigger(container) {
-    const producer = this.kafka.producer();
-    await producer.connect();
-    return producer.send({
+    return await this.getProducer().send({
       topic: this.configuration.topic,
       messages: [{ value: JSON.stringify(container) }],
     });
@@ -91,9 +177,7 @@ class Kafka extends Trigger {
    * @returns {Promise<RecordMetadata[]>}
    */
   async triggerBatch(containers) {
-    const producer = this.kafka.producer();
-    await producer.connect();
-    return producer.send({
+    return await this.getProducer().send({
       topic: this.configuration.topic,
       messages: containers.map((container) => ({
         value: JSON.stringify(container),

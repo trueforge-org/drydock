@@ -1,4 +1,3 @@
-// @ts-nocheck
 import * as event from './index.js';
 
 beforeEach(() => {
@@ -9,6 +8,10 @@ const eventTestCases = [
   {
     emitter: event.emitContainerReports,
     register: event.registerContainerReports,
+  },
+  {
+    emitter: event.emitWatcherSnapshot,
+    register: event.registerWatcherSnapshot,
   },
   {
     emitter: event.emitContainerReport,
@@ -25,6 +28,10 @@ const eventTestCases = [
   {
     emitter: event.emitContainerRemoved,
     register: event.registerContainerRemoved,
+  },
+  {
+    emitter: event.emitUpdateOperationChanged,
+    register: event.registerUpdateOperationChanged,
   },
   {
     emitter: event.emitWatcherStart,
@@ -51,6 +58,66 @@ test.each(
   // Ensure handler is called
   expect([undefined, true, false]).toContain(emitResult);
   expect(handlerMock).toHaveBeenCalledTimes(1);
+});
+
+test('deregistration of container added handler should work', () => {
+  const handler = vi.fn();
+  const deregister = event.registerContainerAdded(handler);
+  deregister();
+
+  event.emitContainerAdded({ id: 'container-added-1' });
+
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of container updated handler should work', () => {
+  const handler = vi.fn();
+  const deregister = event.registerContainerUpdated(handler);
+  deregister();
+
+  event.emitContainerUpdated({ id: 'container-updated-1' });
+
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of container removed handler should work', () => {
+  const handler = vi.fn();
+  const deregister = event.registerContainerRemoved(handler);
+  deregister();
+
+  event.emitContainerRemoved({ id: 'container-removed-1' });
+
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of update operation changed handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerUpdateOperationChanged(handler);
+  deregister();
+
+  await event.emitUpdateOperationChanged({ operationId: 'op-1' });
+
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of watcher start handler should work', () => {
+  const handler = vi.fn();
+  const deregister = event.registerWatcherStart(handler);
+  deregister();
+
+  event.emitWatcherStart({ name: 'watcher-start-1' });
+
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of watcher stop handler should work', () => {
+  const handler = vi.fn();
+  const deregister = event.registerWatcherStop(handler);
+  deregister();
+
+  event.emitWatcherStop({ name: 'watcher-stop-1' });
+
+  expect(handler).not.toHaveBeenCalled();
 });
 
 test('container report handlers should run in order', async () => {
@@ -132,6 +199,31 @@ test('deregistration function should be idempotent', async () => {
   expect(handler).not.toHaveBeenCalled();
 });
 
+test('deregister should remove the exact registration when the same handler is registered twice', async () => {
+  const calls: string[] = [];
+  const sharedHandler = async () => {
+    calls.push('shared');
+  };
+
+  event.registerContainerReport(
+    async () => {
+      calls.push('middle');
+    },
+    { id: 'middle', order: 15 },
+  );
+
+  event.registerContainerReport(sharedHandler, { id: 'first', order: 10 });
+  const deregisterSecond = event.registerContainerReport(sharedHandler, {
+    id: 'second',
+    order: 20,
+  });
+
+  deregisterSecond();
+  await event.emitContainerReport({});
+
+  expect(calls).toEqual(['shared', 'middle']);
+});
+
 test('emitContainerUpdateApplied should call registered handlers', async () => {
   const handler = vi.fn();
   event.registerContainerUpdateApplied(handler, { order: 10 });
@@ -144,6 +236,150 @@ test('deregistration of containerUpdateApplied handler should work', async () =>
   const deregister = event.registerContainerUpdateApplied(handler, { order: 10 });
   deregister();
   await event.emitContainerUpdateApplied('container-456');
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('getContainerUpdateAppliedEventContainerName should normalize supported payload shapes', () => {
+  expect(event.getContainerUpdateAppliedEventContainerName('container-123')).toBe('container-123');
+  expect(event.getContainerUpdateAppliedEventContainerName('')).toBeUndefined();
+  expect(
+    event.getContainerUpdateAppliedEventContainerName(null as unknown as string),
+  ).toBeUndefined();
+  expect(
+    event.getContainerUpdateAppliedEventContainerName(42 as unknown as string),
+  ).toBeUndefined();
+  expect(
+    event.getContainerUpdateAppliedEventContainerName({ containerName: '' } as {
+      containerName: string;
+    }),
+  ).toBeUndefined();
+  expect(
+    event.getContainerUpdateAppliedEventContainerName({ containerName: 'web' } as {
+      containerName: string;
+    }),
+  ).toBe('web');
+});
+
+test('emitContainerUpdateFailed should call registered handlers', async () => {
+  const handler = vi.fn();
+  const payload = {
+    containerName: 'web',
+    error: 'failed to recreate container',
+  };
+  event.registerContainerUpdateFailed(handler, { order: 10 });
+  await event.emitContainerUpdateFailed(payload);
+  expect(handler).toHaveBeenCalledWith(payload);
+});
+
+test('deregistration of containerUpdateFailed handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerContainerUpdateFailed(handler, { order: 10 });
+  deregister();
+  await event.emitContainerUpdateFailed({
+    containerName: 'api',
+    error: 'update skipped',
+  });
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('emitSecurityAlert should call registered handlers with payload', async () => {
+  const handler = vi.fn();
+  const payload = {
+    containerName: 'docker_local_nginx',
+    details: 'high=1, critical=0',
+    status: 'passed',
+  };
+  event.registerSecurityAlert(handler, { order: 10 });
+  await event.emitSecurityAlert(payload);
+  expect(handler).toHaveBeenCalledWith(payload);
+});
+
+test('deregistration of security alert handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerSecurityAlert(handler, { order: 10 });
+  deregister();
+  await event.emitSecurityAlert({
+    containerName: 'docker_local_nginx',
+    details: 'high=2',
+  });
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('emitSecurityScanCycleComplete should call registered handlers with payload', async () => {
+  const handler = vi.fn();
+  const payload = {
+    scannedCount: 12,
+    alertCount: 3,
+    cycleId: 'cycle-42',
+    scope: 'scheduled' as const,
+  };
+  event.registerSecurityScanCycleComplete(handler, { order: 10 });
+  await event.emitSecurityScanCycleComplete(payload);
+  expect(handler).toHaveBeenCalledWith(payload);
+});
+
+test('deregistration of security scan cycle complete handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerSecurityScanCycleComplete(handler, { order: 10 });
+  deregister();
+  await event.emitSecurityScanCycleComplete({ cycleId: 'cycle-1', scannedCount: 0 });
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('emitAgentDisconnected should call registered handlers with payload', async () => {
+  const handler = vi.fn();
+  const payload = {
+    agentName: 'edge-a',
+    reason: 'SSE stream ended',
+  };
+  event.registerAgentDisconnected(handler, { order: 10 });
+  await event.emitAgentDisconnected(payload);
+  expect(handler).toHaveBeenCalledWith(payload);
+});
+
+test('emitAgentConnected should call registered handlers with payload', async () => {
+  const handler = vi.fn();
+  const payload = {
+    agentName: 'edge-a',
+    reconnected: false,
+  };
+  event.registerAgentConnected(handler, { order: 10 });
+  await event.emitAgentConnected(payload);
+  expect(handler).toHaveBeenCalledWith(payload);
+});
+
+test('deregistration of agent connected handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerAgentConnected(handler, { order: 10 });
+  deregister();
+  await event.emitAgentConnected({
+    agentName: 'edge-a',
+    reconnected: false,
+  });
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('deregistration of agent disconnected handler should work', async () => {
+  const handler = vi.fn();
+  const deregister = event.registerAgentDisconnected(handler, { order: 10 });
+  deregister();
+  await event.emitAgentDisconnected({
+    agentName: 'edge-a',
+  });
+  expect(handler).not.toHaveBeenCalled();
+});
+
+test('clearAllListenersForTests should clear self-update-starting handlers', async () => {
+  const handler = vi.fn();
+  event.registerSelfUpdateStarting(handler, { order: 10 });
+
+  event.clearAllListenersForTests();
+
+  await event.emitSelfUpdateStarting({
+    opId: 'op-self-update',
+    requiresAck: true,
+    ackTimeoutMs: 1500,
+  });
   expect(handler).not.toHaveBeenCalled();
 });
 

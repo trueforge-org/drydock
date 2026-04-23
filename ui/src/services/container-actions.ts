@@ -1,5 +1,24 @@
+export interface BulkContainerUpdateAcceptedItem {
+  containerId: string;
+  containerName: string;
+  operationId: string;
+}
+
+export interface BulkContainerUpdateRejectedItem {
+  containerId: string;
+  containerName: string;
+  message: string;
+  statusCode: number;
+}
+
+export interface BulkContainerUpdateResponse {
+  message: string;
+  accepted: BulkContainerUpdateAcceptedItem[];
+  rejected: BulkContainerUpdateRejectedItem[];
+}
+
 async function startContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/start`, {
+  const response = await fetch(`/api/v1/containers/${containerId}/start`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -11,7 +30,7 @@ async function startContainer(containerId: string) {
 }
 
 async function stopContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/stop`, {
+  const response = await fetch(`/api/v1/containers/${containerId}/stop`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -23,7 +42,7 @@ async function stopContainer(containerId: string) {
 }
 
 async function restartContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/restart`, {
+  const response = await fetch(`/api/v1/containers/${containerId}/restart`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -35,7 +54,7 @@ async function restartContainer(containerId: string) {
 }
 
 async function updateContainer(containerId: string) {
-  const response = await fetch(`/api/containers/${containerId}/update`, {
+  const response = await fetch(`/api/v1/containers/${containerId}/update`, {
     method: 'POST',
     credentials: 'include',
   });
@@ -46,4 +65,20 @@ async function updateContainer(containerId: string) {
   return response.json();
 }
 
-export { startContainer, stopContainer, restartContainer, updateContainer };
+async function updateContainers(containerIds: string[]): Promise<BulkContainerUpdateResponse> {
+  const response = await fetch('/api/v1/containers/update', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ containerIds }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body?.error || `Failed to update containers: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export { restartContainer, startContainer, stopContainer, updateContainer, updateContainers };

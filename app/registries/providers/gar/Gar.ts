@@ -1,12 +1,16 @@
-// @ts-nocheck
 import axios from 'axios';
-import type { ContainerImage } from '../../../model/container.js';
-import BaseRegistry from '../../BaseRegistry.js';
+import { withAuthorizationHeader } from '../../../security/auth.js';
+import BaseRegistry, { type BaseRegistryConfiguration } from '../../BaseRegistry.js';
+
+interface GarRegistryConfiguration extends BaseRegistryConfiguration {
+  clientemail?: string;
+  privatekey?: string;
+}
 
 /**
  * Google Artifact Registry integration.
  */
-class Gar extends BaseRegistry {
+class Gar extends BaseRegistry<GarRegistryConfiguration> {
   getConfigurationSchema() {
     return this.joi.alternatives([
       this.joi.string().allow(''),
@@ -21,20 +25,8 @@ class Gar extends BaseRegistry {
     return this.maskSensitiveFields(['privatekey']);
   }
 
-  private getRegistryHostname(image: ContainerImage): string {
-    const registryUrl = image.registry?.url || '';
-    const withProtocol = /^https?:\/\//i.test(registryUrl)
-      ? registryUrl
-      : `https://${registryUrl}`;
-    try {
-      return new URL(withProtocol).hostname;
-    } catch {
-      return registryUrl.split('/')[0];
-    }
-  }
-
   match(image) {
-    const registryHostname = this.getRegistryHostname(image);
+    const registryHostname = this.getRegistryHostname(image.registry?.url || '');
     return /^(?:[a-z0-9-]+\.)*[a-z0-9-]+-docker\.pkg\.dev$/i.test(registryHostname);
   }
 
@@ -47,7 +39,7 @@ class Gar extends BaseRegistry {
       return requestOptions;
     }
 
-    const registryHostname = this.getRegistryHostname(image);
+    const registryHostname = this.getRegistryHostname(image.registry?.url || '');
     const tokenUrl = new URL('/v2/token', `https://${registryHostname}`);
     tokenUrl.searchParams.set('scope', `repository:${image.name}:pull`);
     tokenUrl.searchParams.set('service', registryHostname);
@@ -68,17 +60,12 @@ class Gar extends BaseRegistry {
     };
 
     const response = await axios(request);
-    const token = response.data.token || response.data.access_token;
-    const requestOptionsWithAuth = {
-      ...requestOptions,
-      headers: {
-        ...(requestOptions.headers || {}),
-      },
-    };
-    if (token) {
-      requestOptionsWithAuth.headers.Authorization = `Bearer ${token}`;
-    }
-    return requestOptionsWithAuth;
+    return withAuthorizationHeader(
+      requestOptions,
+      'Bearer',
+      response.data.token || response.data.access_token,
+      `Unable to authenticate registry ${this.getId()}: GAR token endpoint response does not contain token`,
+    );
   }
 
   async getAuthPull() {

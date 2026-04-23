@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import fs from 'node:fs';
 import path from 'node:path';
 import joi from 'joi';
@@ -15,6 +13,10 @@ import * as app from './app.js';
 import * as audit from './audit.js';
 import * as backup from './backup.js';
 import * as container from './container.js';
+import * as notification from './notification.js';
+import * as notificationHistory from './notification-history.js';
+import * as settings from './settings.js';
+import * as updateOperation from './update-operation.js';
 
 // Store Configuration Schema
 const configurationSchema = joi.object().keys({
@@ -30,13 +32,21 @@ if (configurationToValidate.error) {
 const configuration = configurationToValidate.value;
 
 // Loki DB
-let db;
+type LokiDatabase = InstanceType<typeof Loki>;
+let db: LokiDatabase | undefined;
+let isMemoryMode = false;
+let storePathResolved: string | undefined;
 
 function createCollections() {
   app.createCollections(db);
   audit.createCollections(db);
   backup.createCollections(db);
   container.createCollections(db);
+  notification.createCollections(db);
+  notificationHistory.createCollections(db);
+  settings.createCollections(db);
+  updateOperation.createCollections(db);
+  app.completeStartupInitialization();
 }
 
 /**
@@ -46,7 +56,11 @@ function createCollections() {
  * @param reject
  * @returns {Promise<void>}
  */
-async function loadDb(err, resolve, reject) {
+async function loadDb(
+  err: unknown,
+  resolve: () => void,
+  reject: (reason?: unknown) => void,
+): Promise<void> {
   if (err) {
     reject(err);
   } else {
@@ -61,23 +75,25 @@ async function loadDb(err, resolve, reject) {
  * @param options
  * @returns {Promise<unknown>}
  */
-export async function init(options = {}) {
-  const isMemory = options.memory || false;
+export async function init(options: { memory?: boolean } = {}) {
+  isMemoryMode = options.memory || false;
   const storeDirectory = resolveConfiguredPath(configuration.path, {
     label: 'DD_STORE_PATH',
   });
   const storePath = resolveConfiguredPathWithinBase(storeDirectory, configuration.file, {
     label: 'DD_STORE_FILE',
   });
+  storePathResolved = storePath;
   if (storePath === storeDirectory) {
     throw new Error('DD_STORE_FILE must reference a file path, not a directory');
   }
 
   db = new Loki(storePath, {
-    autosave: !isMemory,
+    autosave: !isMemoryMode,
+    autosaveInterval: 60000,
   });
 
-  if (isMemory) {
+  if (isMemoryMode) {
     log.info('Init store in memory mode');
     createCollections();
     return;
@@ -95,8 +111,28 @@ export async function init(options = {}) {
     log.info(`Create folder ${storeDirectory}`);
     fs.mkdirSync(storeDirectory);
   }
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     db.loadDatabase({}, (err) => loadDb(err, resolve, reject));
+  });
+}
+
+/**
+ * Explicitly flush DB to disk.
+ * No-op in memory mode.
+ * @returns {Promise<void>}
+ */
+export async function save() {
+  if (!db || isMemoryMode) {
+    return;
+  }
+  return new Promise<void>((resolve, reject) => {
+    db.saveDatabase((err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
   });
 }
 
@@ -106,4 +142,66 @@ export async function init(options = {}) {
  */
 export function getConfiguration() {
   return configuration;
+}
+
+export interface StoreDebugCollectionStats {
+  name: string;
+  documents: number;
+}
+
+export interface StoreDebugSnapshot {
+  memoryMode: boolean;
+  path?: string;
+  collectionCount: number;
+  documentCount: number;
+  lastPersistAt?: string;
+  collections: StoreDebugCollectionStats[];
+}
+
+function getCollectionDocumentCount(collection: unknown): number {
+  if (!collection || typeof collection !== 'object') {
+    return 0;
+  }
+
+  if (typeof (collection as { count?: unknown }).count === 'function') {
+    return Math.max(0, Number((collection as { count: () => number }).count()) || 0);
+  }
+
+  const data = (collection as { data?: unknown }).data;
+  return Array.isArray(data) ? data.length : 0;
+}
+
+function getStoreLastPersistAt(): string | undefined {
+  if (isMemoryMode || !storePathResolved || !fs.existsSync(storePathResolved)) {
+    return undefined;
+  }
+
+  try {
+    return fs.statSync(storePathResolved).mtime.toISOString();
+  } catch {
+    return undefined;
+  }
+}
+
+export function getDebugSnapshot(): StoreDebugSnapshot {
+  const collections = Array.isArray((db as { collections?: unknown[] } | undefined)?.collections)
+    ? ((db as { collections: unknown[] }).collections as unknown[])
+    : [];
+  const collectionStats = collections.map((collection) => ({
+    name:
+      typeof (collection as { name?: unknown }).name === 'string'
+        ? ((collection as { name: string }).name as string)
+        : 'unknown',
+    documents: getCollectionDocumentCount(collection),
+  }));
+  const documentCount = collectionStats.reduce((total, stats) => total + stats.documents, 0);
+
+  return {
+    memoryMode: isMemoryMode,
+    path: storePathResolved,
+    collectionCount: collectionStats.length,
+    documentCount,
+    lastPersistAt: getStoreLastPersistAt(),
+    collections: collectionStats,
+  };
 }

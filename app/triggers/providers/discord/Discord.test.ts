@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Discord from './Discord.js';
 
 // Mock axios
@@ -30,6 +29,24 @@ describe('Discord Trigger', () => {
     expect(() => discord.validateConfiguration(config)).not.toThrow();
   });
 
+  test('should reject non-https webhook URLs', async () => {
+    const config = {
+      url: 'git://discord.com/api/webhooks/123/abc',
+    };
+
+    expect(() => discord.validateConfiguration(config)).toThrow();
+  });
+
+  test('should apply default configuration values', async () => {
+    const validated = discord.validateConfiguration({
+      url: 'https://discord.com/api/webhooks/123/abc',
+    });
+
+    expect(validated.botusername).toBe('drydock');
+    expect(validated.cardcolor).toBe(65280);
+    expect(validated.cardlabel).toBe('');
+  });
+
   test('should throw error when webhook URL is missing', async () => {
     const config = {};
 
@@ -41,7 +58,7 @@ describe('Discord Trigger', () => {
       url: 'https://discord.com/api/webhooks/123/secret',
     };
     const masked = discord.maskConfiguration();
-    expect(masked.url).toBe('h*****************************************t');
+    expect(masked.url).toBe('[REDACTED]');
   });
 
   test('should trigger with container', async () => {
@@ -98,6 +115,7 @@ describe('Discord Trigger', () => {
           },
         ],
       },
+      timeout: 30000,
     });
   });
 });

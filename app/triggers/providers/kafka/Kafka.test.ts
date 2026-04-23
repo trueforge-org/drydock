@@ -1,4 +1,3 @@
-// @ts-nocheck
 import joi from 'joi';
 import { Kafka as KafkaClient } from 'kafkajs';
 
@@ -11,25 +10,38 @@ const kafka = new Kafka();
 const configurationValid = {
   brokers: 'broker1:9000, broker2:9000',
   topic: 'drydock-container',
-  clientId: 'drydock',
+  clientid: 'drydock',
   ssl: false,
   threshold: 'all',
   mode: 'simple',
   once: true,
-  auto: true,
+  auto: 'all',
   order: 100,
   requireinclude: false,
-  simpletitle: 'New ${container.updateKind.kind} found for container ${container.name}',
+  simpletitle:
+    '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
 
   simplebody:
-    'Container ${container.name} running with ${container.updateKind.kind} ${container.updateKind.localValue} can be updated to ${container.updateKind.kind} ${container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
+    '${isDigestUpdate ? container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running tag " + currentTag + " has a newer image available" : container.notificationAgentPrefix + "Container " + container.name + container.notificationWatcherSuffix + " running with " + container.updateKind.kind + " " + container.updateKind.localValue + " can be updated to " + container.updateKind.kind + " " + container.updateKind.remoteValue}${container.result && container.result.link ? "\\n" + container.result.link : ""}',
 
   batchtitle: '${containers.length} updates available',
   resolvenotifications: false,
+  securitymode: 'simple',
+  digestcron: '0 8 * * *',
 };
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  (kafka as any).producer = undefined;
+  (KafkaClient as any).mockImplementation(function mockedKafkaClient() {
+    return {
+      producer: () => ({
+        connect: vi.fn(),
+        send: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    };
+  });
 });
 
 test('validateConfiguration should return validated configuration when valid', async () => {
@@ -71,11 +83,92 @@ test('validateConfiguration should throw error when invalid', async () => {
   }).toThrowError(joi.ValidationError);
 });
 
+test('validateConfiguration should accept legacy clientId with deprecation warning', async () => {
+  const warnSpy = vi.spyOn(kafka.log, 'warn');
+  const validatedConfiguration = kafka.validateConfiguration({
+    brokers: 'broker1:9000, broker2:9000',
+    clientId: 'legacy-client-id',
+  });
+
+  expect(validatedConfiguration.clientid).toBe('legacy-client-id');
+  expect(validatedConfiguration).not.toHaveProperty('clientId');
+  expect(warnSpy).toHaveBeenCalledWith(
+    'Kafka trigger configuration key "clientId" is deprecated and will be removed in v1.6.0. Use "clientid" instead.',
+  );
+});
+
+test('validateConfiguration should warn only once across Kafka instances for legacy clientId', async () => {
+  vi.resetModules();
+  const { default: log } = await import('../../../log/index.js');
+  const { default: FreshKafka } = await import('./Kafka.js');
+  const warnSpy = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+  const firstKafka = new FreshKafka();
+  const secondKafka = new FreshKafka();
+  const configuration = {
+    brokers: 'broker1:9000, broker2:9000',
+    clientId: 'legacy-client-id',
+  };
+
+  const firstValidatedConfiguration = firstKafka.validateConfiguration(configuration);
+  const secondValidatedConfiguration = secondKafka.validateConfiguration(configuration);
+
+  expect(firstValidatedConfiguration.clientid).toBe('legacy-client-id');
+  expect(secondValidatedConfiguration.clientid).toBe('legacy-client-id');
+  expect(warnSpy).toHaveBeenCalledTimes(1);
+  expect(warnSpy).toHaveBeenCalledWith(
+    'Kafka trigger configuration key "clientId" is deprecated and will be removed in v1.6.0. Use "clientid" instead.',
+  );
+});
+
+test('validateConfiguration should prefer explicit clientid over legacy clientId', async () => {
+  const validatedConfiguration = kafka.validateConfiguration({
+    brokers: 'broker1:9000, broker2:9000',
+    clientid: 'explicit-client',
+    clientId: 'legacy-client',
+  });
+
+  expect(validatedConfiguration.clientid).toBe('explicit-client');
+  expect(validatedConfiguration).not.toHaveProperty('clientId');
+});
+
+test.each([
+  'SCRAM-SHA-256',
+  'SCRAM-SHA-512',
+])('validateConfiguration should accept %s authentication', (authType) => {
+  const validatedConfiguration = kafka.validateConfiguration({
+    brokers: 'broker1:9000, broker2:9000',
+    authentication: {
+      user: 'user',
+      password: 'password',
+      type: authType,
+    },
+  });
+
+  expect(validatedConfiguration.authentication).toStrictEqual({
+    user: 'user',
+    password: 'password',
+    type: authType,
+  });
+});
+
+test('validateConfiguration should reject unsupported authentication type', async () => {
+  expect(() => {
+    kafka.validateConfiguration({
+      brokers: 'broker1:9000, broker2:9000',
+      authentication: {
+        user: 'user',
+        password: 'password',
+        type: 'UNKNOWN',
+      },
+    });
+  }).toThrowError(joi.ValidationError);
+});
+
 test('maskConfiguration should mask sensitive data', async () => {
   kafka.configuration = {
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
     authentication: {
       type: 'PLAIN',
@@ -86,12 +179,12 @@ test('maskConfiguration should mask sensitive data', async () => {
   expect(kafka.maskConfiguration()).toEqual({
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
     authentication: {
       type: 'PLAIN',
       user: 'user',
-      password: 'p******d',
+      password: '[REDACTED]',
     },
   });
 });
@@ -100,22 +193,32 @@ test('maskConfiguration should not fail if no auth provided', async () => {
   kafka.configuration = {
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
   };
   expect(kafka.maskConfiguration()).toEqual({
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
   });
 });
 
 test('initTrigger should init kafka client', async () => {
+  const connectMock = vi.fn();
+  (KafkaClient as any).mockImplementation(function mockedKafkaClient() {
+    return {
+      producer: () => ({
+        connect: connectMock,
+        send: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    };
+  });
   kafka.configuration = {
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
   };
   await kafka.initTrigger();
@@ -124,13 +227,24 @@ test('initTrigger should init kafka client', async () => {
     clientId: 'drydock',
     ssl: false,
   });
+  expect(connectMock).toHaveBeenCalledTimes(1);
 });
 
 test('initTrigger should init kafka client with auth when configured', async () => {
+  const connectMock = vi.fn();
+  (KafkaClient as any).mockImplementation(function mockedKafkaClient() {
+    return {
+      producer: () => ({
+        connect: connectMock,
+        send: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    };
+  });
   kafka.configuration = {
     brokers: 'broker1:9000, broker2:9000',
     topic: 'drydock-container',
-    clientId: 'drydock',
+    clientid: 'drydock',
     ssl: false,
     authentication: {
       type: 'PLAIN',
@@ -144,20 +258,56 @@ test('initTrigger should init kafka client with auth when configured', async () 
     clientId: 'drydock',
     ssl: false,
     sasl: {
-      mechanism: 'PLAIN',
+      mechanism: 'plain',
       password: 'password',
       username: 'user',
     },
   });
+  expect(connectMock).toHaveBeenCalledTimes(1);
+});
+
+test('initTrigger should fallback to plain mechanism for unknown auth type', async () => {
+  const connectMock = vi.fn();
+  (KafkaClient as any).mockImplementation(function mockedKafkaClient() {
+    return {
+      producer: () => ({
+        connect: connectMock,
+        send: vi.fn(),
+        disconnect: vi.fn(),
+      }),
+    };
+  });
+  kafka.configuration = {
+    brokers: 'broker1:9000, broker2:9000',
+    topic: 'drydock-container',
+    clientid: 'drydock',
+    ssl: false,
+    authentication: {
+      type: 'UNKNOWN',
+      user: 'user',
+      password: 'password',
+    },
+  };
+
+  await kafka.initTrigger();
+
+  expect(KafkaClient).toHaveBeenCalledWith({
+    brokers: ['broker1:9000', 'broker2:9000'],
+    clientId: 'drydock',
+    ssl: false,
+    sasl: {
+      mechanism: 'plain',
+      password: 'password',
+      username: 'user',
+    },
+  });
+  expect(connectMock).toHaveBeenCalledTimes(1);
 });
 
 test('trigger should post message to kafka', async () => {
-  const producer = () => ({
-    connect: () => ({}),
-    send: (params) => params,
-  });
-  kafka.kafka = {
-    producer,
+  const sendMock = vi.fn((params) => params);
+  kafka.producer = {
+    send: sendMock,
   };
   kafka.configuration = {
     topic: 'topic',
@@ -170,24 +320,22 @@ test('trigger should post message to kafka', async () => {
     messages: [{ value: '{"name":"container1"}' }],
     topic: 'topic',
   });
+  expect(sendMock).toHaveBeenCalledWith({
+    topic: 'topic',
+    messages: [{ value: '{"name":"container1"}' }],
+  });
 });
 
 test('triggerBatch should post multiple messages to kafka', async () => {
   const sendMock = vi.fn((params) => params);
-  const connectMock = vi.fn();
-  const producer = () => ({
-    connect: connectMock,
+  kafka.producer = {
     send: sendMock,
-  });
-  kafka.kafka = {
-    producer,
   };
   kafka.configuration = {
     topic: 'my-topic',
   };
   const containers = [{ name: 'container1' }, { name: 'container2' }];
   const result = await kafka.triggerBatch(containers);
-  expect(connectMock).toHaveBeenCalled();
   expect(sendMock).toHaveBeenCalledWith({
     topic: 'my-topic',
     messages: [{ value: '{"name":"container1"}' }, { value: '{"name":"container2"}' }],
@@ -196,4 +344,53 @@ test('triggerBatch should post multiple messages to kafka', async () => {
     topic: 'my-topic',
     messages: [{ value: '{"name":"container1"}' }, { value: '{"name":"container2"}' }],
   });
+});
+
+test('producer lifecycle should connect on init and disconnect on deregister', async () => {
+  const connectMock = vi.fn();
+  const disconnectMock = vi.fn();
+  const sendMock = vi.fn((params) => params);
+  const producerMock = vi.fn(() => ({
+    connect: connectMock,
+    disconnect: disconnectMock,
+    send: sendMock,
+  }));
+
+  (KafkaClient as any).mockImplementation(function mockedKafkaClient() {
+    return {
+      producer: producerMock,
+    };
+  });
+  kafka.configuration = {
+    brokers: 'broker1:9000, broker2:9000',
+    clientid: 'drydock',
+    ssl: false,
+    topic: 'lifecycle-topic',
+  };
+
+  await kafka.initTrigger();
+  await kafka.trigger({ name: 'container1' });
+  await kafka.triggerBatch([{ name: 'container2' }]);
+
+  expect(connectMock).toHaveBeenCalledTimes(1);
+  expect(disconnectMock).toHaveBeenCalledTimes(0);
+  expect(producerMock).toHaveBeenCalledTimes(1);
+
+  await kafka.deregister();
+
+  expect(disconnectMock).toHaveBeenCalledTimes(1);
+});
+
+test('deregisterComponent should be a no-op when producer was never initialized', async () => {
+  await expect(kafka.deregister()).resolves.toBe(kafka);
+});
+
+test('trigger should throw when producer is not initialized', async () => {
+  kafka.configuration = {
+    topic: 'topic',
+  };
+
+  await expect(kafka.trigger({ name: 'container1' })).rejects.toThrow(
+    'Kafka producer is not initialized',
+  );
 });

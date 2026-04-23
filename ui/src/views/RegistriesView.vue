@@ -1,0 +1,376 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import AppBadge from '@/components/AppBadge.vue';
+import DetailField from '@/components/DetailField.vue';
+import { useBreakpoints } from '../composables/useBreakpoints';
+import { useViewMode } from '../preferences/useViewMode';
+import { getAllRegistries, getRegistry } from '../services/registry';
+import type { ApiComponent } from '../types/api';
+
+const registriesViewMode = useViewMode('registries');
+
+const registriesData = ref<Record<string, unknown>[]>([]);
+const loading = ref(true);
+const error = ref('');
+const route = useRoute();
+
+const { isMobile } = useBreakpoints();
+const selectedRegistry = ref<Record<string, unknown> | null>(null);
+const detailOpen = ref(false);
+const detailLoading = ref(false);
+const detailError = ref('');
+let detailRequestId = 0;
+
+/** Well-known default URLs for registry providers without explicit config. */
+const DEFAULT_URLS: Record<string, string> = {
+  hub: 'https://registry-1.docker.io',
+  ghcr: 'https://ghcr.io',
+  lscr: 'https://lscr.io',
+  quay: 'https://quay.io',
+  ecr: 'https://public.ecr.aws',
+  gar: 'https://gcr.io',
+  gcr: 'https://gcr.io',
+  acr: 'https://azurecr.io',
+  alicr: 'https://cr.aliyuncs.com',
+  codeberg: 'https://codeberg.org',
+  dhi: 'https://dhi.io',
+  docr: 'https://registry.digitalocean.com',
+  ibmcr: 'https://icr.io',
+  ocir: 'https://ocir.io',
+};
+
+function resolveUrl(reg: Record<string, unknown>): string {
+  const config = reg.config as Record<string, unknown> | undefined;
+  return String(config?.url || DEFAULT_URLS[String(reg.type)] || '');
+}
+
+function registryTypeBadge(type: string) {
+  if (type === 'hub') return { bg: 'var(--dd-info-muted)', text: 'var(--dd-info)', label: 'Hub' };
+  if (type === 'ghcr') return { bg: 'var(--dd-alt-muted)', text: 'var(--dd-alt)', label: 'GHCR' };
+  if (type === 'quay')
+    return { bg: 'var(--dd-danger-muted)', text: 'var(--dd-danger)', label: 'Quay' };
+  if (type === 'ecr')
+    return { bg: 'var(--dd-warning-muted)', text: 'var(--dd-warning)', label: 'ECR' };
+  if (type === 'gitlab')
+    return { bg: 'var(--dd-warning-muted)', text: 'var(--dd-warning)', label: 'GitLab' };
+  return { bg: 'var(--dd-neutral-muted)', text: 'var(--dd-neutral)', label: type.toUpperCase() };
+}
+
+function isPrivate(reg: Record<string, unknown>): boolean {
+  const cfg = (reg.config ?? {}) as Record<string, unknown>;
+  return !!(cfg.token || cfg.password || cfg.login || cfg.username);
+}
+
+function mapRegistry(registry: ApiComponent, status = 'connected') {
+  return {
+    id: registry.id,
+    name: registry.name,
+    type: registry.type,
+    status,
+    config: registry.configuration ?? {},
+    agent: registry.agent,
+  };
+}
+
+function resetDetailState() {
+  detailOpen.value = false;
+  detailLoading.value = false;
+  detailError.value = '';
+  selectedRegistry.value = null;
+  detailRequestId += 1;
+}
+
+function handleDetailOpenChange(value: boolean) {
+  if (!value) {
+    resetDetailState();
+  } else {
+    detailOpen.value = true;
+  }
+}
+
+async function openDetail(reg: Record<string, unknown>) {
+  selectedRegistry.value = reg;
+  detailOpen.value = true;
+  detailLoading.value = true;
+  detailError.value = '';
+  const requestId = ++detailRequestId;
+
+  try {
+    const detail = await getRegistry({
+      type: String(reg.type),
+      name: String(reg.name),
+      agent: reg.agent as string | undefined,
+    });
+    if (requestId !== detailRequestId || !detailOpen.value) return;
+    selectedRegistry.value = mapRegistry(detail, String(reg.status));
+  } catch {
+    if (requestId !== detailRequestId) return;
+    detailError.value = 'Unable to load latest registry details';
+  } finally {
+    if (requestId === detailRequestId) {
+      detailLoading.value = false;
+    }
+  }
+}
+
+const searchQuery = ref('');
+const showFilters = ref(false);
+const activeFilterCount = computed(() => (searchQuery.value ? 1 : 0));
+
+function applySearchFromQuery(queryValue: unknown) {
+  const raw = Array.isArray(queryValue) ? queryValue[0] : queryValue;
+  searchQuery.value = typeof raw === 'string' ? raw : '';
+}
+
+applySearchFromQuery(route.query.q);
+watch(
+  () => route.query.q,
+  (value) => applySearchFromQuery(value),
+);
+
+const filteredRegistries = computed(() => {
+  if (!searchQuery.value) return registriesData.value;
+  const q = searchQuery.value.toLowerCase();
+  return registriesData.value.filter(
+    (item) => item.name.toLowerCase().includes(q) || item.type.toLowerCase().includes(q),
+  );
+});
+
+const tableColumns = [
+  { key: 'name', label: 'Registry', align: 'text-left', sortable: false },
+  { key: 'type', label: 'Type', sortable: false },
+  { key: 'status', label: 'Status', sortable: false },
+  { key: 'url', label: 'URL', align: 'text-left', sortable: false, width: '99%' },
+];
+
+onMounted(async () => {
+  try {
+    const data = await getAllRegistries();
+    registriesData.value = data.map((registry: ApiComponent) => mapRegistry(registry));
+  } catch {
+    error.value = 'Failed to load registries';
+  } finally {
+    loading.value = false;
+  }
+});
+</script>
+
+<template>
+  <DataViewLayout>
+      <div v-if="error"
+           class="mb-3 px-3 py-2 text-2xs-plus dd-rounded"
+           :style="{ backgroundColor: 'var(--dd-danger-muted)', color: 'var(--dd-danger)' }">
+        {{ error }}
+      </div>
+
+      <div v-if="loading" class="text-2xs-plus dd-text-muted py-3 px-1">Loading registries...</div>
+
+      <!-- Filter bar -->
+      <DataFilterBar
+        v-model="registriesViewMode"
+        v-model:showFilters="showFilters"
+        :filtered-count="filteredRegistries.length"
+        :total-count="registriesData.length"
+        :active-filter-count="activeFilterCount">
+        <template #filters>
+          <input v-model="searchQuery"
+                 type="text"
+                 placeholder="Filter by name or type..."
+                 class="flex-1 min-w-[120px] max-w-[var(--dd-layout-filter-max-width)] px-2.5 py-1.5 dd-rounded text-2xs-plus font-medium outline-none dd-bg dd-text dd-placeholder" />
+          <AppButton size="none" variant="text-muted" weight="medium" class="text-2xs" v-if="searchQuery"
+                  
+                  @click="searchQuery = ''">
+            Clear
+          </AppButton>
+        </template>
+      </DataFilterBar>
+
+      <!-- Table view -->
+      <DataTable v-if="registriesViewMode === 'table' && !loading"
+                 :columns="tableColumns"
+                 :rows="filteredRegistries"
+                 row-key="id"
+                 :active-row="selectedRegistry?.id"
+                 @row-click="openDetail($event)">
+        <template #cell-name="{ row }">
+          <span class="font-medium dd-text">{{ registryTypeBadge(row.type).label }}</span>
+        </template>
+        <template #cell-type="{ row }">
+          <AppBadge v-if="isPrivate(row)" tone="warning" size="xs" class="max-md:!hidden">Private</AppBadge>
+          <AppBadge v-else tone="neutral" size="xs" class="max-md:!hidden">Public</AppBadge>
+          <AppBadge v-if="isPrivate(row)" v-tooltip.top="'Private'" tone="warning" size="xs" class="px-1.5 py-0 md:!hidden"><AppIcon name="lock" :size="12" /></AppBadge>
+          <AppBadge v-else v-tooltip.top="'Public'" tone="neutral" size="xs" class="px-1.5 py-0 md:!hidden"><AppIcon name="eye" :size="12" /></AppBadge>
+        </template>
+        <template #cell-status="{ row }">
+          <AppIcon :name="row.status === 'connected' ? 'check' : row.status === 'error' ? 'xmark' : 'warning'" :size="13" class="shrink-0 md:!hidden"
+                   v-tooltip.top="row.status"
+                   :style="{ color: row.status === 'connected' ? 'var(--dd-success)' : row.status === 'error' ? 'var(--dd-danger)' : 'var(--dd-warning)' }" />
+          <AppBadge :tone="row.status === 'connected' ? 'success' : row.status === 'error' ? 'danger' : 'warning'" size="xs" class="max-md:!hidden">
+            {{ row.status }}
+          </AppBadge>
+        </template>
+        <template #cell-url="{ row }">
+          <span class="block max-w-[220px] truncate whitespace-nowrap font-mono text-2xs dd-text-secondary"
+                :title="resolveUrl(row)"
+                v-tooltip.top="resolveUrl(row)">
+            {{ resolveUrl(row) }}
+          </span>
+        </template>
+        <template #empty>
+          <EmptyState icon="registries"
+                      message="No registries match your filters"
+                      :show-clear="activeFilterCount > 0"
+                      @clear="searchQuery = ''" />
+        </template>
+      </DataTable>
+
+      <!-- Card view -->
+      <DataCardGrid v-if="registriesViewMode === 'cards' && !loading"
+                    :items="filteredRegistries"
+                    item-key="id"
+                    :selected-key="selectedRegistry?.id"
+                    @item-click="openDetail($event)">
+        <template #card="{ item: reg }">
+          <div class="px-4 pt-4 pb-2 flex items-start justify-between">
+            <div class="min-w-0">
+              <div class="text-sm font-semibold truncate dd-text">{{ reg.name }}</div>
+              <div class="text-2xs truncate mt-0.5 dd-text-muted font-mono"
+                   :title="resolveUrl(reg)"
+                   v-tooltip.top="resolveUrl(reg)">
+                {{ resolveUrl(reg) }}
+              </div>
+            </div>
+            <AppBadge :custom="{ bg: registryTypeBadge(reg.type).bg, text: registryTypeBadge(reg.type).text }" size="xs" class="shrink-0 ml-2">
+              {{ registryTypeBadge(reg.type).label }}
+            </AppBadge>
+          </div>
+          <div class="px-4 py-3">
+            <div class="grid grid-cols-2 gap-2 text-2xs-plus">
+              <div>
+                <span class="dd-text-muted">Auth</span>
+                <span class="ml-1 font-semibold" :style="{ color: isPrivate(reg) ? 'var(--dd-warning)' : 'var(--dd-text-muted)' }">
+                  {{ isPrivate(reg) ? 'Private' : 'Public' }}
+                </span>
+              </div>
+              <div>
+                <span class="dd-text-muted">Status</span>
+                <span class="ml-1 font-semibold" :style="{ color: reg.status === 'connected' ? 'var(--dd-success)' : 'var(--dd-danger)' }">
+                  {{ reg.status }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="px-4 py-2.5 mt-auto"
+               :style="{ borderTop: '1px solid var(--dd-border)', backgroundColor: 'var(--dd-bg-elevated)' }">
+            <span class="block truncate text-2xs dd-text-muted font-mono"
+                  :title="resolveUrl(reg)"
+                  v-tooltip.top="resolveUrl(reg)">
+              {{ resolveUrl(reg) }}
+            </span>
+          </div>
+        </template>
+      </DataCardGrid>
+
+      <!-- List view -->
+      <DataListAccordion v-if="registriesViewMode === 'list' && !loading"
+                         :items="filteredRegistries"
+                         item-key="id"
+                         :selected-key="selectedRegistry?.id"
+                         @item-click="openDetail($event)">
+        <template #header="{ item: reg }">
+          <AppBadge :custom="{ bg: registryTypeBadge(reg.type).bg, text: registryTypeBadge(reg.type).text }" size="xs" class="shrink-0">
+            {{ registryTypeBadge(reg.type).label }}
+          </AppBadge>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold truncate dd-text">{{ reg.name }}</div>
+            <div class="text-2xs font-mono dd-text-muted truncate mt-0.5"
+                 :title="resolveUrl(reg)"
+                 v-tooltip.top="resolveUrl(reg)">
+              {{ resolveUrl(reg) }}
+            </div>
+          </div>
+          <div class="flex items-center gap-3 shrink-0">
+            <span class="text-2xs-plus hidden md:inline font-medium" :style="{ color: isPrivate(reg) ? 'var(--dd-warning)' : 'var(--dd-text-muted)' }">
+              {{ isPrivate(reg) ? 'Private' : 'Public' }}
+            </span>
+            <AppBadge v-if="isPrivate(reg)" v-tooltip.top="'Private'" tone="warning" size="xs" class="px-1.5 py-0 md:!hidden"><AppIcon name="lock" :size="12" /></AppBadge>
+            <AppBadge v-else v-tooltip.top="'Public'" tone="neutral" size="xs" class="px-1.5 py-0 md:!hidden"><AppIcon name="eye" :size="12" /></AppBadge>
+            <AppIcon :name="reg.status === 'connected' ? 'check' : 'xmark'" :size="13" class="shrink-0 md:!hidden"
+                     v-tooltip.top="reg.status"
+                     :style="{ color: reg.status === 'connected' ? 'var(--dd-success)' : 'var(--dd-danger)' }" />
+            <AppBadge :tone="reg.status === 'connected' ? 'success' : 'danger'" size="xs" class="max-md:!hidden">
+              {{ reg.status }}
+            </AppBadge>
+          </div>
+        </template>
+      </DataListAccordion>
+
+      <EmptyState
+        v-if="(registriesViewMode === 'cards' || registriesViewMode === 'list') && filteredRegistries.length === 0 && !loading"
+        icon="registries"
+        message="No registries match your filters"
+        :show-clear="activeFilterCount > 0"
+        @clear="searchQuery = ''" />
+
+    <template #panel>
+      <DetailPanel
+        :open="detailOpen"
+        :is-mobile="isMobile"
+        :show-size-controls="false"
+        :show-full-page="false"
+        @update:open="handleDetailOpenChange"
+      >
+        <template #header>
+          <div class="flex items-center gap-2.5 min-w-0">
+            <AppBadge v-if="selectedRegistry" :custom="{ bg: registryTypeBadge(selectedRegistry.type).bg, text: registryTypeBadge(selectedRegistry.type).text }" size="xs" class="shrink-0">
+              {{ registryTypeBadge(selectedRegistry.type).label }}
+            </AppBadge>
+            <span class="text-sm font-bold truncate dd-text">{{ selectedRegistry?.name }}</span>
+          </div>
+        </template>
+
+        <template #subtitle>
+          <span class="block max-w-[220px] truncate text-2xs-plus font-mono dd-text-secondary"
+                :title="selectedRegistry ? resolveUrl(selectedRegistry) : ''"
+                v-tooltip.top="selectedRegistry ? resolveUrl(selectedRegistry) : ''">
+            {{ selectedRegistry ? resolveUrl(selectedRegistry) : '' }}
+          </span>
+        </template>
+
+        <template v-if="selectedRegistry" #default>
+          <div class="p-4 space-y-5">
+            <div v-if="detailLoading" class="text-2xs-plus dd-text-muted">Refreshing registry details...</div>
+            <div v-if="detailError"
+                 class="px-3 py-2 text-2xs-plus dd-rounded"
+                 :style="{ backgroundColor: 'var(--dd-warning-muted)', color: 'var(--dd-warning)' }">
+              {{ detailError }}
+            </div>
+
+            <!-- Status -->
+            <DetailField label="Status">
+              <AppBadge :tone="selectedRegistry.status === 'connected' ? 'success' : 'danger'" size="sm">
+                {{ selectedRegistry.status }}
+              </AppBadge>
+            </DetailField>
+
+            <!-- Auth type -->
+            <DetailField label="Authentication">
+              <div class="flex items-center gap-1.5 text-xs">
+                <AppIcon v-if="isPrivate(selectedRegistry)" name="lock" :size="12" style="color: var(--dd-warning);" />
+                <AppIcon v-else name="eye" :size="12" class="dd-text-muted" />
+                <span class="dd-text font-medium">{{ isPrivate(selectedRegistry) ? 'Private' : 'Public' }}</span>
+              </div>
+            </DetailField>
+
+            <!-- URL -->
+            <DetailField label="URL" mono>{{ resolveUrl(selectedRegistry) }}</DetailField>
+
+            <!-- Configuration -->
+            <DetailField v-for="(val, key) in selectedRegistry.config" :key="key" :label="String(key)" mono>{{ val }}</DetailField>
+          </div>
+        </template>
+      </DetailPanel>
+    </template>
+  </DataViewLayout>
+</template>

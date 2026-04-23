@@ -1,9 +1,10 @@
-// @ts-nocheck
-
 import { Writable } from 'node:stream';
 import pino from 'pino';
-import { getLogLevel } from '../configuration/index.js';
+import pinoPretty from 'pino-pretty';
+import { getLogBufferEnabled, getLogFormat, getLogLevel } from '../configuration/index.js';
 import { addEntry } from './buffer.js';
+import { TEXT_LOG_TIMESTAMP_TRANSLATE_TIME } from './display-timestamp.js';
+import { setWarnLogger } from './warn.js';
 
 export function parseLogChunk(chunk: Buffer | string) {
   try {
@@ -26,9 +27,31 @@ const bufferStream = new Writable({
   },
 });
 
+function createMainLogStream() {
+  if (getLogFormat() === 'json') {
+    return process.stdout;
+  }
+  return pinoPretty({
+    colorize: Boolean(process.stdout.isTTY),
+    sync: true,
+    singleLine: true,
+    translateTime: TEXT_LOG_TIMESTAMP_TRANSLATE_TIME,
+  });
+}
+
+function createLogStreams() {
+  const level = getLogLevel();
+  const streams: { stream: Writable; level: string }[] = [{ stream: createMainLogStream(), level }];
+  if (getLogBufferEnabled()) {
+    streams.push({ stream: bufferStream, level });
+  }
+  return streams;
+}
+
 const logger = pino(
   { name: 'drydock', level: getLogLevel() },
-  pino.multistream([{ stream: process.stdout }, { stream: bufferStream }]),
+  pino.multistream(createLogStreams()),
 );
+setWarnLogger(logger);
 
 export default logger;

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, expect, test } from 'vitest';
 import Agent from './Agent.js';
 
@@ -71,7 +70,7 @@ describe('Agent component', () => {
     expect(masked.host).toBe('localhost');
     expect(masked.port).toBe(3000);
     expect(masked.secret).not.toBe('supersecret');
-    expect(masked.secret).toContain('*');
+    expect(masked.secret).toBe('[REDACTED]');
   });
 
   test('maskConfiguration should accept explicit configuration', () => {
@@ -84,6 +83,18 @@ describe('Agent component', () => {
     const masked = agent.maskConfiguration(config);
     expect(masked.host).toBe('myhost');
     expect(masked.secret).not.toBe('abc123');
-    expect(masked.secret).toContain('*');
+    expect(masked.secret).toBe('[REDACTED]');
+  });
+
+  test('maskConfiguration should handle non-string secret values', () => {
+    const agent = new Agent();
+    const masked = agent.maskConfiguration({
+      host: 'myhost',
+      port: 3000,
+      secret: 123 as unknown as string,
+    });
+
+    expect(masked.host).toBe('myhost');
+    expect(masked.secret).toBeUndefined();
   });
 });

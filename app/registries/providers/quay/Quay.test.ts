@@ -1,4 +1,3 @@
-// @ts-nocheck
 import axios from 'axios';
 import log from '../../../log/index.js';
 import Quay from './Quay.js';
@@ -8,7 +7,7 @@ const TEST_TOKEN = 'token';
 
 vi.mock('axios');
 axios.mockImplementation(() => ({
-  token: TEST_TOKEN,
+  data: { token: TEST_TOKEN },
 }));
 
 const quay = new Quay();
@@ -18,6 +17,10 @@ quay.configuration = {
   token: TEST_TOKEN,
 };
 quay.log = log;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 test('validatedConfiguration should initialize when anonymous configuration is valid', async () => {
   expect(quay.validateConfiguration('')).toStrictEqual({});
@@ -54,7 +57,7 @@ test('maskConfiguration should mask authentication configuration secrets', async
   expect(quay.maskConfiguration()).toEqual({
     account: 'account',
     namespace: 'namespace',
-    token: 't***n',
+    token: '[REDACTED]',
   });
 });
 
@@ -130,22 +133,77 @@ test('getAuthPull should return credentials when auth configuration', async () =
 });
 
 test('authenticate should populate header with base64 bearer', async () => {
-  await expect(quay.authenticate({}, { headers: {} })).resolves.toEqual({
-    headers: {
-      Authorization: `Bearer ${TEST_TOKEN}`,
-    },
-  });
+  await expect(
+    quay.authenticate({}, { headers: {}, url: 'https://quay.io/v2/test/image/manifests/latest' }),
+  ).resolves.toEqual(
+    expect.objectContaining({
+      headers: {
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+    }),
+  );
 });
 
 test('authenticate should not populate header with base64 bearer when anonymous', async () => {
   const quayInstance = new Quay();
   quayInstance.configuration = {};
-  await expect(quayInstance.authenticate({}, { headers: {} })).resolves.toEqual({
-    headers: {},
-  });
+  await expect(
+    quayInstance.authenticate(
+      {},
+      { headers: {}, url: 'https://quay.io/v2/test/image/manifests/latest' },
+    ),
+  ).resolves.toEqual(
+    expect.objectContaining({
+      headers: {},
+    }),
+  );
 });
 
-test('authenticate should log warning when axios throws an error', async () => {
+test('authenticate should retry anonymously when configured credentials are rejected with 403', async () => {
+  const quayInstance = new Quay();
+  await quayInstance.register('registry', 'quay', 'test', {
+    namespace: 'namespace',
+    account: 'account',
+    token: TEST_TOKEN,
+  });
+  quayInstance.log = log;
+  axios.mockRejectedValueOnce(new Error('Request failed with status code 403'));
+  axios.mockResolvedValueOnce({ data: { token: 'anon-token' } });
+  const warnSpy = vi.spyOn(quayInstance.log, 'warn');
+
+  const result = await quayInstance.authenticate(
+    { name: 'test/image' },
+    { headers: {}, url: 'https://quay.io/v2/test/image/manifests/latest' },
+  );
+
+  expect(axios).toHaveBeenNthCalledWith(1, {
+    method: 'GET',
+    url: 'https://quay.io/v2/auth?service=quay.io&scope=repository:test/image:pull',
+    headers: {
+      Accept: 'application/json',
+      Authorization: 'Basic bmFtZXNwYWNlK2FjY291bnQ6dG9rZW4=',
+    },
+  });
+  expect(axios).toHaveBeenNthCalledWith(2, {
+    method: 'GET',
+    url: 'https://quay.io/v2/auth?service=quay.io&scope=repository:test/image:pull',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+  expect(warnSpy).toHaveBeenCalledWith(
+    expect.stringContaining('Quay credentials were rejected for registry quay.test (status 403)'),
+  );
+  expect(result).toEqual(
+    expect.objectContaining({
+      headers: {
+        Authorization: 'Bearer anon-token',
+      },
+    }),
+  );
+});
+
+test('authenticate should throw when token request fails', async () => {
   axios.mockImplementationOnce(() => {
     throw new Error('Network error');
   });
@@ -155,13 +213,12 @@ test('authenticate should log warning when axios throws an error', async () => {
     account: 'account',
     token: TEST_TOKEN,
   };
-  quayInstance.log = { warn: vi.fn() };
-  const result = await quayInstance.authenticate({ name: 'test/image' }, { headers: {} });
-  expect(quayInstance.log.warn).toHaveBeenCalledWith(
-    'Error when trying to get an access token (Network error)',
-  );
-  // Token is undefined so no Authorization header should be set
-  expect(result).toEqual({ headers: {} });
+  await expect(
+    quayInstance.authenticate(
+      { name: 'test/image' },
+      { headers: {}, url: 'https://quay.io/v2/test/image/manifests/latest' },
+    ),
+  ).rejects.toThrow('token request failed (Network error)');
 });
 
 test('getTagsPage should call registry with default pagination', async () => {

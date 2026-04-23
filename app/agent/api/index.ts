@@ -1,25 +1,83 @@
+import { timingSafeEqual } from 'node:crypto';
 import fs from 'node:fs';
 import https from 'node:https';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
+import { sendErrorResponse } from '../../api/error-response.js';
 import { getServerConfiguration } from '../../configuration/index.js';
 import { getEntries } from '../../log/buffer.js';
+import { toDisplayLogEntry } from '../../log/display-timestamp.js';
 import logger from '../../log/index.js';
+import { sanitizeLogParam } from '../../log/sanitize.js';
+import { hashToken } from '../../util/crypto.js';
 import * as containerApi from './container.js';
 import * as eventApi from './event.js';
 import * as triggerApi from './trigger.js';
 import * as watcherApi from './watcher.js';
 
 const log = logger.child({ component: 'agent-server' });
+const ALLOWED_LOG_LEVELS = new Set(['trace', 'debug', 'info', 'warn', 'error', 'fatal']);
+const SAFE_LOG_COMPONENT_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
 let cachedSecret: string | undefined;
+
+function getErrorMessageValue(error: unknown): unknown {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  return (error as { message?: unknown }).message;
+}
+
+function stringifyErrorMessage(message: unknown): string {
+  try {
+    return `${message as string}`;
+  } catch {
+    return String(message);
+  }
+}
+
+function getValidatedLogLevel(level: unknown): string | undefined | null {
+  if (level == null) {
+    return undefined;
+  }
+  if (typeof level !== 'string') {
+    return null;
+  }
+  const normalizedLevel = level.toLowerCase();
+  if (!ALLOWED_LOG_LEVELS.has(normalizedLevel)) {
+    return null;
+  }
+  return normalizedLevel;
+}
+
+function getValidatedLogComponent(component: unknown): string | undefined | null {
+  if (component == null) {
+    return undefined;
+  }
+  if (typeof component !== 'string') {
+    return null;
+  }
+  if (!SAFE_LOG_COMPONENT_PATTERN.test(component)) {
+    return null;
+  }
+  return component;
+}
 
 /**
  * Authenticate Middleware.
  */
 export function authenticate(req: Request, res: Response, next: NextFunction) {
-  const requestSecret = req.headers['x-dd-agent-secret'];
-  if (!cachedSecret || requestSecret !== cachedSecret) {
+  const requestSecretHeader = req.headers['x-dd-agent-secret'];
+  const requestSecret = typeof requestSecretHeader === 'string' ? requestSecretHeader : undefined;
+  if (!cachedSecret || !requestSecret) {
+    log.warn(`Unauthorized access attempt from ${req.ip}`);
+    return res.status(401).send();
+  }
+
+  const requestSecretHash = hashToken(requestSecret);
+  const cachedSecretHash = hashToken(cachedSecret);
+  if (!timingSafeEqual(requestSecretHash, cachedSecretHash)) {
     log.warn(`Unauthorized access attempt from ${req.ip}`);
     return res.status(401).send();
   }
@@ -39,9 +97,10 @@ export async function init() {
   } else if (agentSecretFile) {
     try {
       cachedSecret = fs.readFileSync(agentSecretFile, 'utf-8').trim();
-    } catch (e: any) {
-      log.error(`Error reading secret file: ${e.message}`);
-      throw new Error(`Error reading secret file: ${e.message}`);
+    } catch (e: unknown) {
+      const errorMessage = getErrorMessageValue(e);
+      log.error(`Error reading secret file: ${sanitizeLogParam(errorMessage)}`);
+      throw new Error(`Error reading secret file: ${stringifyErrorMessage(errorMessage)}`);
     }
   }
 
@@ -58,7 +117,7 @@ export async function init() {
   const app = express();
   app.disable('x-powered-by');
 
-  app.use(express.json());
+  app.use(express.json({ limit: '256kb' }));
   if (configuration.cors.enabled) {
     app.use(
       cors({
@@ -79,16 +138,29 @@ export async function init() {
 
   // Routes
   app.get('/api/log/entries', (req: Request, res: Response) => {
-    const level = req.query.level as string | undefined;
-    const component = req.query.component as string | undefined;
+    const level = getValidatedLogLevel(req.query.level);
+    if (level === null) {
+      sendErrorResponse(res, 400, 'Invalid level query parameter');
+      return;
+    }
+
+    const component = getValidatedLogComponent(req.query.component);
+    if (component === null) {
+      sendErrorResponse(res, 400, 'Invalid component query parameter');
+      return;
+    }
+
     const tail = req.query.tail ? Number.parseInt(req.query.tail as string, 10) : undefined;
     const since = req.query.since ? Number.parseInt(req.query.since as string, 10) : undefined;
-    res.status(200).json(getEntries({ level, component, tail, since }));
+    res
+      .status(200)
+      .json(getEntries({ level, component, tail, since }).map((entry) => toDisplayLogEntry(entry)));
   });
   app.get('/api/containers', containerApi.getContainers);
   app.get('/api/containers/:id/logs', containerApi.getContainerLogs);
   app.delete('/api/containers/:id', containerApi.deleteContainer);
   app.get('/api/watchers', watcherApi.getWatchers);
+  app.get('/api/watchers/:type/:name', watcherApi.getWatcher);
   app.get('/api/triggers', triggerApi.getTriggers);
   app.get('/api/events', eventApi.subscribeEvents);
   app.post('/api/triggers/:type/:name', triggerApi.runTrigger);

@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { runHook } from './HookRunner.js';
 
 var childProcessMockControl = vi.hoisted(() => ({
@@ -27,6 +27,49 @@ vi.mock('../../log/index.js', () => ({
 }));
 
 describe('HookRunner', () => {
+  const originalHooksEnabled = process.env.DD_HOOKS_ENABLED;
+
+  beforeEach(() => {
+    process.env.DD_HOOKS_ENABLED = 'true';
+  });
+
+  afterAll(() => {
+    if (originalHooksEnabled === undefined) {
+      delete process.env.DD_HOOKS_ENABLED;
+      return;
+    }
+    process.env.DD_HOOKS_ENABLED = originalHooksEnabled;
+  });
+
+  test('should skip command execution when hooks are disabled', async () => {
+    process.env.DD_HOOKS_ENABLED = 'false';
+    var execFileCalls = 0;
+
+    childProcessMockControl.execFileImpl = (
+      _: string,
+      __: readonly string[],
+      ___: unknown,
+      callback: (...args: unknown[]) => void,
+    ) => {
+      execFileCalls += 1;
+      setImmediate(() => callback(null, 'unexpected execution', ''));
+      return { exitCode: 0 };
+    };
+
+    try {
+      const result = await runHook('echo hello', { label: 'test' });
+      expect(execFileCalls).toBe(0);
+      expect(result).toStrictEqual({
+        exitCode: 0,
+        stdout: '',
+        stderr: 'Lifecycle hooks are disabled. Set DD_HOOKS_ENABLED=true to enable execution.',
+        timedOut: false,
+      });
+    } finally {
+      childProcessMockControl.execFileImpl = null;
+    }
+  });
+
   test('should execute a command successfully', async () => {
     var result = await runHook('echo hello', { label: 'test' });
     expect(result.exitCode).toBe(0);
@@ -42,7 +85,10 @@ describe('HookRunner', () => {
   });
 
   test('should capture stderr output', async () => {
-    var result = await runHook('echo oops >&2; exit 1', { label: 'test' });
+    var result = await runHook(
+      'python3 -c "import sys; sys.stderr.write(\'oops\\\\n\'); raise SystemExit(1)"',
+      { label: 'test' },
+    );
     expect(result.exitCode).toBe(1);
     expect(result.stderr.trim()).toBe('oops');
     expect(result.timedOut).toBe(false);
@@ -63,14 +109,112 @@ describe('HookRunner', () => {
     expect(result.stdout.trim()).toBe('hello-hook');
   });
 
+  test('should allow quoted arguments, braced variables, and trailing whitespace', async () => {
+    var result = await runHook(`printf '%s %s' "\${MY_VAR}" 'world'   `, {
+      label: 'test',
+      env: { MY_VAR: 'hello-hook' },
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('hello-hook world');
+  });
+
+  test.each([
+    'echo hello && whoami',
+    'echo hello; whoami',
+    'echo $(whoami)',
+    'echo `whoami`',
+    'echo hello | cat',
+    'echo hello\nwhoami',
+    '   ',
+    'echo $',
+    'echo ${',
+    'echo ${1}',
+    'echo ${MY_VAR',
+    "echo 'unterminated",
+    'echo "unterminated',
+    'echo "escaped-backslash\\',
+    'echo "bad${1}"',
+    'echo "bad`tick"',
+  ])('should reject unsafe shell syntax in hook command: %s', async (command) => {
+    var execFileCalls = 0;
+
+    childProcessMockControl.execFileImpl = (
+      _: string,
+      __: readonly string[],
+      ___: unknown,
+      callback: (...args: unknown[]) => void,
+    ) => {
+      execFileCalls += 1;
+      setImmediate(() => callback(null, 'unexpected execution', ''));
+      return { exitCode: 0 };
+    };
+
+    try {
+      const result = await runHook(command, { label: 'test' });
+
+      expect(execFileCalls).toBe(0);
+      expect(result).toStrictEqual({
+        exitCode: 1,
+        stdout: '',
+        stderr:
+          'Hook command contains unsupported shell syntax. Use a single command with arguments and optional $VAR expansions.',
+        timedOut: false,
+      });
+    } finally {
+      childProcessMockControl.execFileImpl = null;
+    }
+  });
+
+  test('should not forward non-allowlisted parent environment variables', async () => {
+    const secretKey = 'DRYDOCK_TEST_HOOK_SECRET';
+    const originalSecret = process.env[secretKey];
+    const originalPath = process.env.PATH;
+    process.env[secretKey] = 'top-secret';
+    process.env.PATH = '/tmp/drydock-hook-path';
+
+    let capturedEnv: Record<string, string | undefined> | undefined;
+    childProcessMockControl.execFileImpl = (
+      _: string,
+      __: readonly string[],
+      options: unknown,
+      callback: (...args: unknown[]) => void,
+    ) => {
+      capturedEnv = (options as { env?: Record<string, string | undefined> }).env;
+      setImmediate(() => callback(null, '', ''));
+      return { exitCode: 0 };
+    };
+
+    try {
+      const result = await runHook('echo ignored', {
+        label: 'test',
+        env: { MY_VAR: 'hello-hook' },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(capturedEnv?.MY_VAR).toBe('hello-hook');
+      expect(capturedEnv?.PATH).toBe('/tmp/drydock-hook-path');
+      expect(capturedEnv?.[secretKey]).toBeUndefined();
+    } finally {
+      childProcessMockControl.execFileImpl = null;
+      if (originalSecret === undefined) {
+        delete process.env[secretKey];
+      } else {
+        process.env[secretKey] = originalSecret;
+      }
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+
   test('should truncate stdout to 10KB', async () => {
     // Generate output larger than 10KB
-    var result = await runHook(
-      'python3 -c "print(\'x\' * 20000)" 2>/dev/null || printf "%0.sx" $(seq 1 20000)',
-      {
-        label: 'test',
-      },
-    );
+    var result = await runHook('node -e "process.stdout.write(\'x\'.repeat(20000))"', {
+      label: 'test',
+    });
     expect(result.stdout.length).toBeLessThanOrEqual(10 * 1024);
   });
 

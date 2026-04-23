@@ -1,4 +1,3 @@
-// @ts-nocheck
 import Gitea from './Gitea.js';
 
 // Test fixture credentials - not real secrets
@@ -109,6 +108,18 @@ test('should validate configuration with empty auth', async () => {
   const config = {
     url: 'https://gitea.example.com',
     auth: '',
+  };
+
+  expect(() => gitea.validateConfiguration(config)).not.toThrow();
+});
+
+test('should validate configuration with cafile and insecure TLS options', async () => {
+  const config = {
+    url: 'https://gitea.example.com',
+    login: 'user',
+    password: TEST_PASS,
+    cafile: '/certs/private-ca.pem',
+    insecure: true,
   };
 
   expect(() => gitea.validateConfiguration(config)).not.toThrow();
