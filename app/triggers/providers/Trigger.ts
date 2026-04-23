@@ -481,7 +481,6 @@ export interface TriggerConfiguration extends ComponentConfiguration {
   auto?: boolean | TriggerAutoMode;
   order?: number;
   threshold?: string;
-  requireinclude?: boolean;
   mode?: string;
   once?: boolean;
   disabletitle?: boolean;
@@ -2079,9 +2078,6 @@ class Trigger<
   }
 
   mustTrigger(containerResult: Container) {
-    if (this.configuration.requireinclude && !containerResult.triggerInclude) {
-      return false;
-    }
     return this.getMustTriggerDecision(containerResult).allowed;
   }
 
@@ -2268,7 +2264,6 @@ class Trigger<
       simplebody: this.joi.string().default(DEFAULT_SIMPLE_BODY_TEMPLATE),
       batchtitle: this.joi.string().default('${containers.length} updates available'),
       resolvenotifications: this.joi.boolean().default(false),
-      requireinclude: this.joi.boolean().default(false),
       securitymode: this.joi
         .string()
         .insensitive()

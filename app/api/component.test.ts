@@ -65,42 +65,6 @@ describe('Component Router', () => {
       expect(result.agent).toBe('remote-agent');
     });
 
-    test('should include requireinclude for triggers even when masked config omits it', () => {
-      const comp = {
-        kind: 'trigger',
-        type: 'dockercompose',
-        name: 'my-service',
-        configuration: { requireinclude: true, auto: true },
-        maskConfiguration: vi.fn(() => ({ auto: true })),
-        agent: undefined,
-      };
-
-      const result = component.mapComponentToItem('dockercompose.my-service', comp, 'trigger');
-
-      expect(result.configuration).toEqual({
-        auto: true,
-        requireinclude: true,
-      });
-    });
-
-    test('should keep masked requireinclude when already present', () => {
-      const comp = {
-        kind: 'trigger',
-        type: 'dockercompose',
-        name: 'my-service',
-        configuration: { requireinclude: true, auto: true },
-        maskConfiguration: vi.fn(() => ({ auto: true, requireinclude: false })),
-        agent: undefined,
-      };
-
-      const result = component.mapComponentToItem('dockercompose.my-service', comp, 'trigger');
-
-      expect(result.configuration).toEqual({
-        auto: true,
-        requireinclude: false,
-      });
-    });
-
     test('should fallback to raw configuration when maskConfiguration is unavailable', () => {
       const comp = {
         type: 'docker',

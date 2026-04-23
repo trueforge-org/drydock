@@ -97,6 +97,7 @@ const state: RegistryState = {
 };
 
 const CONTAINER_TRIGGER_DEFAULT_NAME = 'container';
+
 const registrationWarnings: string[] = [];
 const authenticationRegistrationErrors: AuthenticationRegistrationError[] = [];
 

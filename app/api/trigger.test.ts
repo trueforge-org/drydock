@@ -136,28 +136,6 @@ describe('Trigger Router', () => {
 
     test('should run trigger successfully', async () => {
       const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(true),
-        trigger: vi.fn().mockResolvedValue(undefined),
-      };
-      registry.getState.mockReturnValue({
-        trigger: { 'slack.default': mockTrigger },
-      });
-
-      const req = {
-        params: { type: 'slack', name: 'default' },
-        body: { id: 'c1' },
-      };
-      const res = createResponse();
-
-      await runTrigger(req, res);
-
-      expect(mockTrigger.trigger).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    test('should run trigger when mustTrigger is not a function', async () => {
-      const mockTrigger = {
-        mustTrigger: true,
         trigger: vi.fn().mockResolvedValue(undefined),
       };
       registry.getState.mockReturnValue({
@@ -263,7 +241,6 @@ describe('Trigger Router', () => {
 
     test('should set default updateKind when missing', async () => {
       const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(true),
         trigger: vi.fn().mockResolvedValue(undefined),
       };
       registry.getState.mockReturnValue({
@@ -293,7 +270,6 @@ describe('Trigger Router', () => {
 
     test('should not override existing updateKind', async () => {
       const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(true),
         trigger: vi.fn().mockResolvedValue(undefined),
       };
       registry.getState.mockReturnValue({
@@ -344,7 +320,6 @@ describe('Trigger Router', () => {
 
     test('should return 500 when trigger throws', async () => {
       const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(true),
         trigger: vi.fn().mockRejectedValue(new Error('trigger failed')),
       };
       registry.getState.mockReturnValue({
@@ -454,58 +429,6 @@ describe('Trigger Router', () => {
       expect(responsePayload.error).toBe('Error when running trigger slack.default');
       expect(responsePayload.details).toBeUndefined();
     });
-
-    test('should return 400 when trigger conditions are not met', async () => {
-      const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(false),
-        trigger: vi.fn(),
-      };
-      registry.getState.mockReturnValue({
-        trigger: { 'slack.default': mockTrigger },
-      });
-
-      const req = {
-        params: { type: 'slack', name: 'default' },
-        body: { id: 'c1' },
-      };
-      const res = createResponse();
-
-      await runTrigger(req, res);
-
-      expect(mockTrigger.trigger).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining('Trigger conditions not met'),
-        }),
-      );
-    });
-
-    test('should return 400 when trigger conditions are not met and container id is missing', async () => {
-      const mockTrigger = {
-        mustTrigger: vi.fn().mockReturnValue(false),
-        trigger: vi.fn(),
-      };
-      registry.getState.mockReturnValue({
-        trigger: { 'slack.default': mockTrigger },
-      });
-
-      const req = {
-        params: { type: 'slack', name: 'default' },
-        body: {},
-      };
-      const res = createResponse();
-
-      await runTrigger(req, res);
-
-      expect(mockTrigger.trigger).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining('Trigger conditions not met'),
-        }),
-      );
-    });
   });
 
   describe('runRemoteTrigger', () => {
@@ -584,13 +507,6 @@ describe('Trigger Router', () => {
         runRemoteTrigger: vi.fn().mockResolvedValue(undefined),
       };
       agent.getAgent.mockReturnValue(mockAgentClient);
-      registry.getState.mockReturnValue({
-        trigger: {
-          'my-agent.slack.default': {
-            mustTrigger: vi.fn().mockReturnValue(true),
-          },
-        },
-      });
 
       const handler = getRemoteTriggerHandler();
       const req = {
@@ -598,36 +514,6 @@ describe('Trigger Router', () => {
         body: { id: 'c1' },
       };
       const res = createMockResponse();
-
-      await handler(req, res);
-
-      expect(mockAgentClient.runRemoteTrigger).toHaveBeenCalledWith(
-        { id: 'c1' },
-        'slack',
-        'default',
-      );
-      expect(res.status).toHaveBeenCalledWith(200);
-    });
-
-    test('should run remote trigger when local proxy mustTrigger is not a function', async () => {
-      const mockAgentClient = {
-        runRemoteTrigger: vi.fn().mockResolvedValue(undefined),
-      };
-      agent.getAgent.mockReturnValue(mockAgentClient);
-      registry.getState.mockReturnValue({
-        trigger: {
-          'my-agent.slack.default': {
-            mustTrigger: true,
-          },
-        },
-      });
-
-      const handler = getRemoteTriggerHandler();
-      const req = {
-        params: { agent: 'my-agent', type: 'slack', name: 'default' },
-        body: { id: 'c1' },
-      };
-      const res = createResponse();
 
       await handler(req, res);
 
@@ -661,49 +547,11 @@ describe('Trigger Router', () => {
       expect(mockAgentClient.runRemoteTrigger).not.toHaveBeenCalled();
     });
 
-    test('should return 400 when remote trigger conditions are not met', async () => {
-      const mockAgentClient = {
-        runRemoteTrigger: vi.fn().mockResolvedValue(undefined),
-      };
-      agent.getAgent.mockReturnValue(mockAgentClient);
-      registry.getState.mockReturnValue({
-        trigger: {
-          'my-agent.slack.default': {
-            mustTrigger: vi.fn().mockReturnValue(false),
-          },
-        },
-      });
-
-      const handler = getRemoteTriggerHandler();
-      const req = {
-        params: { agent: 'my-agent', type: 'slack', name: 'default' },
-        body: { id: 'c1' },
-      };
-      const res = createResponse();
-
-      await handler(req, res);
-
-      expect(mockAgentClient.runRemoteTrigger).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.stringContaining('Trigger conditions not met'),
-        }),
-      );
-    });
-
     test('should return 500 when remote trigger throws', async () => {
       const mockAgentClient = {
         runRemoteTrigger: vi.fn().mockRejectedValue(new Error('remote error')),
       };
       agent.getAgent.mockReturnValue(mockAgentClient);
-      registry.getState.mockReturnValue({
-        trigger: {
-          'my-agent.slack.default': {
-            mustTrigger: vi.fn().mockReturnValue(true),
-          },
-        },
-      });
 
       const handler = getRemoteTriggerHandler();
       const req = {

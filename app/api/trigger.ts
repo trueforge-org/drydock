@@ -169,16 +169,6 @@ export async function runTrigger(req: Request<RunTriggerParams>, res: Response) 
   }
 
   try {
-    if (typeof triggerToRun.mustTrigger === 'function' && !triggerToRun.mustTrigger(containerToTrigger)) {
-      log.warn(
-        `Trigger conditions not met (type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(containerToTrigger.id || 'unknown')})`,
-      );
-      res.status(400).json({
-        error: `Trigger conditions not met for ${triggerType}.${triggerName} (check include/exclude and requireinclude settings)`,
-      });
-      return;
-    }
-
     if (UPDATE_TRIGGER_TYPES.has(triggerType.toLowerCase())) {
       const storedContainer = storeContainer.getContainer(containerToTrigger.id);
       if (!storedContainer) {
@@ -249,21 +239,6 @@ async function runRemoteTrigger(req: Request<RunRemoteTriggerParams>, res: Respo
   }
 
   try {
-    const localProxyTrigger = registry.getState().trigger[`${agentName}.${triggerType}.${triggerName}`];
-    if (
-      localProxyTrigger &&
-      typeof localProxyTrigger.mustTrigger === 'function' &&
-      !localProxyTrigger.mustTrigger(containerToTrigger)
-    ) {
-      log.warn(
-        `Remote trigger conditions not met (agent=${sanitizeLogParam(agentName)}, type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(containerToTrigger.id)})`,
-      );
-      res.status(400).json({
-        error: `Trigger conditions not met for ${triggerType}.${triggerName} on agent ${agentName} (check include/exclude and requireinclude settings)`,
-      });
-      return;
-    }
-
     await agentClient.runRemoteTrigger(containerToTrigger, triggerType, triggerName);
     log.info(
       `Remote trigger executed with success (agent=${sanitizeLogParam(agentName)}, type=${sanitizeLogParam(triggerType)}, name=${sanitizeLogParam(triggerName)}, container=${sanitizeLogParam(containerToTrigger.id)})`,

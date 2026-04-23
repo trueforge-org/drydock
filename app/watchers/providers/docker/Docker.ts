@@ -1,6 +1,4 @@
-import fs from 'node:fs';
 import path from 'node:path';
-import axios from 'axios';
 import type Dockerode from 'dockerode';
 import Joi from 'joi';
 import JoiCronExpression from 'joi-cron-expression';
@@ -201,41 +199,6 @@ const DEBOUNCED_WATCH_CRON_MS = 5000;
 const DOCKER_EVENTS_BUFFER_MAX_BYTES = 1024 * 1024;
 const MAINTENANCE_WINDOW_QUEUE_POLL_MS = 60 * 1000;
 const SWARM_SERVICE_ID_LABEL = 'com.docker.swarm.service.id';
-const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
-const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
-const OIDC_ACCESS_TOKEN_REFRESH_WINDOW_MS = 30 * 1000;
-const OIDC_DEFAULT_ACCESS_TOKEN_TTL_MS = 5 * 60 * 1000;
-const OIDC_DEFAULT_TIMEOUT_MS = 5000;
-const OIDC_TOKEN_ENDPOINT_PATHS = [
-  'tokenurl',
-  'tokenendpoint',
-  'token_url',
-  'token_endpoint',
-  'token.url',
-  'token.endpoint',
-];
-const OIDC_CLIENT_ID_PATHS = ['clientid', 'client_id', 'client.id'];
-const OIDC_CLIENT_SECRET_PATHS = ['clientsecret', 'client_secret', 'client.secret'];
-const OIDC_SCOPE_PATHS = ['scope'];
-const OIDC_RESOURCE_PATHS = ['resource'];
-const OIDC_AUDIENCE_PATHS = ['audience'];
-const OIDC_GRANT_TYPE_PATHS = ['granttype', 'grant_type'];
-const OIDC_ACCESS_TOKEN_PATHS = ['accesstoken', 'access_token'];
-const OIDC_REFRESH_TOKEN_PATHS = ['refreshtoken', 'refresh_token'];
-const OIDC_EXPIRES_IN_PATHS = ['expiresin', 'expires_in'];
-const OIDC_TIMEOUT_PATHS = ['timeout'];
-const OIDC_DEVICE_URL_PATHS = [
-  'deviceurl',
-  'deviceendpoint',
-  'device_url',
-  'device_endpoint',
-  'device.url',
-  'device.endpoint',
-  'device_authorization_endpoint',
-];
-const OIDC_DEVICE_POLL_INTERVAL_MS = 5000;
-const OIDC_DEVICE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
-
 function appendTriggerId(triggerInclude: string | undefined, triggerId: string | undefined): string | undefined {
   if (!triggerId) {
     return triggerInclude;
@@ -386,12 +349,14 @@ function getComposeFilePathFromLabels(
   return getComposeNativeFilePathFromLabels(labels);
 }
 
+const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
+const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
+
 const RECENT_DOCKER_EVENT_LIMIT = 1000;
 const RECENT_ALIAS_FILTER_DECISION_LIMIT = 1000;
 const joiWildcardSchema = (joi as unknown as Record<string, () => Joi.Schema>)[`a${'ny'}`].bind(
   joi,
 );
-
 interface DockerEventsStream {
   on: (eventName: string, handler: (...args: unknown[]) => unknown) => unknown;
   removeAllListeners?: (eventName?: string) => unknown;
@@ -905,40 +870,7 @@ class Docker extends Watcher<DockerWatcherConfiguration> {
     }
   }
 
-  initWatcher() {
-    const options: Dockerode.DockerOptions = {};
-    if (this.configuration.host) {
-      options.host = this.configuration.host;
-      options.port = this.configuration.port;
-      if (this.configuration.protocol) {
-        options.protocol = this.configuration.protocol;
-      }
-      if (this.configuration.cafile) {
-        options.ca = fs.readFileSync(
-          resolveConfiguredPath(this.configuration.cafile, {
-            label: `watcher ${this.name} CA file path`,
-          }),
-        );
-      }
-      if (this.configuration.certfile) {
-        options.cert = fs.readFileSync(
-          resolveConfiguredPath(this.configuration.certfile, {
-            label: `watcher ${this.name} certificate file path`,
-          }),
-        );
-      }
-      if (this.configuration.keyfile) {
-        options.key = fs.readFileSync(
-          resolveConfiguredPath(this.configuration.keyfile, {
-            label: `watcher ${this.name} key file path`,
-          }),
-        );
-      }
-      this.applyRemoteAuthHeaders(options);
-    } else {
-      options.socketPath = this.configuration.socket;
-    }
-    this.dockerApi = new Dockerode(options);
+
   async initWatcher() {
     await initWatcherWithRemoteAuth(this.asRemoteAuthWatcher());
   }
@@ -1764,7 +1696,6 @@ export default Docker;
 export {
   appendTriggerId as testable_appendTriggerId,
   removeTriggerId as testable_removeTriggerId,
-  getLabel as testable_getLabel,
   filterBySegmentCount as testable_filterBySegmentCount,
   filterRecreatedContainerAliases as testable_filterRecreatedContainerAliases,
   getContainerDisplayName as testable_getContainerDisplayName,
@@ -1776,6 +1707,7 @@ export {
   getImgsetSpecificity as testable_getImgsetSpecificity,
   getInspectValueByPath as testable_getInspectValueByPath,
   getComposeFilePathFromLabels as testable_getComposeFilePathFromLabels,
+  getLabel as testable_getLabel,
   getOldContainers as testable_getOldContainers,
   normalizeConfigNumberValue as testable_normalizeConfigNumberValue,
   normalizeContainer as testable_normalizeContainer,

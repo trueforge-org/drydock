@@ -178,8 +178,6 @@ function getDockerApiFromWatcher(watcher: unknown): DockerApiLike | undefined {
   return maybeDockerApi as DockerApiLike;
 }
 
-const COMPOSE_PROJECT_CONFIG_FILES_LABEL = 'com.docker.compose.project.config_files';
-const COMPOSE_PROJECT_WORKING_DIR_LABEL = 'com.docker.compose.project.working_dir';
 const DD_COMPOSE_NATIVE_LABEL = 'dd.compose.native';
 const WUD_COMPOSE_NATIVE_LABEL = 'wud.compose.native';
 
@@ -282,14 +280,30 @@ function getServiceKey(compose, container, currentImage) {
     const normalizedServiceImage = normalizeImplicitLatest(serviceImage);
     const normalizedServiceImageWithoutDigest = normalizeImageWithoutDigest(serviceImage);
     const normalizedImageToMatchWithoutDigest = normalizeImageWithoutDigest(imageToMatch);
-    return (
-      serviceImage === imageToMatch ||
-      normalizedServiceImage === imageToMatch ||
-      normalizedServiceImageWithoutDigest === normalizedImageToMatchWithoutDigest ||
-      serviceImage.includes(imageToMatch) ||
-      normalizedServiceImage.includes(imageToMatch) ||
-      normalizedServiceImageWithoutDigest.includes(normalizedImageToMatchWithoutDigest)
-    );
+
+    // Match priority (most strict to most lenient):
+    // 1) Exact `service.image` match.
+    if (serviceImage === imageToMatch) {
+      return true;
+    }
+    // 2) Exact match after normalizing implicit `:latest`.
+    if (normalizedServiceImage === imageToMatch) {
+      return true;
+    }
+    // 3) Digest-stripped match (handles digest-pinned images).
+    if (normalizedServiceImageWithoutDigest === normalizedImageToMatchWithoutDigest) {
+      return true;
+    }
+    // 4) Substring match against raw `service.image`.
+    if (serviceImage.includes(imageToMatch)) {
+      return true;
+    }
+    // 5) Substring match against normalized `service.image`.
+    if (normalizedServiceImage.includes(imageToMatch)) {
+      return true;
+    }
+    // 6) Substring match against digest-stripped `service.image`.
+    return normalizedServiceImageWithoutDigest.includes(normalizedImageToMatchWithoutDigest);
   };
 
   return Object.keys(compose.services).find((serviceKey) => {
@@ -664,7 +678,8 @@ class Dockercompose extends Docker<DockercomposeTriggerConfiguration> {
     return null;
   }
 
-  getDefaultComposeFilePath(): string | null {    if (!this.configuration.file) {
+  getDefaultComposeFilePath(): string | null {
+    if (!this.configuration.file) {
       return null;
     }
     try {

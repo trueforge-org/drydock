@@ -22,7 +22,6 @@ const configurationValid = {
   once: true,
   auto: 'all',
   order: 100,
-  requireinclude: false,
   simpletitle:
     '${isDigestUpdate ? container.notificationAgentPrefix + "New image available for container " + container.name + container.notificationWatcherSuffix + " (tag " + currentTag + ")" : container.notificationAgentPrefix + "New " + container.updateKind.kind + " found for container " + container.name + container.notificationWatcherSuffix}',
   simplebody:
@@ -81,7 +80,6 @@ test('maskConfiguration should mask sensitive data', async () => {
     once: true,
     auto: 'all',
     order: 100,
-    requireinclude: false,
     simpletitle: configurationValid.simpletitle,
     simplebody: configurationValid.simplebody,
     batchtitle: configurationValid.batchtitle,
